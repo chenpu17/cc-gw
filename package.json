@@ -1,0 +1,40 @@
+{
+  "name": "cc-gw",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter server dev",
+    "build": "pnpm run build:server && pnpm run build:web",
+    "build:server": "pnpm --filter @cc-gw/server build",
+    "build:cli": "pnpm --filter @cc-gw/cli build",
+    "build:web": "pnpm --filter @cc-gw/web build",
+    "build:all": "pnpm run build:server && pnpm run build:cli && pnpm run build:web",
+    "release:bundle": "pnpm run build:all && node scripts/build-release.mjs",
+    "lint": "pnpm exec eslint .",
+    "format": "pnpm exec prettier --check .",
+    "format:write": "pnpm exec prettier --write .",
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "test": "pnpm exec vitest run"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "react",
+        "react-dom"
+      ]
+    }
+  },
+  "packageManager": "pnpm@9.0.0",
+  "devDependencies": {
+    "@eslint/js": "^9.5.0",
+    "@types/node": "^20.12.7",
+    "eslint": "^8.57.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.3",
+    "typescript-eslint": "^7.5.0",
+    "fastify": "^4.26.2",
+    "vitest": "^1.6.0"
+  }
+}

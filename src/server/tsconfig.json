@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "composite": true,
+    "types": ["node"],
+    "moduleResolution": "NodeNext"
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

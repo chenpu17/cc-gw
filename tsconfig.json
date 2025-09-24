@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "src/cli" },
+    { "path": "src/server" },
+    { "path": "src/web" }
+  ]
+}
