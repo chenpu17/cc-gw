@@ -28,6 +28,8 @@ cc-gw start --daemon --port 4100
 
 首启会在 `~/.cc-gw/config.json` 生成配置模板，推荐直接通过 Web UI (`http://127.0.0.1:4100/ui`) 完成所有后续配置与调整。`cc-gw status`、`cc-gw stop`、`cc-gw restart` 可用于日常运维。
 
+> ⚠️ **Linux 安装提示**：如果未命中 better-sqlite3 的预编译二进制，需要系统具备 `build-essential`、`python3`、`python3-gyp` 等编译依赖。可执行 `sudo apt install build-essential python3 python3-gyp` 后，再运行 `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source`。
+
 ### 从源码构建（开发者）
 
 前置：Node.js 18.18+（推荐 20 LTS）、pnpm 8+
@@ -170,6 +172,8 @@ cc-gw start --daemon --port 4100
 ```
 
 The first launch writes `~/.cc-gw/config.json`. Manage everything through the Web UI at `http://127.0.0.1:4100/ui`. Use `cc-gw status`, `cc-gw stop`, and `cc-gw restart` to control the daemon.
+
+> ⚠️ **Linux build note**: `better-sqlite3` may fall back to building from source. Install toolchain packages such as `build-essential`, `python3`, `python3-gyp`, then rerun `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source` if needed.
 
 ### From Source (contributors)
 
