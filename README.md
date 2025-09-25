@@ -22,7 +22,7 @@ cc-gw 是一个面向 Claude Code 与同类客户端的本地多模型网关，�
 ### 推荐方式：npm 全局安装
 
 ```bash
-npm install -g cc-gw
+npm install -g @chenpu17/cc-gw
 cc-gw start --daemon --port 4100
 ```
 
@@ -165,7 +165,7 @@ cc-gw is a local gateway tailored for Claude Code and similar Anthropic-compatib
 ### Quick Start
 
 ```bash
-npm install -g cc-gw
+npm install -g @chenpu17/cc-gw
 cc-gw start --daemon --port 4100
 ```
 
