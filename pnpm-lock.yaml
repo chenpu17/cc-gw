@@ -7,6 +7,34 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@fastify/cors':
+        specifier: ^9.0.1
+        version: 9.0.1
+      '@fastify/static':
+        specifier: ^7.0.4
+        version: 7.0.4
+      better-sqlite3:
+        specifier: ^9.0.0
+        version: 9.6.0
+      colorette:
+        specifier: ^2.0.20
+        version: 2.0.20
+      commander:
+        specifier: ^12.0.0
+        version: 12.1.0
+      fastify:
+        specifier: ^4.26.2
+        version: 4.29.1
+      open:
+        specifier: ^10.1.0
+        version: 10.2.0
+      tiktoken:
+        specifier: ^1.0.21
+        version: 1.0.22
+      undici:
+        specifier: ^6.11.1
+        version: 6.21.3
     devDependencies:
       '@eslint/js':
         specifier: ^9.5.0
@@ -17,9 +45,6 @@ importers:
       eslint:
         specifier: ^8.57.0
         version: 8.57.1
-      fastify:
-        specifier: ^4.26.2
-        version: 4.29.1
       globals:
         specifier: ^15.0.0
         version: 15.15.0

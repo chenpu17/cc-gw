@@ -19,20 +19,25 @@ cc-gw 是一个面向 Claude Code 与同类客户端的本地多模型网关，�
 
 ## 快速开始
 
-### 前置条件
-- Node.js 18.18+（推荐 20 LTS）
-- pnpm 8+
+### 推荐方式：npm 全局安装
+
+```bash
+npm install -g cc-gw
+cc-gw start --daemon --port 4100
+```
+
+首启会在 `~/.cc-gw/config.json` 生成配置模板，推荐直接通过 Web UI (`http://127.0.0.1:4100/ui`) 完成所有后续配置与调整。`cc-gw status`、`cc-gw stop`、`cc-gw restart` 可用于日常运维。
+
+### 从源码构建（开发者）
+
+前置：Node.js 18.18+（推荐 20 LTS）、pnpm 8+
 
 ```bash
 pnpm install
-# 编译服务端与前端产物
 pnpm --filter @cc-gw/server build
 pnpm --filter @cc-gw/web build
-# 后台启动（默认监听 127.0.0.1:3456，可用 --port 覆盖）
 pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 ```
-
-首启会在 `~/.cc-gw/config.json` 生成配置模板，推荐直接通过 Web UI (`http://127.0.0.1:4100/ui`) 完成所有后续配置与调整。
 
 ### 连接 Claude Code
 1. 启动 cc-gw 并确认配置中 `host` 为 `127.0.0.1`，`port` 与 CLI 启动一致。
@@ -160,13 +165,20 @@ cc-gw is a local gateway tailored for Claude Code and similar Anthropic-compatib
 ### Quick Start
 
 ```bash
+npm install -g cc-gw
+cc-gw start --daemon --port 4100
+```
+
+The first launch writes `~/.cc-gw/config.json`. Manage everything through the Web UI at `http://127.0.0.1:4100/ui`. Use `cc-gw status`, `cc-gw stop`, and `cc-gw restart` to control the daemon.
+
+### From Source (contributors)
+
+```bash
 pnpm install
 pnpm --filter @cc-gw/server build
 pnpm --filter @cc-gw/web build
 pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 ```
-
-The first launch writes `~/.cc-gw/config.json`. Visit `http://127.0.0.1:4100/ui` to finish configuration.
 
 Connect Claude Code by pointing `ANTHROPIC_BASE_URL` to your local gateway:
 
