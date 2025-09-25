@@ -35,4 +35,5 @@ export interface GatewayConfig {
   defaults: DefaultsConfig
   logRetentionDays?: number
   modelRoutes?: ModelRouteMap
+  storePayloads?: boolean
 }

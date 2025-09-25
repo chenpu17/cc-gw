@@ -194,11 +194,13 @@ export default function LogsPage() {
 
         <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs text-slate-500 dark:text-slate-400">{t('logs.filters.provider')}</label>
+            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {t('logs.filters.provider')}
+            </label>
             <select
               value={providerFilter}
               onChange={(event) => setProviderFilter(event.target.value)}
-              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
             >
               <option value="all">{t('logs.filters.statusAll')}</option>
               {providerOptions.map((provider) => (
@@ -210,21 +212,25 @@ export default function LogsPage() {
           </div>
 
           <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs text-slate-500 dark:text-slate-400">{t('logs.filters.modelId')}</label>
+            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {t('logs.filters.modelId')}
+            </label>
             <input
               value={modelFilter}
               onChange={(event) => setModelFilter(event.target.value)}
               placeholder={t('logs.filters.modelPlaceholder')}
-              className="w-48 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
             />
           </div>
 
           <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs text-slate-500 dark:text-slate-400">{t('logs.filters.status')}</label>
+            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {t('logs.filters.status')}
+            </label>
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
             >
               {statusOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -235,26 +241,30 @@ export default function LogsPage() {
           </div>
 
           <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs text-slate-500 dark:text-slate-400">{t('logs.filters.startDate')}</label>
+            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {t('logs.filters.startDate')}
+            </label>
             <input
               type="date"
               value={fromDate}
               onChange={(event) => setFromDate(event.target.value)}
-              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
             />
           </div>
 
           <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs text-slate-500 dark:text-slate-400">{t('logs.filters.endDate')}</label>
+            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {t('logs.filters.endDate')}
+            </label>
             <input
               type="date"
               value={toDate}
               onChange={(event) => setToDate(event.target.value)}
-              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
             />
           </div>
 
-          <div className="flex items-center gap-2 text-sm">
+          <div className="ml-auto flex items-center gap-2 text-sm">
             <button
               type="button"
               onClick={handleResetFilters}
@@ -274,11 +284,14 @@ export default function LogsPage() {
               <tr>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.time')}</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.provider')}</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.model')}</th>
+                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.requestedModel')}</th>
+                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.routedModel')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.inputTokens')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.cachedTokens')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.outputTokens')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.latency')}</th>
+                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.ttft')}</th>
+                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.tpot')}</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.status')}</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.error')}</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.actions')}</th>
@@ -287,13 +300,13 @@ export default function LogsPage() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {logsQuery.isPending ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">
                     {t('logs.table.loading')}
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">
                     {t('logs.table.empty')}
                   </td>
                 </tr>
@@ -375,16 +388,20 @@ function LogRow({
   const { t } = useTranslation()
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
   const isError = Boolean(record.error)
+  const requestedModel = record.client_model ?? t('logs.table.requestedModelFallback')
 
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
       <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(record.timestamp)}</td>
       <td className="px-4 py-2">{providerLabel}</td>
+      <td className="px-4 py-2">{requestedModel}</td>
       <td className="px-4 py-2">{record.model}</td>
       <td className="px-4 py-2 text-right">{formatNumber(record.input_tokens)}</td>
       <td className="px-4 py-2 text-right">{formatNumber(record.cached_tokens)}</td>
       <td className="px-4 py-2 text-right">{formatNumber(record.output_tokens)}</td>
-      <td className="px-4 py-2 text-right">{formatNumber(record.latency_ms)}</td>
+      <td className="px-4 py-2 text-right">{formatLatency(record.latency_ms, t('common.units.ms'))}</td>
+      <td className="px-4 py-2 text-right">{formatLatency(record.ttft_ms, t('common.units.ms'))}</td>
+      <td className="px-4 py-2 text-right">{formatLatency(record.tpot_ms, t('common.units.msPerToken'))}</td>
       <td className="px-4 py-2">
         <StatusBadge success={!isError} statusCode={record.status_code} />
       </td>
@@ -542,13 +559,41 @@ function LogDetailsDrawer({
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   {t('logs.detail.infoSection')}
                 </h3>
+                <div className="flex flex-wrap items-center gap-3 rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-100">
+                    {t('logs.detail.summary.route', {
+                      from: record.client_model ?? t('logs.detail.info.noRequestedModel'),
+                      to: record.model
+                    })}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('logs.detail.summary.latency', {
+                      value: formatLatency(record.latency_ms, t('common.units.ms'))
+                    })}
+                  </span>
+                  {record.ttft_ms !== null ? (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {t('logs.detail.summary.ttft', {
+                        value: formatLatency(record.ttft_ms, t('common.units.ms'))
+                      })}
+                    </span>
+                  ) : null}
+                  {record.tpot_ms !== null ? (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {t('logs.detail.summary.tpot', {
+                        value: formatLatency(record.tpot_ms, t('common.units.msPerToken'))
+                      })}
+                    </span>
+                  ) : null}
+                  <StatusBadge success={!record.error} statusCode={record.status_code} />
+                </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
                   <div>
                     <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.time')}</dt>
                     <dd className="font-medium">{formatDateTime(record.timestamp)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-slate-500 dark.text-सlate-400">{t('logs.detail.info.sessionId')}</dt>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.sessionId')}</dt>
                     <dd className="font-medium">{record.session_id ?? '-'}</dd>
                   </div>
                   <div>
@@ -556,18 +601,12 @@ function LogDetailsDrawer({
                     <dd className="font-medium">{providerLabel}</dd>
                   </div>
                   <div>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.requestedModel')}</dt>
+                    <dd className="font-medium">{record.client_model ?? t('logs.detail.info.noRequestedModel')}</dd>
+                  </div>
+                  <div>
                     <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.model')}</dt>
                     <dd className="font-medium">{record.model}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.latency')}</dt>
-                    <dd className="font-medium">{formatLatency(record.latency_ms, t('common.units.ms'))}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.status')}</dt>
-                    <dd className="font-medium">
-                      <StatusBadge success={!record.error} statusCode={record.status_code} />
-                    </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.inputTokens')}</dt>
@@ -580,6 +619,14 @@ function LogDetailsDrawer({
                   <div>
                     <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.outputTokens')}</dt>
                     <dd className="font-medium">{formatNumber(record.output_tokens)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.ttft')}</dt>
+                    <dd className="font-medium">{formatLatency(record.ttft_ms, t('common.units.ms'))}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.tpot')}</dt>
+                    <dd className="font-medium">{formatLatency(record.tpot_ms, t('common.units.msPerToken'))}</dd>
                   </div>
                 </dl>
                 {record.error ? (

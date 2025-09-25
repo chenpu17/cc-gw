@@ -17,11 +17,14 @@ function ensureSchema(instance: Database.Database) {
       session_id TEXT,
       provider TEXT NOT NULL,
       model TEXT NOT NULL,
+      client_model TEXT,
       latency_ms INTEGER,
       status_code INTEGER,
       input_tokens INTEGER,
       output_tokens INTEGER,
       cached_tokens INTEGER,
+      ttft_ms INTEGER,
+      tpot_ms REAL,
       error TEXT
     );
 
@@ -56,6 +59,18 @@ function ensureColumns(instance: Database.Database) {
   const hasCachedTokens = columns.some((column) => column.name === 'cached_tokens')
   if (!hasCachedTokens) {
     instance.exec('ALTER TABLE request_logs ADD COLUMN cached_tokens INTEGER')
+  }
+  const hasClientModel = columns.some((column) => column.name === 'client_model')
+  if (!hasClientModel) {
+    instance.exec('ALTER TABLE request_logs ADD COLUMN client_model TEXT')
+  }
+  const hasTtft = columns.some((column) => column.name === 'ttft_ms')
+  if (!hasTtft) {
+    instance.exec('ALTER TABLE request_logs ADD COLUMN ttft_ms INTEGER')
+  }
+  const hasTpot = columns.some((column) => column.name === 'tpot_ms')
+  if (!hasTpot) {
+    instance.exec('ALTER TABLE request_logs ADD COLUMN tpot_ms REAL')
   }
 }
 

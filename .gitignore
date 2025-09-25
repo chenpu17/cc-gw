@@ -21,6 +21,7 @@ logs/
 cc-gw.pid
 cc-gw.log
 docs_old/
+scripts/
 
 # TypeScript
 *.tsbuildinfo

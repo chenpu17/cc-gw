@@ -47,6 +47,9 @@ function parseConfig(raw: string): GatewayConfig {
   if (typeof data.logRetentionDays !== 'number') {
     data.logRetentionDays = 30
   }
+  if (typeof data.storePayloads !== 'boolean') {
+    data.storePayloads = true
+  }
   if (!data.modelRoutes || typeof data.modelRoutes !== 'object') {
     data.modelRoutes = {}
   } else {

@@ -44,7 +44,8 @@ function resolveEndpoint(config: ProviderConfig, options?: OpenAIConnectorOption
   if (base.endsWith('/chat/completions')) return base
 
   let pathSegment = defaultPath
-  if (base.endsWith('/v1') && defaultPath.startsWith('v1/')) {
+  const versionMatch = base.match(/\/v(\d+)$/)
+  if (versionMatch && defaultPath.startsWith('v1/')) {
     pathSegment = defaultPath.slice(3)
   }
 

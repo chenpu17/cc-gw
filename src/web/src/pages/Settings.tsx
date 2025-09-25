@@ -10,6 +10,7 @@ interface FormState {
   port: string
   host: string
   logRetentionDays: string
+  storePayloads: boolean
 }
 
 interface FormErrors {
@@ -33,7 +34,7 @@ export default function SettingsPage() {
 
   const [config, setConfig] = useState<GatewayConfig | null>(null)
   const [configPath, setConfigPath] = useState<string>('')
-  const [form, setForm] = useState<FormState>({ port: '', host: '', logRetentionDays: '' })
+  const [form, setForm] = useState<FormState>({ port: '', host: '', logRetentionDays: '', storePayloads: true })
   const [errors, setErrors] = useState<FormErrors>({})
   const [saving, setSaving] = useState(false)
   const [cleaning, setCleaning] = useState(false)
@@ -56,7 +57,8 @@ export default function SettingsPage() {
       setForm({
         port: String(configQuery.data.config.port ?? ''),
         host: configQuery.data.config.host ?? '',
-        logRetentionDays: String(configQuery.data.config.logRetentionDays ?? 30)
+        logRetentionDays: String(configQuery.data.config.logRetentionDays ?? 30),
+        storePayloads: configQuery.data.config.storePayloads !== false
       })
     }
   }, [configQuery.data])
@@ -70,7 +72,7 @@ export default function SettingsPage() {
     }
   }, [configQuery.isError, configQuery.error, pushToast, t])
 
-  const handleInputChange = (field: keyof FormState) => (value: string) => {
+  const handleInputChange = (field: 'port' | 'host' | 'logRetentionDays') => (value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -102,7 +104,8 @@ export default function SettingsPage() {
         ...config,
         port: portValue,
         host: form.host.trim() || undefined,
-        logRetentionDays: retentionValue
+        logRetentionDays: retentionValue,
+        storePayloads: form.storePayloads
       }
       await apiClient.put('/api/config', nextConfig)
       setConfig(nextConfig)
@@ -123,7 +126,8 @@ export default function SettingsPage() {
     setForm({
       port: String(config.port ?? ''),
       host: config.host ?? '',
-      logRetentionDays: String(config.logRetentionDays ?? 30)
+      logRetentionDays: String(config.logRetentionDays ?? 30),
+      storePayloads: config.storePayloads !== false
     })
     setErrors({})
   }
@@ -245,6 +249,25 @@ export default function SettingsPage() {
                   aria-invalid={Boolean(errors.logRetentionDays)}
                 />
                 {errors.logRetentionDays ? <span className="text-xs text-red-500">{errors.logRetentionDays}</span> : null}
+              </label>
+
+              <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+                <input
+                  type="checkbox"
+                  checked={form.storePayloads}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, storePayloads: event.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600"
+                />
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {t('settings.fields.storePayloads')}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('settings.fields.storePayloadsHint')}
+                  </span>
+                </div>
               </label>
 
               <div className="flex flex-col gap-2 text-sm">

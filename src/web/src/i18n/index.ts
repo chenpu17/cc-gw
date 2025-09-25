@@ -58,7 +58,8 @@ const resources = {
         units: {
           request: '次',
           ms: 'ms',
-          token: 'Tokens'
+          token: 'Tokens',
+          msPerToken: 'ms/Token'
         }
       },
       dashboard: {
@@ -66,13 +67,16 @@ const resources = {
         status: {
           listening: '监听：{{host}}:{{port}}',
           providers: 'Provider 数量：{{value}}',
-          todayRequests: '今日请求：{{value}}'
+          todayRequests: '今日请求：{{value}}',
+          active: '活动请求：{{value}}',
+          dbSize: '数据库：{{value}}'
         },
         toast: {
           overviewError: '统计数据获取失败',
           dailyError: '趋势数据获取失败',
           modelError: '模型统计获取失败',
           statusError: '状态信息获取失败',
+          dbError: '数据库信息获取失败',
           recentError: '最近请求获取失败'
         },
         cards: {
@@ -88,19 +92,35 @@ const resources = {
           modelDesc: '近 7 天不同模型的调用次数',
           barRequests: '请求数',
           lineInput: '输入 Tokens',
-          lineOutput: '输出 Tokens'
+          lineOutput: '输出 Tokens',
+          ttftLabel: 'TTFT(ms)',
+          tpotLabel: 'TPOT(ms/Token)',
+          axisLatency: '耗时 (ms)'
         },
         recent: {
           title: '最新请求',
           subtitle: '仅展示最近 {{count}} 条记录',
           loading: '加载中...',
           empty: '暂无请求记录',
+          routePlaceholder: '未指定',
           columns: {
             time: '时间',
             provider: 'Provider',
-            model: '模型',
+            route: '路由',
             latency: '耗时(ms)',
             status: '状态'
+          }
+        },
+        modelTable: {
+          title: '模型性能摘要',
+          description: '统计每个后端模型的请求数、平均耗时、TTFT 与 TPOT。',
+          empty: '暂无模型统计数据。',
+          columns: {
+            model: 'Provider/模型',
+            requests: '请求数',
+            latency: '平均耗时',
+            ttft: 'TTFT',
+            tpot: 'TPOT'
           }
         }
       },
@@ -129,14 +149,18 @@ const resources = {
         table: {
           loading: '正在加载日志...',
           empty: '未找到符合条件的日志记录。',
+          requestedModelFallback: '未指定',
           columns: {
             time: '时间',
             provider: 'Provider',
-            model: '模型',
+            requestedModel: '请求模型',
+            routedModel: '路由模型',
             inputTokens: '输入 Tokens',
             cachedTokens: '缓存 Tokens',
             outputTokens: '输出 Tokens',
             latency: '耗时(ms)',
+            ttft: 'TTFT(ms)',
+            tpot: 'TPOT(ms/Token)',
             status: '状态',
             error: '错误信息',
             actions: '操作'
@@ -167,13 +191,23 @@ const resources = {
             time: '时间',
             sessionId: 'Session ID',
             provider: 'Provider',
-            model: '模型',
+            requestedModel: '请求模型',
+            noRequestedModel: '未指定',
+            model: '路由模型',
             latency: '耗时',
             status: '状态',
             inputTokens: '输入 Tokens',
             cachedTokens: '缓存 Tokens',
             outputTokens: '输出 Tokens',
+            ttft: 'TTFT (首 Token 耗时)',
+            tpot: 'TPOT (平均 ms/Token)',
             error: '错误信息'
+          },
+          summary: {
+            route: '{{from}} → {{to}}',
+            latency: '耗时：{{value}}',
+            ttft: 'TTFT：{{value}}',
+            tpot: 'TPOT：{{value}}'
           },
           payload: {
             request: '请求体',
@@ -201,8 +235,11 @@ const resources = {
           createSuccess: '已添加 Provider：{{name}}',
           updateSuccess: '已更新 Provider：{{name}}',
           testSuccess: 'Provider 连通性检查通过。',
+          testSuccessDesc: '状态：{{status}} · 耗时：{{duration}}',
           testFailure: 'Provider 连通性检查失败：{{message}}',
-          loadFailure: '获取配置失败：{{message}}'
+          loadFailure: '获取配置失败：{{message}}',
+          deleteSuccess: '已删除 Provider：{{name}}',
+          deleteFailure: '删除 Provider 失败：{{message}}'
         },
         actions: {
           add: '新增提供商',
@@ -216,8 +253,7 @@ const resources = {
           defaultModel: '默认模型：{{model}}',
           noDefault: '未设置默认模型',
           modelsTitle: '支持模型',
-          noModels: '尚未配置模型。',
-          deleteConfirm: '删除功能将在后续提供。'
+          noModels: '尚未配置模型。'
         },
         drawer: {
           createTitle: '新增 Provider',
@@ -260,6 +296,9 @@ const resources = {
           toast: {
             saveFailure: '保存失败：{{message}}'
           }
+        },
+        confirm: {
+          delete: '确认删除 Provider「{{name}}」？'
         }
       },
 
@@ -302,7 +341,9 @@ const resources = {
           host: '监听地址（可选）',
           hostPlaceholder: '默认 0.0.0.0',
           retention: '日志保留天数',
-          defaults: '默认模型配置'
+          defaults: '默认模型配置',
+          storePayloads: '保存请求/响应内容',
+          storePayloadsHint: '关闭后仅记录元数据，可减少磁盘占用。'
         },
         validation: {
           port: '请输入 1-65535 之间的端口号',
@@ -339,35 +380,40 @@ const resources = {
 
       about: {
         title: '关于',
-        description: '了解 cc-gw 的版本信息、构建元数据以及参考资源。',
-        appInfo: '应用信息',
-        runningStatus: '运行状态',
-        references: {
-          title: '参考与支持',
-          description: '以下资源可帮助你了解项目背景并获取支持。',
-          links: {
-            repo: '项目仓库',
-            proxy: '参考代码 · claude-code-proxy',
-            router: '参考代码 · claude-code-router'
+        description: '查看 cc-gw 的版本信息、构建元数据与运行状态。',
+        app: {
+          title: '应用信息',
+          labels: {
+            name: '名称',
+            version: '版本',
+            buildTime: '构建时间',
+            node: 'Node 版本'
           }
         },
-        thanks: {
-          title: '致谢',
-          description:
-            '感谢 OpenAI 与 Anthropic 提供的 API 与 SDK；本项目参考了 claude-code 系列开源实现，并针对本地网关需求进行了定制化开发。'
-        },
         status: {
+          title: '运行状态',
           loading: '正在获取运行状态...',
-          error: '未能获取状态信息。'
+          empty: '未能获取状态信息。',
+          labels: {
+            host: '监听地址',
+            port: '监听端口',
+            providers: '已配置 Provider',
+            active: '活动请求'
+          }
         },
-        info: {
-          name: '名称',
-          version: '版本',
-          buildTime: '构建时间',
-          nodeVersion: 'Node 版本',
-          host: '监听地址',
-          port: '监听端口',
-          providers: '已配置 Provider'
+        support: {
+          title: '使用提示',
+          subtitle: '运行维护说明',
+          description: '通过 Web UI 管理 Provider、模型路由与日志，高级配置可直接编辑 ~/.cc-gw/config.json。',
+          actions: {
+            checkUpdates: '检查更新'
+          }
+        },
+        toast: {
+          statusError: {
+            title: '状态加载失败'
+          },
+          updatesPlanned: '检查更新功能将在后续版本提供。'
         }
       }
     }
@@ -428,7 +474,8 @@ const resources = {
         units: {
           request: 'req',
           ms: 'ms',
-          token: 'tokens'
+          token: 'tokens',
+          msPerToken: 'ms/token'
         }
       },
       dashboard: {
@@ -436,13 +483,16 @@ const resources = {
         status: {
           listening: 'Listening: {{host}}:{{port}}',
           providers: 'Providers: {{value}}',
-          todayRequests: 'Requests today: {{value}}'
+          todayRequests: 'Requests today: {{value}}',
+          active: 'Active requests: {{value}}',
+          dbSize: 'Database: {{value}}'
         },
         toast: {
           overviewError: 'Failed to load overview metrics',
           dailyError: 'Failed to load trend metrics',
           modelError: 'Failed to load model statistics',
           statusError: 'Failed to load gateway status',
+          dbError: 'Failed to load database info',
           recentError: 'Failed to load recent requests'
         },
         cards: {
@@ -458,19 +508,35 @@ const resources = {
           modelDesc: 'Call counts by model in the past 7 days',
           barRequests: 'Requests',
           lineInput: 'Input Tokens',
-          lineOutput: 'Output Tokens'
+          lineOutput: 'Output Tokens',
+          ttftLabel: 'TTFT (ms)',
+          tpotLabel: 'TPOT (ms/token)',
+          axisLatency: 'Latency (ms)'
         },
         recent: {
           title: 'Recent Requests',
           subtitle: 'Showing the latest {{count}} records',
           loading: 'Loading...',
           empty: 'No recent requests',
+          routePlaceholder: 'Not specified',
           columns: {
             time: 'Time',
             provider: 'Provider',
-            model: 'Model',
+            route: 'Route',
             latency: 'Latency (ms)',
             status: 'Status'
+          }
+        },
+        modelTable: {
+          title: 'Model Performance Snapshot',
+          description: 'Requests, average latency, TTFT, and TPOT by downstream model.',
+          empty: 'No model statistics available.',
+          columns: {
+            model: 'Provider/Model',
+            requests: 'Requests',
+            latency: 'Avg Latency',
+            ttft: 'TTFT',
+            tpot: 'TPOT'
           }
         }
       },
@@ -499,14 +565,18 @@ const resources = {
         table: {
           loading: 'Loading logs...',
           empty: 'No records match the current filters.',
+          requestedModelFallback: 'Not specified',
           columns: {
             time: 'Time',
             provider: 'Provider',
-            model: 'Model',
+            requestedModel: 'Requested model',
+            routedModel: 'Routed model',
             inputTokens: 'Input Tokens',
             cachedTokens: 'Cached Tokens',
             outputTokens: 'Output Tokens',
             latency: 'Latency (ms)',
+            ttft: 'TTFT (ms)',
+            tpot: 'TPOT (ms/token)',
             status: 'Status',
             error: 'Error',
             actions: 'Actions'
@@ -537,13 +607,23 @@ const resources = {
             time: 'Time',
             sessionId: 'Session ID',
             provider: 'Provider',
-            model: 'Model',
+            requestedModel: 'Requested model',
+            noRequestedModel: 'Not specified',
+            model: 'Routed model',
             latency: 'Latency',
             status: 'Status',
             inputTokens: 'Input Tokens',
             cachedTokens: 'Cached Tokens',
             outputTokens: 'Output Tokens',
+            ttft: 'TTFT (first token latency)',
+            tpot: 'TPOT (avg ms/token)',
             error: 'Error'
+          },
+          summary: {
+            route: '{{from}} → {{to}}',
+            latency: 'Latency: {{value}}',
+            ttft: 'TTFT: {{value}}',
+            tpot: 'TPOT: {{value}}'
           },
           payload: {
             request: 'Request body',
@@ -571,8 +651,11 @@ const resources = {
           createSuccess: 'Provider added: {{name}}',
           updateSuccess: 'Provider updated: {{name}}',
           testSuccess: 'Connection test succeeded.',
+          testSuccessDesc: 'HTTP {{status}} · {{duration}} elapsed',
           testFailure: 'Connection test failed: {{message}}',
-          loadFailure: 'Failed to load config: {{message}}'
+          loadFailure: 'Failed to load config: {{message}}',
+          deleteSuccess: 'Provider removed: {{name}}',
+          deleteFailure: 'Failed to remove provider: {{message}}'
         },
         actions: {
           add: 'Add provider',
@@ -586,8 +669,7 @@ const resources = {
           defaultModel: 'Default model: {{model}}',
           noDefault: 'No default model',
           modelsTitle: 'Supported models',
-          noModels: 'No models configured yet.',
-          deleteConfirm: 'Delete support coming soon.'
+          noModels: 'No models configured yet.'
         },
         drawer: {
           createTitle: 'Add Provider',
@@ -630,6 +712,9 @@ const resources = {
           toast: {
             saveFailure: 'Save failed: {{message}}'
           }
+        },
+        confirm: {
+          delete: 'Remove provider “{{name}}”?'
         }
       },
 
@@ -672,7 +757,9 @@ const resources = {
           host: 'Listen host (optional)',
           hostPlaceholder: 'Defaults to 0.0.0.0',
           retention: 'Log retention days',
-          defaults: 'Default models'
+          defaults: 'Default models',
+          storePayloads: 'Store request & response bodies',
+          storePayloadsHint: 'Disable to keep only metadata and save disk space.'
         },
         validation: {
           port: 'Enter a port between 1 and 65535',
@@ -709,35 +796,40 @@ const resources = {
 
       about: {
         title: 'About',
-        description: 'Discover cc-gw version details, build metadata, and reference resources.',
-        appInfo: 'Application',
-        runningStatus: 'Runtime Status',
-        references: {
-          title: 'References & Support',
-          description: 'Helpful links and background materials.',
-          links: {
-            repo: 'Project repository',
-            proxy: 'Reference · claude-code-proxy',
-            router: 'Reference · claude-code-router'
+        description: 'Review cc-gw version details, build metadata, and current runtime status.',
+        app: {
+          title: 'Application',
+          labels: {
+            name: 'Name',
+            version: 'Version',
+            buildTime: 'Build time',
+            node: 'Node version'
           }
         },
-        thanks: {
-          title: 'Acknowledgements',
-          description:
-            'Thanks to OpenAI and Anthropic for their APIs and SDKs. The claude-code projects inspired this gateway implementation.'
-        },
         status: {
+          title: 'Runtime status',
           loading: 'Fetching status...',
-          error: 'Unable to retrieve status information.'
+          empty: 'Unable to retrieve status information.',
+          labels: {
+            host: 'Listen host',
+            port: 'Listen port',
+            providers: 'Providers configured',
+            active: 'Active requests'
+          }
         },
-        info: {
-          name: 'Name',
-          version: 'Version',
-          buildTime: 'Build time',
-          nodeVersion: 'Node version',
-          host: 'Listen host',
-          port: 'Listen port',
-          providers: 'Providers configured'
+        support: {
+          title: 'Operational notes',
+          subtitle: 'Maintenance guidance',
+          description: 'Manage providers, routing, and logs in the Web UI; advanced settings live in ~/.cc-gw/config.json.',
+          actions: {
+            checkUpdates: 'Check for updates'
+          }
+        },
+        toast: {
+          statusError: {
+            title: 'Failed to load status'
+          },
+          updatesPlanned: 'Update checks will arrive in a future release.'
         }
       }
     }

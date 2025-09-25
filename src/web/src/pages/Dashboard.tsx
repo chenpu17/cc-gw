@@ -38,12 +38,49 @@ interface ModelUsageMetric {
   inputTokens: number
   outputTokens: number
   avgLatencyMs: number
+  avgTtftMs: number | null
+  avgTpotMs: number | null
 }
 
 interface ServiceStatus {
   port: number
   host?: string
   providers: number
+  activeRequests?: number
+}
+
+interface DatabaseInfo {
+  pageCount: number
+  pageSize: number
+  sizeBytes: number
+}
+
+function formatLatencyValue(
+  value: number | null | undefined,
+  suffix: string,
+  options?: Intl.NumberFormatOptions
+): string {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+  return `${value.toLocaleString(undefined, options)} ${suffix}`
+}
+
+function formatBytes(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+  if (value < 1024) {
+    return `${value} B`
+  }
+  const units = ['KB', 'MB', 'GB', 'TB'] as const
+  let bytes = value / 1024
+  let unitIndex = 0
+  while (bytes >= 1024 && unitIndex < units.length - 1) {
+    bytes /= 1024
+    unitIndex += 1
+  }
+  return `${bytes.toFixed(bytes >= 100 ? 0 : bytes >= 10 ? 1 : 2)} ${units[unitIndex]}`
 }
 
 export default function DashboardPage() {
@@ -68,6 +105,11 @@ export default function DashboardPage() {
   const statusQuery = useApiQuery<ServiceStatus, ApiError>(
     ['status'],
     { url: '/api/status', method: 'GET' }
+  )
+
+  const dbInfoQuery = useApiQuery<DatabaseInfo, ApiError>(
+    ['db', 'info'],
+    { url: '/api/db/info', method: 'GET' }
   )
 
   const latestLogsQuery = useApiQuery<LogListResponse, ApiError>(
@@ -105,6 +147,12 @@ export default function DashboardPage() {
   }, [statusQuery.isError, statusQuery.error, pushToast, t])
 
   useEffect(() => {
+    if (dbInfoQuery.isError && dbInfoQuery.error) {
+      pushToast({ title: t('dashboard.toast.dbError'), description: dbInfoQuery.error.message, variant: 'error' })
+    }
+  }, [dbInfoQuery.isError, dbInfoQuery.error, pushToast, t])
+
+  useEffect(() => {
     if (latestLogsQuery.isError && latestLogsQuery.error) {
       pushToast({ title: t('dashboard.toast.recentError'), description: latestLogsQuery.error.message, variant: 'error' })
     }
@@ -114,6 +162,7 @@ export default function DashboardPage() {
   const daily = dailyQuery.data ?? []
   const models = modelUsageQuery.data ?? []
   const status = statusQuery.data
+  const dbInfo = dbInfoQuery.data
   const recentLogs = latestLogsQuery.data?.items ?? []
 
   const dailyOption = useMemo<EChartsOption>(() => {
@@ -157,27 +206,74 @@ export default function DashboardPage() {
   const modelOption = useMemo<EChartsOption>(() => {
     const categories = models.map((item) => `${item.provider}/${item.model}`)
     const requestLabel = t('dashboard.charts.barRequests')
+    const ttftLabel = t('dashboard.charts.ttftLabel')
+    const tpotLabel = t('dashboard.charts.tpotLabel')
+
     return {
-      tooltip: { trigger: 'axis' },
-      grid: { left: 40, right: 20, top: 40, bottom: 60 },
+      tooltip: {
+        trigger: 'axis',
+        formatter(params) {
+          if (!Array.isArray(params) || params.length === 0) return ''
+          const index = params[0]?.dataIndex ?? 0
+          const metric = models[index]
+          if (!metric) return ''
+          const lines = [
+            `<strong>${categories[index]}</strong>`,
+            `${requestLabel}: ${metric.requests.toLocaleString()}`,
+            `${ttftLabel}: ${formatLatencyValue(metric.avgTtftMs, t('common.units.ms'))}`,
+            `${tpotLabel}: ${formatLatencyValue(metric.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}`
+          ]
+          return lines.join('<br/>')
+        }
+      },
+      legend: { data: [requestLabel, ttftLabel, tpotLabel] },
+      grid: { left: 50, right: 40, top: 40, bottom: 70 },
       xAxis: {
         type: 'category',
         data: categories,
         axisLabel: { rotate: 30 }
       },
-      yAxis: { type: 'value' },
+      yAxis: [
+        {
+          type: 'value',
+          name: requestLabel
+        },
+        {
+          type: 'value',
+          name: t('dashboard.charts.axisLatency'),
+          position: 'right'
+        }
+      ],
       series: [
         {
           name: requestLabel,
           type: 'bar',
           data: models.map((item) => item.requests),
-          itemStyle: { color: '#6366f1' }
+          itemStyle: { color: '#6366f1' },
+          yAxisIndex: 0
+        },
+        {
+          name: ttftLabel,
+          type: 'line',
+          yAxisIndex: 1,
+          smooth: true,
+          data: models.map((item) => item.avgTtftMs ?? 0),
+          itemStyle: { color: '#22c55e' }
+        },
+        {
+          name: tpotLabel,
+          type: 'line',
+          yAxisIndex: 1,
+          smooth: true,
+          lineStyle: { type: 'dashed' },
+          data: models.map((item) => item.avgTpotMs ?? 0),
+          itemStyle: { color: '#f97316' }
         }
       ]
     }
   }, [models, t])
 
-  if (overviewQuery.isPending || statusQuery.isPending) {
+  if (overviewQuery.isPending || statusQuery.isPending || dbInfoQuery.isPending) {
     return <Loader />
   }
 
@@ -200,6 +296,16 @@ export default function DashboardPage() {
             <span className="text-slate-500 dark:text-slate-400">
               {t('dashboard.status.todayRequests', {
                 value: (overview?.today.requests ?? 0).toLocaleString()
+              })}
+            </span>
+            <span className="text-slate-500 dark:text-slate-400">
+              {t('dashboard.status.active', {
+                value: (status.activeRequests ?? 0).toLocaleString()
+              })}
+            </span>
+            <span className="text-slate-500 dark:text-slate-400">
+              {t('dashboard.status.dbSize', {
+                value: dbInfo ? formatBytes(dbInfo.sizeBytes) : '-'
               })}
             </span>
           </div>
@@ -243,6 +349,8 @@ export default function DashboardPage() {
           option={modelOption}
         />
       </div>
+
+      <ModelMetricsTable models={models} loading={modelUsageQuery.isPending} />
 
       <RecentRequestsTable loading={latestLogsQuery.isPending} records={recentLogs} />
     </div>
@@ -288,6 +396,68 @@ function ChartCard({
   )
 }
 
+function ModelMetricsTable({ models, loading }: { models: ModelUsageMetric[]; loading?: boolean }) {
+  const { t } = useTranslation()
+  const hasData = models.length > 0
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+        <div>
+          <p className="text-sm font-semibold">{t('dashboard.modelTable.title')}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{t('dashboard.modelTable.description')}</p>
+        </div>
+      </div>
+      {loading ? (
+        <div className="flex h-40 items-center justify-center text-sm text-slate-400">{t('common.loadingShort')}</div>
+      ) : !hasData ? (
+        <div className="flex h-40 items-center justify-center text-sm text-slate-400">{t('dashboard.modelTable.empty')}</div>
+      ) : (
+        <div className="max-h-80 overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+            <caption className="sr-only">{t('dashboard.modelTable.title')}</caption>
+            <thead className="bg-slate-100 dark:bg-slate-800/50">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">
+                  {t('dashboard.modelTable.columns.model')}
+                </th>
+                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">
+                  {t('dashboard.modelTable.columns.requests')}
+                </th>
+                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">
+                  {t('dashboard.modelTable.columns.latency')}
+                </th>
+                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">
+                  {t('dashboard.modelTable.columns.ttft')}
+                </th>
+                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">
+                  {t('dashboard.modelTable.columns.tpot')}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              {models.map((item) => (
+                <tr key={`${item.provider}/${item.model}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                  <td className="px-4 py-2">
+                    <div className="flex flex-col">
+                      <span className="font-medium text-slate-700 dark:text-slate-100">{item.provider}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">{item.model}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 text-right">{item.requests.toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right">{formatLatencyValue(item.avgLatencyMs, t('common.units.ms'))}</td>
+                  <td className="px-4 py-2 text-right">{formatLatencyValue(item.avgTtftMs, t('common.units.ms'))}</td>
+                  <td className="px-4 py-2 text-right">{formatLatencyValue(item.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RecentRequestsTable({ records, loading }: { records: LogRecord[]; loading?: boolean }) {
   const { t } = useTranslation()
   return (
@@ -313,7 +483,7 @@ function RecentRequestsTable({ records, loading }: { records: LogRecord[]; loadi
                   {t('dashboard.recent.columns.provider')}
                 </th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">
-                  {t('dashboard.recent.columns.model')}
+                  {t('dashboard.recent.columns.route')}
                 </th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">
                   {t('dashboard.recent.columns.latency')}
@@ -330,15 +500,27 @@ function RecentRequestsTable({ records, loading }: { records: LogRecord[]; loadi
                     {new Date(item.timestamp).toLocaleString()}
                   </td>
                   <td className="px-4 py-2">{item.provider}</td>
-                  <td className="px-4 py-2">{item.model}</td>
-                  <td className="px-4 py-2">{item.latency_ms ?? '-'}</td>
                   <td className="px-4 py-2">
-                    {item.status_code ?? 200}{' '}
-                    {item.error ? (
-                      <span className="ml-2 text-xs text-red-500">{t('common.status.error')}</span>
-                    ) : (
-                      <span className="ml-2 text-xs text-emerald-500">{t('common.status.success')}</span>
-                    )}
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {item.client_model ?? t('dashboard.recent.routePlaceholder')}
+                    </span>
+                    <span className="mx-1 text-slate-400">→</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-100">{item.model}</span>
+                  </td>
+                  <td className="px-4 py-2">{formatLatencyValue(item.latency_ms, t('common.units.ms'))}</td>
+                  <td className="px-4 py-2">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        item.error
+                          ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
+                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+                      }`}
+                    >
+                      {(item.status_code ?? 200).toString()}
+                      <span className="ml-1">
+                        {item.error ? t('common.status.error') : t('common.status.success')}
+                      </span>
+                    </span>
                   </td>
                 </tr>
               ))}

@@ -39,12 +39,12 @@
 - English: adapters (OpenAI-compatible, Anthropic, Kimi) share a common interface, making it easy to plug in more providers.
 
 ### 日志与指标 Logging & Metrics
-- 中文：请求到达时调用 `recordLog`，完成后 `updateLogTokens` 与 `updateMetrics` 写入 token/耗时；流式响应尾包会提取 usage（含缓存命中）。
-- English: lifecycle hooks persist logs into SQLite and update daily aggregates; Web UI consumes `/api/logs` & `/api/stats` endpoints.
+- 中文：请求到达时调用 `recordLog`，完成后 `updateLogTokens` 写入 token/TTFT/TPOT 等指标，并由 `updateMetrics` 累加日度统计；流式响应尾包会提取 usage（含缓存命中）。
+- English: lifecycle hooks persist logs (tokens plus TTFT/TPOT) into SQLite before rolling up daily aggregates; the Web UI consumes `/api/logs` & `/api/stats` endpoints.
 
 ### Web UI
-- 中文：包含 Dashboard（统计）、Logs（筛选、分页、抽屉详情）、Model Management（Provider CRUD、连通性测试、路由映射）、Settings（端口、日志策略、配置路径）。
-- English: responsive layout with mobile navigation, bilingual copy via i18next, and accessibility helpers (skip links, focus trapping).
+- 中文：包含 Dashboard（统计，含模型级别的 TTFT/TPOT 指标）、Logs（筛选、分页、抽屉详情）、Model Management（Provider CRUD、连通性测试、路由映射）、Settings（端口、日志策略、配置路径）。
+- English: responsive layout with mobile navigation, bilingual copy via i18next, and accessibility helpers (skip links, focus trapping); the dashboard now visualizes per-model TTFT/TPOT metrics.
 
 ### CLI
 - 中文：`start/stop/restart/status` 命令支持守护与前台模式；首次启动生成配置模板，并提示访问 Web UI。

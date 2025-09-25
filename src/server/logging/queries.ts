@@ -1,4 +1,5 @@
 import { getDb } from '../storage/index.js'
+import { decompressPayload } from './logger.js'
 
 export interface LogRecord {
   id: number
@@ -6,11 +7,14 @@ export interface LogRecord {
   session_id: string | null
   provider: string
   model: string
+  client_model: string | null
   latency_ms: number | null
   status_code: number | null
   input_tokens: number | null
   output_tokens: number | null
   cached_tokens: number | null
+  ttft_ms: number | null
+  tpot_ms: number | null
   error: string | null
 }
 
@@ -71,7 +75,7 @@ export function queryLogs(options: LogListOptions = {}): LogListResult {
 
   const items = db
     .prepare(
-      `SELECT id, timestamp, session_id, provider, model, latency_ms, status_code, input_tokens, output_tokens, cached_tokens, error
+      `SELECT id, timestamp, session_id, provider, model, client_model, latency_ms, status_code, input_tokens, output_tokens, cached_tokens, ttft_ms, tpot_ms, error
        FROM request_logs
        ${whereClause}
        ORDER BY timestamp DESC
@@ -93,7 +97,7 @@ export function getLogDetail(id: number): LogRecord | null {
   const db = getDb()
   const record = db
     .prepare(
-      `SELECT id, timestamp, session_id, provider, model, latency_ms, status_code, input_tokens, output_tokens, cached_tokens, error
+      `SELECT id, timestamp, session_id, provider, model, client_model, latency_ms, status_code, input_tokens, output_tokens, cached_tokens, ttft_ms, tpot_ms, error
        FROM request_logs
        WHERE id = ?`
     )
@@ -106,7 +110,13 @@ export function getLogPayload(id: number): { prompt: string | null; response: st
   const payload = db
     .prepare(`SELECT prompt, response FROM request_payloads WHERE request_id = ?`)
     .get(id) as { prompt: string | null; response: string | null } | undefined
-  return payload ?? null
+  if (!payload) {
+    return null
+  }
+  return {
+    prompt: decompressPayload(payload.prompt),
+    response: decompressPayload(payload.response)
+  }
 }
 
 export function cleanupLogsBefore(timestamp: number): number {

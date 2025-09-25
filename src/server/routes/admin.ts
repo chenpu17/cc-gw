@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify'
-import { fetch } from 'undici'
+import { normalizeClaudePayload } from '../protocol/normalize.js'
+import { buildProviderBody, buildAnthropicBody } from '../protocol/toProvider.js'
+import { getConnector } from '../providers/registry.js'
 import { CONFIG_PATH, getConfig, updateConfig } from '../config/manager.js'
 import type { GatewayConfig } from '../config/types.js'
 import {
@@ -12,6 +14,7 @@ import {
   queryLogs
 } from '../logging/queries.js'
 import { getDb } from '../storage/index.js'
+import { getActiveRequestCount } from '../metrics/activity.js'
 
 export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/status', async () => {
@@ -19,7 +22,8 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     return {
       port: config.port,
       host: config.host,
-      providers: config.providers.length
+      providers: config.providers.length,
+      activeRequests: getActiveRequestCount()
     }
   })
 
@@ -59,37 +63,118 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       return { error: 'Provider not found' }
     }
 
-    const baseUrl = provider.baseUrl.replace(/\/$/, '')
-    const targetUrl = `${baseUrl}/models`
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      ...provider.extraHeaders
-    }
-    if (provider.type === 'anthropic') {
-      if (provider.apiKey) {
-        headers['x-api-key'] = provider.apiKey
+    const startedAt = Date.now()
+
+    const targetModel = provider.defaultModel || provider.models?.[0]?.id
+    if (!targetModel) {
+      reply.code(400)
+      return {
+        ok: false,
+        status: 0,
+        statusText: 'No model configured for provider'
       }
-      headers['anthropic-version'] = headers['anthropic-version'] ?? '2023-06-01'
-    } else if (provider.apiKey) {
-      headers.Authorization = `Bearer ${provider.apiKey}`
     }
 
+    const testPayload = normalizeClaudePayload({
+      model: targetModel,
+      stream: false,
+      temperature: 0,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '你好，这是一次连接测试。请简短回应以确认服务可用。'
+            }
+          ]
+        }
+      ],
+      system: 'You are a connection diagnostic assistant.'
+    })
+
+    const providerBody = provider.type === 'anthropic'
+      ? buildAnthropicBody(testPayload, {
+          maxTokens: provider.models?.find((m) => m.id === targetModel)?.maxTokens ?? 256,
+          temperature: 0,
+          toolChoice: undefined,
+          overrideTools: undefined
+        })
+      : buildProviderBody(testPayload, {
+          maxTokens: provider.models?.find((m) => m.id === targetModel)?.maxTokens ?? 256,
+          temperature: 0,
+          toolChoice: undefined,
+          overrideTools: undefined
+        })
+
+    const connector = getConnector(provider.id)
+
     try {
-      const response = await fetch(targetUrl, {
-        method: 'GET',
-        headers
+      const upstream = await connector.send({
+        model: targetModel,
+        body: providerBody,
+        stream: false
       })
+
+      const duration = Date.now() - startedAt
+
+      if (upstream.status >= 400) {
+        const errorText = upstream.body ? await new Response(upstream.body).text() : ''
+        return {
+          ok: false,
+          status: upstream.status,
+          statusText: errorText || 'Upstream error',
+          durationMs: duration
+        }
+      }
+
+      const raw = upstream.body ? await new Response(upstream.body).text() : ''
+      let parsed: any = null
+      try {
+        parsed = raw ? JSON.parse(raw) : null
+      } catch {
+        return {
+          ok: false,
+          status: upstream.status,
+          statusText: 'Invalid JSON response',
+          durationMs: duration
+        }
+      }
+
+      let sample = ''
+      if (provider.type === 'anthropic') {
+        const contentBlocks = Array.isArray(parsed?.content) ? parsed.content : []
+        const textBlocks = contentBlocks
+          .filter((block: any) => block?.type === 'text' && typeof block.text === 'string')
+          .map((block: any) => block.text)
+        sample = textBlocks.join('\n')
+      } else {
+        const choice = Array.isArray(parsed?.choices) ? parsed.choices[0] : null
+        if (choice) {
+          if (Array.isArray(choice.message?.content)) {
+            sample = choice.message.content.join('\n')
+          } else {
+            sample = choice.message?.content ?? choice.text ?? ''
+          }
+        }
+      }
+
+      sample = typeof sample === 'string' ? sample.trim() : ''
+
       return {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText
+        ok: Boolean(sample),
+        status: upstream.status,
+        statusText: sample ? 'OK' : 'Empty response',
+        durationMs: duration,
+        sample: sample ? sample.slice(0, 200) : null
       }
     } catch (error) {
       reply.code(502)
       return {
         ok: false,
         status: 0,
-        statusText: error instanceof Error ? error.message : 'Network error'
+        statusText: error instanceof Error ? error.message : 'Network error',
+        durationMs: Date.now() - startedAt
       }
     }
   })
@@ -137,7 +222,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     return { ...record, payload }
   })
 
-  app.post('/api/logs/cleanup', async (request) => {
+  app.post('/api/logs/cleanup', async () => {
     const config = getConfig()
     const retentionDays = config.logRetentionDays ?? 30
     const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000

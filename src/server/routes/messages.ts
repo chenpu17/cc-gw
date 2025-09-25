@@ -3,8 +3,10 @@ import { normalizeClaudePayload } from '../protocol/normalize.js'
 import { resolveRoute } from '../router/index.js'
 import { buildProviderBody, buildAnthropicBody } from '../protocol/toProvider.js'
 import { getConnector } from '../providers/registry.js'
-import { recordLog, updateLogTokens, updateMetrics } from '../logging/logger.js'
+import { finalizeLog, recordLog, updateLogTokens, updateMetrics, upsertLogPayload } from '../logging/logger.js'
 import { estimateTokens, estimateTextTokens } from '../protocol/tokenizer.js'
+import { decrementActiveRequests, incrementActiveRequests } from '../metrics/activity.js'
+import { getConfig } from '../config/manager.js'
 
 function mapStopReason(reason: string | null | undefined): string | null {
   switch (reason) {
@@ -17,6 +19,45 @@ function mapStopReason(reason: string | null | undefined): string | null {
     default:
       return reason ?? null
   }
+}
+
+const roundTwoDecimals = (value: number): number => Math.round(value * 100) / 100
+
+function computeTpot(
+  totalLatencyMs: number,
+  outputTokens: number,
+  options?: { ttftMs?: number | null; streaming?: boolean }
+): number | null {
+  if (!Number.isFinite(outputTokens) || outputTokens <= 0) {
+    return null
+  }
+  const streaming = options?.streaming ?? false
+  const ttftMs = options?.ttftMs ?? null
+
+  if (streaming && (ttftMs === null || ttftMs === undefined)) {
+    return null
+  }
+
+  const effectiveLatency = streaming && ttftMs != null
+    ? Math.max(totalLatencyMs - ttftMs, 0)
+    : totalLatencyMs
+
+  const raw = effectiveLatency / outputTokens
+  return Number.isFinite(raw) ? roundTwoDecimals(raw) : null
+}
+
+function resolveCachedTokens(usage: any): number | null {
+  if (!usage || typeof usage !== 'object') {
+    return null
+  }
+  if (typeof usage.cached_tokens === 'number') {
+    return usage.cached_tokens
+  }
+  const promptDetails = usage.prompt_tokens_details
+  if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
+    return promptDetails.cached_tokens
+  }
+  return null
 }
 
 function buildClaudeResponse(openAI: any, model: string) {
@@ -93,14 +134,41 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
     const connector = getConnector(target.providerId)
     const requestStart = Date.now()
+    const storePayloads = getConfig().storePayloads !== false
+
     const logId = recordLog({
       timestamp: requestStart,
       provider: target.providerId,
       model: target.modelId,
-      sessionId: payload.metadata?.user_id,
-      prompt: normalized.stream ? undefined : JSON.stringify(payload),
-      response: null
+      clientModel: requestedModel,
+      sessionId: payload.metadata?.user_id
     })
+
+    incrementActiveRequests()
+
+    if (storePayloads) {
+      upsertLogPayload(logId, {
+        prompt: (() => {
+          try {
+            return JSON.stringify(payload)
+          } catch {
+            return null
+          }
+        })()
+      })
+    }
+
+    let finalized = false
+    const finalize = (statusCode: number | null, error: string | null) => {
+      if (finalized) return
+      finalizeLog(logId, {
+        latencyMs: Date.now() - requestStart,
+        statusCode,
+        error,
+        clientModel: requestedModel ?? null
+      })
+      finalized = true
+    }
 
     const logUsage = (
       stage: string,
@@ -135,7 +203,12 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       if (upstream.status >= 400) {
         reply.code(upstream.status)
         const bodyText = upstream.body ? await new Response(upstream.body).text() : ''
-        return { error: bodyText || 'Upstream provider error' }
+        const errorText = bodyText || 'Upstream provider error'
+        if (storePayloads) {
+          upsertLogPayload(logId, { response: bodyText || null })
+        }
+        finalize(upstream.status, errorText)
+        return { error: errorText }
       }
 
       if (!normalized.stream) {
@@ -143,7 +216,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         if (providerType === 'anthropic') {
           let inputTokens = json.usage?.input_tokens ?? 0
           let outputTokens = json.usage?.output_tokens ?? 0
-          const cachedTokens = typeof json.usage?.cached_tokens === 'number' ? json.usage.cached_tokens : null
+          const cachedTokens = resolveCachedTokens(json.usage)
           if (!inputTokens) {
             inputTokens = target.tokenEstimate || estimateTokens(normalized, target.modelId)
           }
@@ -161,13 +234,32 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             output: outputTokens,
             cached: cachedTokens
           })
-          updateLogTokens(logId, inputTokens, outputTokens, cachedTokens)
+          const latencyMs = Date.now() - requestStart
+          updateLogTokens(logId, {
+            inputTokens,
+            outputTokens,
+            cachedTokens,
+            ttftMs: latencyMs,
+            tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
+          })
           updateMetrics(new Date().toISOString().slice(0, 10), {
             requests: 1,
             inputTokens,
             outputTokens,
-            latencyMs: Date.now() - requestStart
+            latencyMs
           })
+          if (storePayloads) {
+            upsertLogPayload(logId, {
+              response: (() => {
+                try {
+                  return JSON.stringify(json)
+                } catch {
+                  return null
+                }
+              })()
+            })
+          }
+          finalize(200, null)
           reply.header('content-type', 'application/json')
           return json
         }
@@ -175,7 +267,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         const claudeResponse = buildClaudeResponse(json, target.modelId)
         let inputTokens = json.usage?.prompt_tokens ?? 0
         let outputTokens = json.usage?.completion_tokens ?? 0
-        const cachedTokens = typeof json.usage?.cached_tokens === 'number' ? json.usage.cached_tokens : null
+        const cachedTokens = resolveCachedTokens(json.usage)
         if (!inputTokens) {
           inputTokens = target.tokenEstimate || estimateTokens(normalized, target.modelId)
         }
@@ -191,19 +283,39 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           output: outputTokens,
           cached: cachedTokens
         })
-        updateLogTokens(logId, inputTokens, outputTokens, cachedTokens)
+        const latencyMs = Date.now() - requestStart
+        updateLogTokens(logId, {
+          inputTokens,
+          outputTokens,
+          cachedTokens,
+          ttftMs: latencyMs,
+          tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
+        })
         updateMetrics(new Date().toISOString().slice(0, 10), {
           requests: 1,
           inputTokens,
           outputTokens,
-          latencyMs: Date.now() - requestStart
+          latencyMs
         })
+        if (storePayloads) {
+          upsertLogPayload(logId, {
+            response: (() => {
+              try {
+                return JSON.stringify(claudeResponse)
+              } catch {
+                return null
+              }
+            })()
+          })
+        }
+        finalize(200, null)
         reply.header('content-type', 'application/json')
         return claudeResponse
       }
 
       if (!upstream.body) {
         reply.code(500)
+        finalize(500, 'Upstream returned empty body')
         return { error: 'Upstream returned empty body' }
       }
 
@@ -278,18 +390,48 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             : estimateTextTokens('', target.modelId)
         }
 
+        const totalLatencyMs = Date.now() - requestStart
+        const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
         logUsage('stream.anthropic.final', {
           input: usagePrompt,
           output: usageCompletion,
           cached: usageCached
         })
-        updateLogTokens(logId, usagePrompt, usageCompletion, usageCached)
+        updateLogTokens(logId, {
+          inputTokens: usagePrompt,
+          outputTokens: usageCompletion,
+          cachedTokens: usageCached,
+          ttftMs,
+          tpotMs: computeTpot(totalLatencyMs, usageCompletion, {
+            streaming: true,
+            ttftMs
+          })
+        })
         updateMetrics(new Date().toISOString().slice(0, 10), {
           requests: 1,
           inputTokens: usagePrompt,
           outputTokens: usageCompletion,
-          latencyMs: Date.now() - requestStart
+          latencyMs: totalLatencyMs
         })
+        if (storePayloads) {
+          upsertLogPayload(logId, {
+            response: (() => {
+              try {
+                return JSON.stringify({
+                  content: accumulatedContent,
+                  usage: {
+                    input: usagePrompt,
+                    output: usageCompletion,
+                    cached: usageCached
+                  }
+                })
+              } catch {
+                return accumulatedContent
+              }
+            })()
+          })
+        }
+        finalize(200, null)
 
         return reply
       }
@@ -305,6 +447,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       let usageCached: number | null = null
       let accumulatedContent = ''
       let completed = false
+      let firstTokenAt: number | null = null
 
       const encode = (event: string, data: any) => {
         reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
@@ -371,18 +514,49 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             encode('message_stop', { type: 'message_stop' })
             reply.raw.write('\n')
             reply.raw.end()
+            const totalLatencyMs = Date.now() - requestStart
+            const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
             logUsage('stream.openai.final', {
               input: finalPromptTokens,
               output: finalCompletionTokens,
               cached: usageCached
             })
-            updateLogTokens(logId, finalPromptTokens, finalCompletionTokens, usageCached)
+            updateLogTokens(logId, {
+              inputTokens: finalPromptTokens,
+              outputTokens: finalCompletionTokens,
+              cachedTokens: usageCached,
+              ttftMs,
+              tpotMs: computeTpot(totalLatencyMs, finalCompletionTokens, {
+                streaming: true,
+                ttftMs
+              })
+            })
             updateMetrics(new Date().toISOString().slice(0, 10), {
               requests: 1,
               inputTokens: finalPromptTokens,
               outputTokens: finalCompletionTokens,
-              latencyMs: Date.now() - requestStart
+              latencyMs: totalLatencyMs
             })
+            if (storePayloads) {
+              upsertLogPayload(logId, {
+                response: (() => {
+                  try {
+                    return JSON.stringify({
+                      content: accumulatedContent,
+                      toolCalls: Object.keys(toolAccum).length > 0 ? toolAccum : undefined,
+                      usage: {
+                        input: finalPromptTokens,
+                        output: finalCompletionTokens,
+                        cached: usageCached
+                      }
+                    })
+                  } catch {
+                    return accumulatedContent
+                  }
+                })()
+              })
+            }
+            finalize(200, null)
             completed = true
             return reply
           }
@@ -409,6 +583,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           }
 
           if (choice.delta?.tool_calls) {
+            if (!firstTokenAt) {
+              firstTokenAt = Date.now()
+            }
             encounteredToolCall = true
             for (const toolCall of choice.delta.tool_calls) {
               const idx = toolCall.index ?? 0
@@ -442,6 +619,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           }
 
           if (choice.delta?.content) {
+            if (!firstTokenAt && choice.delta.content.length > 0) {
+              firstTokenAt = Date.now()
+            }
             if (!textBlockStarted) {
               textBlockStarted = true
               encode('content_block_start', {
@@ -465,6 +645,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           }
 
           if (choice.delta?.reasoning) {
+            if (!firstTokenAt) {
+              firstTokenAt = Date.now()
+            }
             if (!textBlockStarted) {
               textBlockStarted = true
               encode('content_block_start', {
@@ -490,25 +673,64 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
       if (!completed) {
         reply.raw.end()
+        const totalLatencyMs = Date.now() - requestStart
         const fallbackPrompt = usagePrompt || target.tokenEstimate || estimateTokens(normalized, target.modelId)
         const fallbackCompletion = usageCompletion || estimateTextTokens(accumulatedContent, target.modelId)
+        const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
         logUsage('stream.openai.fallback', {
           input: fallbackPrompt,
           output: fallbackCompletion,
           cached: usageCached
         })
-        updateLogTokens(logId, fallbackPrompt, fallbackCompletion, usageCached)
+        updateLogTokens(logId, {
+          inputTokens: fallbackPrompt,
+          outputTokens: fallbackCompletion,
+          cachedTokens: usageCached,
+          ttftMs,
+          tpotMs: computeTpot(totalLatencyMs, fallbackCompletion, {
+            streaming: true,
+            ttftMs
+          })
+        })
         updateMetrics(new Date().toISOString().slice(0, 10), {
           requests: 1,
           inputTokens: fallbackPrompt,
           outputTokens: fallbackCompletion,
-          latencyMs: Date.now() - requestStart
+          latencyMs: totalLatencyMs
         })
+        if (storePayloads) {
+          upsertLogPayload(logId, {
+            response: (() => {
+              try {
+                return JSON.stringify({
+                  content: accumulatedContent,
+                  usage: {
+                    input: fallbackPrompt,
+                    output: fallbackCompletion,
+                    cached: usageCached
+                  }
+                })
+              } catch {
+                return accumulatedContent
+              }
+            })()
+          })
+        }
+        finalize(200, null)
         return reply
       }
     } catch (err) {
-      reply.code(500)
-      return { error: (err as Error).message }
+      const message = err instanceof Error ? err.message : 'Unexpected error'
+      if (!reply.sent) {
+        reply.code(500)
+      }
+      finalize(reply.statusCode >= 400 ? reply.statusCode : 500, message)
+      return { error: message }
+    } finally {
+      decrementActiveRequests()
+      if (!finalized && reply.sent) {
+        finalize(reply.statusCode ?? 200, null)
+      }
     }
   })
 }

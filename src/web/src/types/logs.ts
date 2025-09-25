@@ -4,11 +4,14 @@ export interface LogRecord {
   session_id: string | null
   provider: string
   model: string
+  client_model: string | null
   latency_ms: number | null
   status_code: number | null
   input_tokens: number | null
   output_tokens: number | null
   cached_tokens: number | null
+  ttft_ms: number | null
+  tpot_ms: number | null
   error: string | null
 }
 

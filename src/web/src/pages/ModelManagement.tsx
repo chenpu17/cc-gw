@@ -12,6 +12,14 @@ interface ModelRouteEntry {
   target: string
 }
 
+interface ProviderTestResponse {
+  ok: boolean
+  status: number
+  statusText: string
+  durationMs?: number
+  sample?: string | null
+}
+
 const CLAUDE_MODEL_SUGGESTIONS = [
   'claude-sonnet-4-20250514',
   'claude-opus-4-1-20250805',
@@ -175,11 +183,18 @@ export default function ModelManagementPage() {
   const handleTestConnection = async (provider: ProviderConfig) => {
     setTestingProviderId(provider.id)
     try {
-      const response = await apiClient.post<{ ok: boolean; status: number; statusText: string }>(
+      const response = await apiClient.post<ProviderTestResponse>(
         `/api/providers/${provider.id}/test`
       )
       if (response.data.ok) {
-        pushToast({ title: t('providers.toast.testSuccess'), variant: 'success' })
+        pushToast({
+          title: t('providers.toast.testSuccess'),
+          description: t('providers.toast.testSuccessDesc', {
+            status: response.data.status,
+            duration: response.data.durationMs ? `${response.data.durationMs} ms` : '—'
+          }),
+          variant: 'success'
+        })
       } else {
         pushToast({
           title: t('providers.toast.testFailure', {
@@ -200,13 +215,50 @@ export default function ModelManagementPage() {
     }
   }
 
-  const handlePlaceholder = (action: string, provider?: Pick<ProviderConfig, 'id' | 'label'>) => {
-    const target = provider?.label ?? provider?.id
-    pushToast({
-      title: t('common.notifications.featureInProgress'),
-      description: target ? `${action} (${target})` : undefined,
-      variant: 'info'
-    })
+  const handleDelete = async (provider: ProviderConfig) => {
+    if (!ensureConfig()) return
+    const confirmed = window.confirm(
+      t('providers.confirm.delete', { name: provider.label || provider.id })
+    )
+    if (!confirmed) return
+
+    const nextProviders = providers.filter((item) => item.id !== provider.id)
+
+    const sanitizedRoutes: Record<string, string> = {}
+    if (config?.modelRoutes) {
+      for (const [source, target] of Object.entries(config.modelRoutes)) {
+        if (!target) continue
+        const [targetProvider] = target.split(':')
+        if ((targetProvider && targetProvider === provider.id) || target === provider.id) {
+          continue
+        }
+        sanitizedRoutes[source] = target
+      }
+    }
+
+    const nextConfig: GatewayConfig = {
+      ...config!,
+      providers: nextProviders,
+      modelRoutes: sanitizedRoutes
+    }
+
+    try {
+      await apiClient.put('/api/config', nextConfig)
+      setConfig(nextConfig)
+      setModelRouteEntries(mapRoutesToEntries(nextConfig.modelRoutes))
+      pushToast({
+        title: t('providers.toast.deleteSuccess', { name: provider.label || provider.id }),
+        variant: 'success'
+      })
+      void configQuery.refetch()
+    } catch (error) {
+      pushToast({
+        title: t('providers.toast.deleteFailure', {
+          message: error instanceof Error ? error.message : 'unknown'
+        }),
+        variant: 'error'
+      })
+    }
   }
 
   const handleAddRoute = () => {
@@ -397,7 +449,7 @@ export default function ModelManagementPage() {
                   <button
                     type="button"
                     className="rounded-md border border-red-200 px-3 py-1 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
-                    onClick={() => handlePlaceholder(t('providers.actions.delete'), provider)}
+                    onClick={() => handleDelete(provider)}
                   >
                     {t('providers.actions.delete')}
                   </button>

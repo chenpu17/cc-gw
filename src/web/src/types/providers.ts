@@ -33,6 +33,7 @@ export interface GatewayConfig {
   defaults: DefaultsConfig
   logRetentionDays?: number
   modelRoutes?: Record<string, string>
+  storePayloads?: boolean
 }
 
 export interface ConfigInfoResponse {
