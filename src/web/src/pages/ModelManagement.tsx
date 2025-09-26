@@ -205,6 +205,22 @@ export default function ModelManagementPage() {
             thinking: false,
             tools: true
           }
+        },
+        {
+          id: 'KIMI-K2',
+          label: 'KIMI-K2',
+          capabilities: {
+            thinking: false,
+            tools: true
+          }
+        },
+        {
+          id: 'qwen3-235b-a22b',
+          label: 'Qwen3 235B A22B',
+          capabilities: {
+            thinking: false,
+            tools: true
+          }
         }
       ]
     }

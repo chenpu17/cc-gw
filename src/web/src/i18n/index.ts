@@ -268,7 +268,7 @@ const resources = {
         quickAddHuawei: {
           button: '一键添加华为云模型',
           title: '一键添加华为云模型',
-          description: '输入 API Key 即可快速添加华为云 DeepSeek V3.1 模型。',
+          description: '输入 API Key 即可快速添加华为云 DeepSeek V3.1、KIMI-K2 与 Qwen3-235B-A22B 模型。',
           apiKeyLabel: 'API Key',
           apiKeyPlaceholder: '请输入华为云 API Key',
           note: '完成后可在提供商列表中查看并进一步调整配置。',
@@ -733,9 +733,9 @@ const resources = {
           test: 'Test connection'
         },
         quickAddHuawei: {
-          button: 'Quick add Huawei DeepSeek',
-          title: 'Quick add Huawei DeepSeek',
-          description: 'Provide the API key to automatically configure Huawei Cloud DeepSeek V3.1.',
+          button: 'Quick add Huawei models',
+          title: 'Quick add Huawei models',
+          description: 'Provide the API key to automatically configure Huawei Cloud DeepSeek V3.1, KIMI-K2, and Qwen3-235B-A22B.',
           apiKeyLabel: 'API Key',
           apiKeyPlaceholder: 'Enter your Huawei Cloud API Key',
           note: 'You can further adjust settings from the provider list after creation.',
