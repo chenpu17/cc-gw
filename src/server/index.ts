@@ -40,7 +40,13 @@ function resolveWebDist(): string | null {
 }
 
 export async function createServer(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true })
+  const config = cachedConfig ?? loadConfig()
+  const app = Fastify({
+    logger: {
+      level: config.logLevel ?? 'info'
+    },
+    disableRequestLogging: config.requestLogging === false
+  })
 
   await app.register(fastifyCors, {
     origin: true,

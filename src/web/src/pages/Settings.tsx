@@ -6,11 +6,24 @@ import { Loader } from '@/components/Loader'
 import { apiClient, type ApiError } from '@/services/api'
 import type { ConfigInfoResponse, GatewayConfig } from '@/types/providers'
 
+type LogLevel = NonNullable<GatewayConfig['logLevel']>
+
+const LOG_LEVEL_OPTIONS: Array<{ value: LogLevel; labelKey: string }> = [
+  { value: 'fatal', labelKey: 'fatal' },
+  { value: 'error', labelKey: 'error' },
+  { value: 'warn', labelKey: 'warn' },
+  { value: 'info', labelKey: 'info' },
+  { value: 'debug', labelKey: 'debug' },
+  { value: 'trace', labelKey: 'trace' }
+]
+
 interface FormState {
   port: string
   host: string
   logRetentionDays: string
   storePayloads: boolean
+  logLevel: LogLevel
+  requestLogging: boolean
 }
 
 interface FormErrors {
@@ -21,6 +34,12 @@ interface FormErrors {
 interface CleanupResponse {
   success: boolean
   deleted: number
+}
+
+interface ClearResponse {
+  success: boolean
+  deleted: number
+  metricsCleared: number
 }
 
 export default function SettingsPage() {
@@ -34,10 +53,18 @@ export default function SettingsPage() {
 
   const [config, setConfig] = useState<GatewayConfig | null>(null)
   const [configPath, setConfigPath] = useState<string>('')
-  const [form, setForm] = useState<FormState>({ port: '', host: '', logRetentionDays: '', storePayloads: true })
+  const [form, setForm] = useState<FormState>({
+    port: '',
+    host: '',
+    logRetentionDays: '',
+    storePayloads: true,
+    logLevel: 'info',
+    requestLogging: true
+  })
   const [errors, setErrors] = useState<FormErrors>({})
   const [saving, setSaving] = useState(false)
   const [cleaning, setCleaning] = useState(false)
+  const [clearingAll, setClearingAll] = useState(false)
 
   const defaultsSummary = useMemo(() => {
     if (!config) return null
@@ -58,7 +85,9 @@ export default function SettingsPage() {
         port: String(configQuery.data.config.port ?? ''),
         host: configQuery.data.config.host ?? '',
         logRetentionDays: String(configQuery.data.config.logRetentionDays ?? 30),
-        storePayloads: configQuery.data.config.storePayloads !== false
+        storePayloads: configQuery.data.config.storePayloads !== false,
+        logLevel: (configQuery.data.config.logLevel as LogLevel) ?? 'info',
+        requestLogging: configQuery.data.config.requestLogging !== false
       })
     }
   }, [configQuery.data])
@@ -105,7 +134,9 @@ export default function SettingsPage() {
         port: portValue,
         host: form.host.trim() || undefined,
         logRetentionDays: retentionValue,
-        storePayloads: form.storePayloads
+        storePayloads: form.storePayloads,
+        logLevel: form.logLevel,
+        requestLogging: form.requestLogging
       }
       await apiClient.put('/api/config', nextConfig)
       setConfig(nextConfig)
@@ -127,7 +158,9 @@ export default function SettingsPage() {
       port: String(config.port ?? ''),
       host: config.host ?? '',
       logRetentionDays: String(config.logRetentionDays ?? 30),
-      storePayloads: config.storePayloads !== false
+      storePayloads: config.storePayloads !== false,
+      logLevel: (config.logLevel as LogLevel) ?? 'info',
+      requestLogging: config.requestLogging !== false
     })
     setErrors({})
   }
@@ -167,6 +200,30 @@ export default function SettingsPage() {
       })
     } finally {
       setCleaning(false)
+    }
+  }
+
+  const handleClearAllLogs = async () => {
+    setClearingAll(true)
+    try {
+      const response = await apiClient.post<ClearResponse>('/api/logs/clear')
+      const { deleted, metricsCleared } = response.data
+      pushToast({
+        title: t('settings.toast.clearAllSuccess', {
+          logs: deleted,
+          metrics: metricsCleared
+        }),
+        variant: 'success'
+      })
+    } catch (error) {
+      pushToast({
+        title: t('settings.toast.clearAllFailure', {
+          message: error instanceof Error ? error.message : 'unknown'
+        }),
+        variant: 'error'
+      })
+    } finally {
+      setClearingAll(false)
     }
   }
 
@@ -251,6 +308,23 @@ export default function SettingsPage() {
                 {errors.logRetentionDays ? <span className="text-xs text-red-500">{errors.logRetentionDays}</span> : null}
               </label>
 
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="text-xs text-slate-500 dark:text-slate-400">{t('settings.fields.logLevel')}</span>
+                <select
+                  value={form.logLevel}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, logLevel: event.target.value as LogLevel }))
+                  }
+                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
+                >
+                  {LOG_LEVEL_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {t(`settings.fields.logLevelOption.${option.labelKey}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
                 <input
                   type="checkbox"
@@ -266,6 +340,25 @@ export default function SettingsPage() {
                   </span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {t('settings.fields.storePayloadsHint')}
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+                <input
+                  type="checkbox"
+                  checked={form.requestLogging}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, requestLogging: event.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600"
+                />
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {t('settings.fields.requestLogging')}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('settings.fields.requestLoggingHint')}
                   </span>
                 </div>
               </label>
@@ -300,14 +393,25 @@ export default function SettingsPage() {
             <div className="flex flex-col gap-3">
               <h2 className="text-lg font-semibold">{t('settings.sections.cleanup')}</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.cleanup.description')}</p>
-              <button
-                type="button"
-                onClick={handleCleanupLogs}
-                className="w-fit rounded-md border border-red-200 px-4 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
-                disabled={cleaning}
-              >
-                {cleaning ? t('common.actions.cleaning') : t('common.actions.cleanup')}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleCleanupLogs}
+                  className="w-fit rounded-md border border-red-200 px-4 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
+                  disabled={cleaning}
+                >
+                  {cleaning ? t('common.actions.cleaning') : t('common.actions.cleanup')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAllLogs}
+                  className="w-fit rounded-md border border-red-200 px-4 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
+                  disabled={clearingAll}
+                >
+                  {clearingAll ? t('settings.cleanup.clearingAll') : t('settings.cleanup.clearAll')}
+                </button>
+              </div>
+              <p className="text-xs text-red-500 dark:text-red-300">{t('settings.cleanup.clearAllWarning')}</p>
             </div>
           </section>
         </>

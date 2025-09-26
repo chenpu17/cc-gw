@@ -28,7 +28,7 @@ cc-gw start --daemon --port 4100
 
 首启会在 `~/.cc-gw/config.json` 生成配置模板，推荐直接通过 Web UI (`http://127.0.0.1:4100/ui`) 完成所有后续配置与调整。`cc-gw status`、`cc-gw stop`、`cc-gw restart` 可用于日常运维。
 
-> ⚠️ **Linux 安装提示**：如果未命中 better-sqlite3 的预编译二进制，需要系统具备 `build-essential`、`python3`、`python3-gyp` 等编译依赖。可执行 `sudo apt install build-essential python3 python3-gyp` 后，再运行 `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source`。
+> ⚠️ **Linux 安装提示**：如果未命中 sqlite3 的预编译二进制，需要系统具备 `build-essential`、`python3`、`python3-gyp` 等编译依赖。可执行 `sudo apt install build-essential python3 python3-gyp` 后，再运行 `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source`。
 
 ### 从源码构建（开发者）
 
@@ -91,7 +91,9 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
     "claude-opus-4-1-20250805": "anthropic:claude-3-5-sonnet-latest"
   },
   "logRetentionDays": 30,
-  "storePayloads": true
+  "storePayloads": true,
+  "logLevel": "info",
+  "requestLogging": true
 }
 ```
 
@@ -101,6 +103,8 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 - 模型标识使用 `providerId:modelId` 形式供路由引用。
 - `modelRoutes`：将 Claude 发起的模型名映射到上游模型；未命中时使用 `defaults`。
 - `storePayloads`：是否在 SQLite 中压缩保存原始请求/响应（Brotli），关闭后仅保留元信息。
+- `logLevel`：控制 Fastify/Pino 控制台日志级别（`fatal`/`error`/`warn`/`info`/`debug`/`trace`）。
+- `requestLogging`：是否输出每个 HTTP 请求的访问日志，关闭后终端更加安静。
 - 推荐通过 Web UI 的“模型管理 / 系统设置”在线编辑并热加载，无需手工修改文件。
 
 ### 环境变量
@@ -118,7 +122,7 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 - **Dashboard**：展示请求量、Token 使用、缓存命中、各模型 TTFT（Time To First Token）/TPOT（Total Processing Time）、SQLite 数据库占用。
 - **请求日志**：多条件筛选（时间、Provider、模型、状态），查看压缩日志详情，支持分页导出与清理。
 - **模型管理**：维护 Provider 列表、预置模型、路由策略；一键测试连通性（发送诊断 PROMPT）。
-- **系统设置**：端口、日志保留策略、是否存储请求 payload、日志清理工具。
+- **系统设置**：端口、日志保留策略、是否存储请求 payload、日志级别与访问日志开关、日志清理工具。
 
 UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供键盘可达性（Skip Link、焦点管理）。
 
@@ -136,7 +140,7 @@ pnpm --filter @cc-gw/cli exec tsx index.ts status
 
 ## 数据与日志
 
-- 数据库：`~/.cc-gw/data/gateway.db`（`better-sqlite3`）。
+- 数据库：`~/.cc-gw/data/gateway.db`（`sqlite3`）。
   - `request_logs`：请求摘要、路由结果、耗时、TTFT/TPOT。
   - `request_payloads`：压缩的请求/响应正文（Brotli）。
   - `daily_metrics`：按日聚合的调用次数与 Token 统计。
@@ -173,7 +177,7 @@ cc-gw start --daemon --port 4100
 
 The first launch writes `~/.cc-gw/config.json`. Manage everything through the Web UI at `http://127.0.0.1:4100/ui`. Use `cc-gw status`, `cc-gw stop`, and `cc-gw restart` to control the daemon.
 
-> ⚠️ **Linux build note**: `better-sqlite3` may fall back to building from source. Install toolchain packages such as `build-essential`, `python3`, `python3-gyp`, then rerun `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source` if needed.
+> ⚠️ **Linux build note**: `sqlite3` may fall back to building from source. Install toolchain packages such as `build-essential`, `python3`, `python3-gyp`, then rerun `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source` if needed.
 
 ### From Source (contributors)
 
@@ -196,6 +200,8 @@ claude "help me review this file"
 - Providers include `type`, `baseUrl`, `apiKey`, and `models` descriptions.
 - Model routes use `providerId:modelId` syntax to remap Claude requests.
 - `storePayloads` toggles compressed body retention; disable to keep only metadata.
+- `logLevel` adjusts Fastify/Pino verbosity (`fatal` → `trace`).
+- `requestLogging` controls whether per-request access logs are emitted to the console.
 - Web UI allows editing without restarting; CLI restart will pick up bundle changes after rebuilds.
 
 ### Observability & Storage

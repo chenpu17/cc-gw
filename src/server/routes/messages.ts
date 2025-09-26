@@ -7,6 +7,7 @@ import { finalizeLog, recordLog, updateLogTokens, updateMetrics, upsertLogPayloa
 import { estimateTokens, estimateTextTokens } from '../protocol/tokenizer.js'
 import { decrementActiveRequests, incrementActiveRequests } from '../metrics/activity.js'
 import { getConfig } from '../config/manager.js'
+import type { NormalizedPayload } from '../protocol/types.js'
 
 function mapStopReason(reason: string | null | undefined): string | null {
   switch (reason) {
@@ -18,6 +19,84 @@ function mapStopReason(reason: string | null | undefined): string | null {
       return 'max_tokens'
     default:
       return reason ?? null
+  }
+}
+
+function stringifyToolContent(value: unknown): string {
+  if (value === null || value === undefined) {
+    return ''
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function mergeText(base: string | undefined, extraParts: string[]): string {
+  const parts: string[] = []
+  if (base && base.trim().length > 0) {
+    parts.push(base)
+  }
+  for (const part of extraParts) {
+    if (part && part.trim().length > 0) {
+      parts.push(part)
+    }
+  }
+  return parts.join('\n\n')
+}
+
+function stripTooling(payload: NormalizedPayload): NormalizedPayload {
+  const messages = payload.messages.map((message) => {
+    if (message.role === 'user') {
+      const extras = (message.toolResults ?? []).map((result) => {
+        const label = result.name || result.id
+        const content = stringifyToolContent(result.content)
+        return label ? `${label}${content ? `\n${content}` : ''}` : content
+      })
+      return {
+        role: message.role,
+        text: mergeText(message.text, extras)
+      }
+    }
+
+    if (message.role === 'assistant') {
+      const extras = (message.toolCalls ?? []).map((call) => {
+        const label = call.name || call.id
+        const args = stringifyToolContent(call.arguments)
+        return label ? `Requested tool ${label}${args ? `\n${args}` : ''}` : args
+      })
+      return {
+        role: message.role,
+        text: mergeText(message.text, extras)
+      }
+    }
+
+    return {
+      role: message.role,
+      text: message.text
+    }
+  })
+
+  return {
+    ...payload,
+    messages,
+    tools: []
+  }
+}
+
+function stripMetadata(payload: NormalizedPayload): NormalizedPayload {
+  const original = payload.original
+  if (!original || typeof original !== 'object') {
+    return payload
+  }
+  const { metadata, ...rest } = original as Record<string, unknown>
+  return {
+    ...payload,
+    original: rest
   }
 }
 
@@ -115,39 +194,49 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
     })
 
     const providerType = target.provider.type ?? 'custom'
+    const modelDefinition = target.provider.models?.find((m) => m.id === target.modelId)
+    const supportsTools = modelDefinition?.capabilities?.tools === true
+    const supportsMetadata = providerType !== 'custom'
+
+    let normalizedForProvider = supportsTools ? normalized : stripTooling(normalized)
+    if (!supportsMetadata) {
+      normalizedForProvider = stripMetadata(normalizedForProvider)
+    }
+    const maxTokensOverride = payload.max_tokens ?? modelDefinition?.maxTokens
+    const toolChoice = supportsTools ? payload.tool_choice : undefined
+    const overrideTools = supportsTools ? payload.tools : undefined
 
     const providerBody = providerType === 'anthropic'
-      ? buildAnthropicBody(normalized, {
-          maxTokens:
-            payload.max_tokens ?? target.provider.models?.find((m) => m.id === target.modelId)?.maxTokens,
+      ? buildAnthropicBody(normalizedForProvider, {
+          maxTokens: maxTokensOverride,
           temperature: payload.temperature,
-          toolChoice: payload.tool_choice,
-          overrideTools: payload.tools
+          toolChoice,
+          overrideTools
         })
-      : buildProviderBody(normalized, {
-          maxTokens:
-            payload.max_tokens ?? target.provider.models?.find((m) => m.id === target.modelId)?.maxTokens,
+      : buildProviderBody(normalizedForProvider, {
+          maxTokens: maxTokensOverride,
           temperature: payload.temperature,
-          toolChoice: payload.tool_choice,
-          overrideTools: payload.tools
+          toolChoice,
+          overrideTools
         })
 
     const connector = getConnector(target.providerId)
     const requestStart = Date.now()
     const storePayloads = getConfig().storePayloads !== false
 
-    const logId = recordLog({
+    const logId = await recordLog({
       timestamp: requestStart,
       provider: target.providerId,
       model: target.modelId,
       clientModel: requestedModel,
-      sessionId: payload.metadata?.user_id
+      sessionId: payload.metadata?.user_id,
+      stream: normalized.stream
     })
 
     incrementActiveRequests()
 
     if (storePayloads) {
-      upsertLogPayload(logId, {
+      await upsertLogPayload(logId, {
         prompt: (() => {
           try {
             return JSON.stringify(payload)
@@ -159,9 +248,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
     }
 
     let finalized = false
-    const finalize = (statusCode: number | null, error: string | null) => {
+    const finalize = async (statusCode: number | null, error: string | null) => {
       if (finalized) return
-      finalizeLog(logId, {
+      await finalizeLog(logId, {
         latencyMs: Date.now() - requestStart,
         statusCode,
         error,
@@ -205,9 +294,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         const bodyText = upstream.body ? await new Response(upstream.body).text() : ''
         const errorText = bodyText || 'Upstream provider error'
         if (storePayloads) {
-          upsertLogPayload(logId, { response: bodyText || null })
+          await upsertLogPayload(logId, { response: bodyText || null })
         }
-        finalize(upstream.status, errorText)
+        await finalize(upstream.status, errorText)
         return { error: errorText }
       }
 
@@ -235,21 +324,21 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             cached: cachedTokens
           })
           const latencyMs = Date.now() - requestStart
-          updateLogTokens(logId, {
+          await updateLogTokens(logId, {
             inputTokens,
             outputTokens,
             cachedTokens,
             ttftMs: latencyMs,
             tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
           })
-          updateMetrics(new Date().toISOString().slice(0, 10), {
+          await updateMetrics(new Date().toISOString().slice(0, 10), {
             requests: 1,
             inputTokens,
             outputTokens,
             latencyMs
           })
           if (storePayloads) {
-            upsertLogPayload(logId, {
+            await upsertLogPayload(logId, {
               response: (() => {
                 try {
                   return JSON.stringify(json)
@@ -259,7 +348,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
               })()
             })
           }
-          finalize(200, null)
+          await finalize(200, null)
           reply.header('content-type', 'application/json')
           return json
         }
@@ -284,21 +373,21 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           cached: cachedTokens
         })
         const latencyMs = Date.now() - requestStart
-        updateLogTokens(logId, {
+        await updateLogTokens(logId, {
           inputTokens,
           outputTokens,
           cachedTokens,
           ttftMs: latencyMs,
           tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
         })
-        updateMetrics(new Date().toISOString().slice(0, 10), {
+        await updateMetrics(new Date().toISOString().slice(0, 10), {
           requests: 1,
           inputTokens,
           outputTokens,
           latencyMs
         })
         if (storePayloads) {
-          upsertLogPayload(logId, {
+          await upsertLogPayload(logId, {
             response: (() => {
               try {
                 return JSON.stringify(claudeResponse)
@@ -308,14 +397,14 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             })()
           })
         }
-        finalize(200, null)
+        await finalize(200, null)
         reply.header('content-type', 'application/json')
         return claudeResponse
       }
 
       if (!upstream.body) {
         reply.code(500)
-        finalize(500, 'Upstream returned empty body')
+        await finalize(500, 'Upstream returned empty body')
         return { error: 'Upstream returned empty body' }
       }
 
@@ -397,7 +486,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           output: usageCompletion,
           cached: usageCached
         })
-        updateLogTokens(logId, {
+        await updateLogTokens(logId, {
           inputTokens: usagePrompt,
           outputTokens: usageCompletion,
           cachedTokens: usageCached,
@@ -407,14 +496,14 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             ttftMs
           })
         })
-        updateMetrics(new Date().toISOString().slice(0, 10), {
+        await updateMetrics(new Date().toISOString().slice(0, 10), {
           requests: 1,
           inputTokens: usagePrompt,
           outputTokens: usageCompletion,
           latencyMs: totalLatencyMs
         })
         if (storePayloads) {
-          upsertLogPayload(logId, {
+          await upsertLogPayload(logId, {
             response: (() => {
               try {
                 return JSON.stringify({
@@ -431,7 +520,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             })()
           })
         }
-        finalize(200, null)
+        await finalize(200, null)
 
         return reply
       }
@@ -521,7 +610,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
               output: finalCompletionTokens,
               cached: usageCached
             })
-            updateLogTokens(logId, {
+            await updateLogTokens(logId, {
               inputTokens: finalPromptTokens,
               outputTokens: finalCompletionTokens,
               cachedTokens: usageCached,
@@ -531,14 +620,14 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
                 ttftMs
               })
             })
-            updateMetrics(new Date().toISOString().slice(0, 10), {
+            await updateMetrics(new Date().toISOString().slice(0, 10), {
               requests: 1,
               inputTokens: finalPromptTokens,
               outputTokens: finalCompletionTokens,
               latencyMs: totalLatencyMs
             })
             if (storePayloads) {
-              upsertLogPayload(logId, {
+              await upsertLogPayload(logId, {
                 response: (() => {
                   try {
                     return JSON.stringify({
@@ -556,7 +645,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
                 })()
               })
             }
-            finalize(200, null)
+            await finalize(200, null)
             completed = true
             return reply
           }
@@ -583,6 +672,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           }
 
           if (choice.delta?.tool_calls) {
+            request.log.debug({ event: 'debug.tool_call_delta', delta: choice.delta?.tool_calls }, 'tool call delta received')
             if (!firstTokenAt) {
               firstTokenAt = Date.now()
             }
@@ -682,7 +772,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           output: fallbackCompletion,
           cached: usageCached
         })
-        updateLogTokens(logId, {
+        await updateLogTokens(logId, {
           inputTokens: fallbackPrompt,
           outputTokens: fallbackCompletion,
           cachedTokens: usageCached,
@@ -692,14 +782,14 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             ttftMs
           })
         })
-        updateMetrics(new Date().toISOString().slice(0, 10), {
+        await updateMetrics(new Date().toISOString().slice(0, 10), {
           requests: 1,
           inputTokens: fallbackPrompt,
           outputTokens: fallbackCompletion,
           latencyMs: totalLatencyMs
         })
         if (storePayloads) {
-          upsertLogPayload(logId, {
+          await upsertLogPayload(logId, {
             response: (() => {
               try {
                 return JSON.stringify({
@@ -716,7 +806,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             })()
           })
         }
-        finalize(200, null)
+        await finalize(200, null)
         return reply
       }
     } catch (err) {
@@ -724,12 +814,12 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       if (!reply.sent) {
         reply.code(500)
       }
-      finalize(reply.statusCode >= 400 ? reply.statusCode : 500, message)
+      await finalize(reply.statusCode >= 400 ? reply.statusCode : 500, message)
       return { error: message }
     } finally {
       decrementActiveRequests()
       if (!finalized && reply.sent) {
-        finalize(reply.statusCode ?? 200, null)
+        await finalize(reply.statusCode ?? 200, null)
       }
     }
   })

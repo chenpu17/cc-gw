@@ -21,7 +21,6 @@ logs/
 cc-gw.pid
 cc-gw.log
 docs_old/
-scripts/
 
 # TypeScript
 *.tsbuildinfo
@@ -33,3 +32,7 @@ scripts/
 
 # macOS noise
 .DS_Store
+
+scripts/*
+!scripts/.gitkeep
+!scripts/build-and-start.sh

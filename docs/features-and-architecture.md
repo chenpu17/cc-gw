@@ -20,7 +20,7 @@
 1. **CLI (`src/cli`)**：守护进程封装、首次启动配置模板、运行状态查询。
 2. **Server (`src/server`)**：Fastify 负责 `/v1/messages`、管理 API、静态资源托管，内部包含协议层、路由器、Provider 注册表、日志模块。
 3. **Web UI (`src/web`)**：React + TanStack Router + Tailwind + i18next，提供仪表盘、日志、模型管理、系统设置。
-4. **存储 Storage**：`better-sqlite3` 单文件数据库，表结构包括 `request_logs`、`request_payloads`、`daily_metrics`。
+4. **存储 Storage**：`sqlite3` 单文件数据库，表结构包括 `request_logs`、`request_payloads`、`daily_metrics`。
 5. **配置 Configuration**：`~/.cc-gw/config.json` 描述端口、Provider、模型路由、日志保留策略；支持环境变量覆盖 UI 根目录与调试模式。
 
 > **Flow**: Client ⇒ `/v1/messages` ⇒ normalize ⇒ resolve route ⇒ provider connector ⇒ stream/non-stream response ⇒ log & metrics ⇒ return to client.
@@ -43,8 +43,8 @@
 - English: lifecycle hooks persist logs (tokens plus TTFT/TPOT) into SQLite before rolling up daily aggregates; the Web UI consumes `/api/logs` & `/api/stats` endpoints.
 
 ### Web UI
-- 中文：包含 Dashboard（统计，含模型级别的 TTFT/TPOT 指标）、Logs（筛选、分页、抽屉详情）、Model Management（Provider CRUD、连通性测试、路由映射）、Settings（端口、日志策略、配置路径）。
-- English: responsive layout with mobile navigation, bilingual copy via i18next, and accessibility helpers (skip links, focus trapping); the dashboard now visualizes per-model TTFT/TPOT metrics.
+- 中文：包含 Dashboard（统计，含模型级别的 TTFT/TPOT 指标）、Logs（筛选、分页、抽屉详情）、Model Management（Provider CRUD、连通性测试、路由映射）、Settings（端口、日志策略、日志级别/访问日志开关、配置路径）。
+- English: responsive layout with mobile navigation, bilingual copy via i18next, and accessibility helpers (skip links, focus trapping); settings now expose log level and request logging toggles alongside port/log retention controls.
 
 ### CLI
 - 中文：`start/stop/restart/status` 命令支持守护与前台模式；首次启动生成配置模板，并提示访问 Web UI。
@@ -62,7 +62,7 @@
   - `request_logs`：请求基础信息与 token 统计
   - `request_payloads`：原始请求/响应 JSON（用于排查）
   - `daily_metrics`：每日请求数、输入/输出/缓存 token、累计耗时
-- 配置重点：`providers`（含 `type/baseUrl/apiKey/models`）、`modelRoutes`、`defaults`、`logRetentionDays`
+- 配置重点：`providers`（含 `type/baseUrl/apiKey/models`）、`modelRoutes`、`defaults`、`logRetentionDays`、`logLevel`、`requestLogging`
 - 环境变量：`CC_GW_UI_ROOT`（自定义静态资源）、`CC_GW_DEBUG_ENDPOINTS`（打印下游 URL）
 
 ## 运行与运维 Deployment Notes

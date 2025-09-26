@@ -8,15 +8,21 @@ import {
   getLogDetail,
   getLogPayload,
   cleanupLogsBefore,
+  clearAllLogs,
   getMetricsOverview,
   getDailyMetrics,
   getModelUsageMetrics,
   queryLogs
 } from '../logging/queries.js'
-import { getDb } from '../storage/index.js'
+import { getOne } from '../storage/index.js'
 import { getActiveRequestCount } from '../metrics/activity.js'
 
 export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
+
+  const mapLogRecord = (record: any) => ({
+    ...record,
+    stream: Boolean(record?.stream)
+  })
   app.get('/api/status', async () => {
     const config = getConfig()
     return {
@@ -202,9 +208,9 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const from = parseTime(query.from)
     const to = parseTime(query.to)
 
-    const { items, total } = queryLogs({ limit, offset, provider, model, status, from, to })
+    const { items, total } = await queryLogs({ limit, offset, provider, model, status, from, to })
     reply.header('x-total-count', String(total))
-    return { total, items }
+    return { total, items: items.map(mapLogRecord) }
   })
 
   app.get('/api/logs/:id', async (request, reply) => {
@@ -213,27 +219,33 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       reply.code(400)
       return { error: 'Invalid id' }
     }
-    const record = getLogDetail(id)
+    const record = await getLogDetail(id)
     if (!record) {
       reply.code(404)
       return { error: 'Not found' }
     }
-    const payload = getLogPayload(id)
-    return { ...record, payload }
+    const payload = await getLogPayload(id)
+    return { ...mapLogRecord(record), payload }
   })
 
   app.post('/api/logs/cleanup', async () => {
     const config = getConfig()
     const retentionDays = config.logRetentionDays ?? 30
     const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000
-    const deleted = cleanupLogsBefore(cutoff)
+    const deleted = await cleanupLogsBefore(cutoff)
     return { success: true, deleted }
   })
 
+  app.post('/api/logs/clear', async () => {
+    const { logs, metrics } = await clearAllLogs()
+    return { success: true, deleted: logs, metricsCleared: metrics }
+  })
+
   app.get('/api/db/info', async () => {
-    const db = getDb()
-    const pageCount = db.pragma('page_count', { simple: true }) as number
-    const pageSize = db.pragma('page_size', { simple: true }) as number
+    const pageCountRow = await getOne<{ page_count: number }>('PRAGMA page_count')
+    const pageSizeRow = await getOne<{ page_size: number }>('PRAGMA page_size')
+    const pageCount = pageCountRow?.page_count ?? 0
+    const pageSize = pageSizeRow?.page_size ?? 0
     return {
       pageCount,
       pageSize,

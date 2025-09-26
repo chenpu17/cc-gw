@@ -12,6 +12,8 @@ function buildConnector(config: ProviderConfig): ProviderConnector {
   switch (config.type) {
     case 'deepseek':
       return createDeepSeekConnector(config)
+    case 'huawei':
+      return createOpenAIConnector(config)
     case 'kimi':
       return createKimiConnector(config)
     case 'anthropic':

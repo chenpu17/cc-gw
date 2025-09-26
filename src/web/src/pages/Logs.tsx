@@ -39,6 +39,10 @@ function formatLatency(value: number | null | undefined, suffix: string): string
   return formatted === '-' ? '-' : `${formatted} ${suffix}`
 }
 
+function formatStreamLabel(stream: boolean): string {
+  return stream ? 'true' : 'false'
+}
+
 function formatPayloadDisplay(value: string | null | undefined, fallback: string): string {
   if (!value || value.trim().length === 0) {
     return fallback
@@ -289,6 +293,7 @@ export default function LogsPage() {
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.inputTokens')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.cachedTokens')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.outputTokens')}</th>
+                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.stream')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.latency')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.ttft')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.tpot')}</th>
@@ -300,13 +305,13 @@ export default function LogsPage() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {logsQuery.isPending ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={14} className="px-4 py-10 text-center text-sm text-slate-400">
                     {t('logs.table.loading')}
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={14} className="px-4 py-10 text-center text-sm text-slate-400">
                     {t('logs.table.empty')}
                   </td>
                 </tr>
@@ -399,6 +404,7 @@ function LogRow({
       <td className="px-4 py-2 text-right">{formatNumber(record.input_tokens)}</td>
       <td className="px-4 py-2 text-right">{formatNumber(record.cached_tokens)}</td>
       <td className="px-4 py-2 text-right">{formatNumber(record.output_tokens)}</td>
+      <td className="px-4 py-2 text-right">{formatStreamLabel(record.stream)}</td>
       <td className="px-4 py-2 text-right">{formatLatency(record.latency_ms, t('common.units.ms'))}</td>
       <td className="px-4 py-2 text-right">{formatLatency(record.ttft_ms, t('common.units.ms'))}</td>
       <td className="px-4 py-2 text-right">{formatLatency(record.tpot_ms, t('common.units.msPerToken'))}</td>
@@ -417,7 +423,7 @@ function LogRow({
           aria-haspopup="dialog"
           className="rounded-md border border-slate-200 px-3 py-1 text-sm transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
         >
-          {t('logs.actions.viewDetail')}
+          {t('logs.actions.detail')}
         </button>
       </td>
     </tr>
@@ -585,6 +591,9 @@ function LogDetailsDrawer({
                       })}
                     </span>
                   ) : null}
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('logs.detail.summary.stream', { value: formatStreamLabel(record.stream) })}
+                  </span>
                   <StatusBadge success={!record.error} statusCode={record.status_code} />
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -607,6 +616,10 @@ function LogDetailsDrawer({
                   <div>
                     <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.model')}</dt>
                     <dd className="font-medium">{record.model}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.stream')}</dt>
+                    <dd className="font-medium">{formatStreamLabel(record.stream)}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.inputTokens')}</dt>
@@ -658,7 +671,7 @@ function LogDetailsDrawer({
                     {t('common.actions.copy')}
                   </button>
                 </header>
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 dark:border-slate-800 dark:bg-slate-800/60">
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-200">
                   {formatPayloadDisplay(record.payload?.prompt, t('logs.detail.payload.emptyRequest'))}
                 </pre>
               </section>
@@ -677,12 +690,12 @@ function LogDetailsDrawer({
                         'logs.detail.copy.responseSuccess'
                       )
                     }
-                    className="rounded-md border border-slate-200 px-2 py-1 text-xs transition hover:bg-slate-100 dark:border-slate-700 dark:hover.bg-slate-800"
+                    className="rounded-md border border-slate-200 px-2 py-1 text-xs transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
                   >
                     {t('common.actions.copy')}
                   </button>
                 </header>
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 dark:border-slate-800 dark:bg-सlate-800/60">
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-200">
                   {formatPayloadDisplay(record.payload?.response, t('logs.detail.payload.emptyResponse'))}
                 </pre>
               </section>

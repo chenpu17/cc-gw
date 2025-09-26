@@ -89,13 +89,22 @@ const resources = {
           requestsTitle: '请求趋势',
           requestsDesc: '最近 14 天请求与 Token 走势',
           modelTitle: '模型调用分布',
-          modelDesc: '近 7 天不同模型的调用次数',
+          modelDesc: '近 7 天不同模型的调用次数与 Token 走势',
           barRequests: '请求数',
           lineInput: '输入 Tokens',
           lineOutput: '输出 Tokens',
+          axisTokens: 'Tokens',
           ttftLabel: 'TTFT(ms)',
           tpotLabel: 'TPOT(ms/Token)',
-          axisLatency: '耗时 (ms)'
+          ttftTitle: 'TTFT 模型对比',
+          ttftDesc: '比较不同模型的首 Token 耗时 (TTFT)',
+          ttftEmpty: '暂无 TTFT 数据。',
+          tpotTitle: 'TPOT 模型对比',
+          tpotDesc: '比较不同模型的平均 Token 耗时 (TPOT)',
+          tpotEmpty: '暂无 TPOT 数据。',
+          ttftAxis: 'TTFT (ms)',
+          tpotAxis: 'TPOT (ms/Token)',
+          empty: '暂无数据'
         },
         recent: {
           title: '最新请求',
@@ -144,7 +153,7 @@ const resources = {
         actions: {
           manualRefresh: '手动刷新',
           refreshing: '刷新中...',
-          viewDetail: '查看详情'
+          detail: '详情'
         },
         table: {
           loading: '正在加载日志...',
@@ -158,6 +167,7 @@ const resources = {
             inputTokens: '输入 Tokens',
             cachedTokens: '缓存 Tokens',
             outputTokens: '输出 Tokens',
+            stream: 'Stream',
             latency: '耗时(ms)',
             ttft: 'TTFT(ms)',
             tpot: 'TPOT(ms/Token)',
@@ -183,6 +193,10 @@ const resources = {
             desc: '错误信息：{{message}}'
           }
         },
+        stream: {
+          streaming: '流式',
+          single: '单次'
+        },
         detail: {
           title: '日志详情',
           id: 'ID #{{id}}',
@@ -194,6 +208,7 @@ const resources = {
             requestedModel: '请求模型',
             noRequestedModel: '未指定',
             model: '路由模型',
+            stream: 'Stream',
             latency: '耗时',
             status: '状态',
             inputTokens: '输入 Tokens',
@@ -207,7 +222,8 @@ const resources = {
             route: '{{from}} → {{to}}',
             latency: '耗时：{{value}}',
             ttft: 'TTFT：{{value}}',
-            tpot: 'TPOT：{{value}}'
+            tpot: 'TPOT：{{value}}',
+            stream: 'Stream：{{value}}'
           },
           payload: {
             request: '请求体',
@@ -249,6 +265,24 @@ const resources = {
           delete: '删除',
           test: '测试连接'
         },
+        quickAddHuawei: {
+          button: '一键添加华为云模型',
+          title: '一键添加华为云模型',
+          description: '输入 API Key 即可快速添加华为云 DeepSeek V3.1 模型。',
+          apiKeyLabel: 'API Key',
+          apiKeyPlaceholder: '请输入华为云 API Key',
+          note: '完成后可在提供商列表中查看并进一步调整配置。',
+          submit: '添加',
+          providerLabel: '华为云',
+          validation: {
+            apiKey: '请填写 API Key'
+          },
+          toast: {
+            success: '已添加华为云模型',
+            added: '已添加 {{name}}',
+            failure: '添加失败，请稍后重试'
+          }
+        },
         card: {
           defaultModel: '默认模型：{{model}}',
           noDefault: '未设置默认模型',
@@ -272,6 +306,8 @@ const resources = {
             apiKey: 'API Key（可选）',
             apiKeyPlaceholder: '可留空以从环境变量读取',
             models: '模型配置',
+            showAdvanced: '显示高级选项',
+            hideAdvanced: '隐藏高级选项',
             addModel: '新增模型',
             modelId: '模型 ID',
             modelIdPlaceholder: '如 claude-sonnet-4-20250514',
@@ -287,7 +323,6 @@ const resources = {
           errors: {
             idRequired: '请填写 Provider ID',
             idDuplicate: '该 Provider ID 已存在',
-            labelRequired: '请填写显示名称',
             baseUrlInvalid: 'Base URL 格式无效',
             modelsRequired: '请至少配置一个模型',
             modelInvalid: '模型 ID 不可为空或重复',
@@ -328,6 +363,8 @@ const resources = {
           cleanupSuccess: '已删除 {{count}} 条历史日志。',
           cleanupNone: '没有需要删除的日志。',
           cleanupFailure: '清理失败：{{message}}',
+          clearAllSuccess: '日志已清空（请求 {{logs}} 条，统计 {{metrics}} 条）。',
+          clearAllFailure: '清空失败：{{message}}',
           missingConfig: '未能加载配置，请刷新或稍后再试。'
         },
         sections: {
@@ -343,7 +380,18 @@ const resources = {
           retention: '日志保留天数',
           defaults: '默认模型配置',
           storePayloads: '保存请求/响应内容',
-          storePayloadsHint: '关闭后仅记录元数据，可减少磁盘占用。'
+          storePayloadsHint: '关闭后仅记录元数据，可减少磁盘占用。',
+          logLevel: '日志级别',
+          logLevelOption: {
+            fatal: '致命 (fatal)',
+            error: '错误 (error)',
+            warn: '警告 (warn)',
+            info: '信息 (info)',
+            debug: '调试 (debug)',
+            trace: '跟踪 (trace)'
+          },
+          requestLogging: '输出访问日志',
+          requestLoggingHint: '关闭后将不再在终端打印每个请求的访问日志。'
         },
         validation: {
           port: '请输入 1-65535 之间的端口号',
@@ -374,7 +422,10 @@ const resources = {
           unknown: '未知路径'
         },
         cleanup: {
-          description: '立即清理早于当前保留天数的日志记录。'
+          description: '立即清理早于当前保留天数的日志记录。',
+          clearAll: '彻底清空',
+          clearingAll: '清空中...',
+          clearAllWarning: '该操作会删除所有日志记录及日统计数据，请谨慎操作。'
         }
       },
 
@@ -505,13 +556,22 @@ const resources = {
           requestsTitle: 'Request Trends',
           requestsDesc: 'Requests and token usage over the last 14 days',
           modelTitle: 'Model Distribution',
-          modelDesc: 'Call counts by model in the past 7 days',
+          modelDesc: 'Requests and tokens by model in the past 7 days',
           barRequests: 'Requests',
-          lineInput: 'Input Tokens',
-          lineOutput: 'Output Tokens',
+          lineInput: 'Input tokens',
+          lineOutput: 'Output tokens',
+          axisTokens: 'Tokens',
           ttftLabel: 'TTFT (ms)',
           tpotLabel: 'TPOT (ms/token)',
-          axisLatency: 'Latency (ms)'
+          ttftTitle: 'TTFT Comparison',
+          ttftDesc: 'Compare first-token latency (TTFT) across models',
+          ttftEmpty: 'No TTFT data available.',
+          tpotTitle: 'TPOT Comparison',
+          tpotDesc: 'Compare per-token latency (TPOT) across models',
+          tpotEmpty: 'No TPOT data available.',
+          ttftAxis: 'TTFT (ms)',
+          tpotAxis: 'TPOT (ms/token)',
+          empty: 'No data'
         },
         recent: {
           title: 'Recent Requests',
@@ -560,7 +620,7 @@ const resources = {
         actions: {
           manualRefresh: 'Manual refresh',
           refreshing: 'Refreshing...',
-          viewDetail: 'View detail'
+          detail: 'Detail'
         },
         table: {
           loading: 'Loading logs...',
@@ -574,6 +634,7 @@ const resources = {
             inputTokens: 'Input Tokens',
             cachedTokens: 'Cached Tokens',
             outputTokens: 'Output Tokens',
+            stream: 'Stream',
             latency: 'Latency (ms)',
             ttft: 'TTFT (ms)',
             tpot: 'TPOT (ms/token)',
@@ -588,6 +649,10 @@ const resources = {
             next: 'Next',
             pageLabel: 'Page {{page}} / {{total}}'
           }
+        },
+        stream: {
+          streaming: 'Streaming',
+          single: 'Non-streaming'
         },
         toast: {
           listError: {
@@ -610,6 +675,7 @@ const resources = {
             requestedModel: 'Requested model',
             noRequestedModel: 'Not specified',
             model: 'Routed model',
+            stream: 'Stream',
             latency: 'Latency',
             status: 'Status',
             inputTokens: 'Input Tokens',
@@ -623,7 +689,8 @@ const resources = {
             route: '{{from}} → {{to}}',
             latency: 'Latency: {{value}}',
             ttft: 'TTFT: {{value}}',
-            tpot: 'TPOT: {{value}}'
+            tpot: 'TPOT: {{value}}',
+            stream: 'Stream: {{value}}'
           },
           payload: {
             request: 'Request body',
@@ -665,6 +732,24 @@ const resources = {
           delete: 'Delete',
           test: 'Test connection'
         },
+        quickAddHuawei: {
+          button: 'Quick add Huawei DeepSeek',
+          title: 'Quick add Huawei DeepSeek',
+          description: 'Provide the API key to automatically configure Huawei Cloud DeepSeek V3.1.',
+          apiKeyLabel: 'API Key',
+          apiKeyPlaceholder: 'Enter your Huawei Cloud API Key',
+          note: 'You can further adjust settings from the provider list after creation.',
+          submit: 'Add provider',
+          providerLabel: 'Huawei Cloud',
+          validation: {
+            apiKey: 'API Key is required'
+          },
+          toast: {
+            success: 'Huawei provider added',
+            added: '{{name}} added successfully',
+            failure: 'Failed to add provider. Please try again later.'
+          }
+        },
         card: {
           defaultModel: 'Default model: {{model}}',
           noDefault: 'No default model',
@@ -688,6 +773,8 @@ const resources = {
             apiKey: 'API Key (optional)',
             apiKeyPlaceholder: 'Leave blank to read from environment',
             models: 'Model configuration',
+            showAdvanced: 'Show advanced options',
+            hideAdvanced: 'Hide advanced options',
             addModel: 'Add model',
             modelId: 'Model ID',
             modelIdPlaceholder: 'e.g. claude-sonnet-4-20250514',
@@ -703,7 +790,6 @@ const resources = {
           errors: {
             idRequired: 'Provider ID is required',
             idDuplicate: 'Provider ID already exists',
-            labelRequired: 'Display name is required',
             baseUrlInvalid: 'Invalid Base URL',
             modelsRequired: 'Configure at least one model',
             modelInvalid: 'Model IDs must be unique and non-empty',
@@ -744,6 +830,8 @@ const resources = {
           cleanupSuccess: '{{count}} old logs removed.',
           cleanupNone: 'No logs met the cleanup criteria.',
           cleanupFailure: 'Cleanup failed: {{message}}',
+          clearAllSuccess: 'All logs cleared ({{logs}} requests, {{metrics}} daily rows).',
+          clearAllFailure: 'Full wipe failed: {{message}}',
           missingConfig: 'Configuration not available. Refresh and try again.'
         },
         sections: {
@@ -759,7 +847,18 @@ const resources = {
           retention: 'Log retention days',
           defaults: 'Default models',
           storePayloads: 'Store request & response bodies',
-          storePayloadsHint: 'Disable to keep only metadata and save disk space.'
+          storePayloadsHint: 'Disable to keep only metadata and save disk space.',
+          logLevel: 'Log level',
+          logLevelOption: {
+            fatal: 'Fatal',
+            error: 'Error',
+            warn: 'Warn',
+            info: 'Info',
+            debug: 'Debug',
+            trace: 'Trace'
+          },
+          requestLogging: 'Emit request logs',
+          requestLoggingHint: 'Disable to stop printing each HTTP request in the console.'
         },
         validation: {
           port: 'Enter a port between 1 and 65535',
@@ -790,7 +889,10 @@ const resources = {
           unknown: 'Unknown path'
         },
         cleanup: {
-          description: 'Immediately purge logs older than the retention window.'
+          description: 'Immediately purge logs older than the retention window.',
+          clearAll: 'Clear everything',
+          clearingAll: 'Clearing…',
+          clearAllWarning: 'Deletes every log entry and daily metric. This cannot be undone.'
         }
       },
 

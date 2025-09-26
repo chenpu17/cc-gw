@@ -1,34 +1,63 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GatewayConfig } from '../../src/server/config/types.ts'
 
-vi.mock('../../src/server/config/manager.ts', () => ({
-  getConfig: vi.fn(),
-  updateConfig: vi.fn(),
-  CONFIG_PATH: '/tmp/config.json'
-}))
+vi.mock('../../src/server/config/manager.ts', () => {
+  const defaultConfig: GatewayConfig = {
+    port: 4100,
+    host: '127.0.0.1',
+    providers: [],
+    defaults: {
+      completion: null,
+      reasoning: null,
+      background: null,
+      longContextThreshold: 60000
+    },
+    logRetentionDays: 30,
+    modelRoutes: {},
+    storePayloads: true,
+    logLevel: 'info',
+    requestLogging: true
+  }
+  return {
+    getConfig: vi.fn(() => defaultConfig),
+    updateConfig: vi.fn(),
+    onConfigChange: vi.fn(),
+    CONFIG_PATH: '/tmp/config.json'
+  }
+})
 
 vi.mock('../../src/server/logging/queries.ts', () => ({
   queryLogs: vi.fn(),
   getLogDetail: vi.fn(),
   getLogPayload: vi.fn(),
   cleanupLogsBefore: vi.fn(),
+  clearAllLogs: vi.fn(),
   getMetricsOverview: vi.fn(),
   getDailyMetrics: vi.fn(),
   getModelUsageMetrics: vi.fn()
 }))
 
 vi.mock('../../src/server/storage/index.ts', () => ({
-  getDb: vi.fn(() => ({ pragma: vi.fn(() => 0) }))
+  getOne: vi.fn(async (sql: string) => {
+    if (sql === 'PRAGMA page_count') {
+      return { page_count: 0 }
+    }
+    if (sql === 'PRAGMA page_size') {
+      return { page_size: 0 }
+    }
+    return undefined
+  })
 }))
 
 const { default: Fastify } = await import('fastify')
 const { registerAdminRoutes } = await import('../../src/server/routes/admin.ts')
 const { getConfig } = await import('../../src/server/config/manager.ts')
-const { queryLogs, cleanupLogsBefore } = await import('../../src/server/logging/queries.ts')
+const { queryLogs, cleanupLogsBefore, clearAllLogs } = await import('../../src/server/logging/queries.ts')
 
 const mockedGetConfig = vi.mocked(getConfig)
 const mockedQueryLogs = vi.mocked(queryLogs)
 const mockedCleanupLogs = vi.mocked(cleanupLogsBefore)
+const mockedClearAll = vi.mocked(clearAllLogs)
 
 const baseConfig: GatewayConfig = {
   port: 4100,
@@ -61,8 +90,9 @@ describe('admin routes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedGetConfig.mockReturnValue(baseConfig)
-    mockedQueryLogs.mockReturnValue({ total: 0, items: [] })
-    mockedCleanupLogs.mockReturnValue(0)
+    mockedQueryLogs.mockResolvedValue({ total: 0, items: [] })
+    mockedCleanupLogs.mockResolvedValue(0)
+    mockedClearAll.mockResolvedValue({ logs: 0, metrics: 0 })
   })
 
   afterEach(() => {
@@ -70,7 +100,7 @@ describe('admin routes', () => {
   })
 
   it('normalizes query parameters for /api/logs and sets headers', async () => {
-    mockedQueryLogs.mockReturnValueOnce({ total: 42, items: [{ id: 1 }] })
+    mockedQueryLogs.mockResolvedValueOnce({ total: 42, items: [{ id: 1, stream: 1 }] })
 
     const app = await createApp()
     try {
@@ -90,7 +120,7 @@ describe('admin routes', () => {
       })
       expect(response.statusCode).toBe(200)
       expect(response.headers['x-total-count']).toBe('42')
-      expect(response.json()).toEqual({ total: 42, items: [{ id: 1 }] })
+      expect(response.json()).toEqual({ total: 42, items: [{ id: 1, stream: true }] })
     } finally {
       await app.close()
     }
@@ -116,7 +146,7 @@ describe('admin routes', () => {
   it('computes cleanup cutoff based on retention days', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2024-05-01T00:00:00Z'))
-    mockedCleanupLogs.mockReturnValueOnce(3)
+    mockedCleanupLogs.mockResolvedValueOnce(3)
 
     const app = await createApp()
     try {
@@ -125,6 +155,21 @@ describe('admin routes', () => {
       const expectedCutoff = new Date('2024-05-01T00:00:00Z').getTime() - 30 * 24 * 60 * 60 * 1000
       expect(mockedCleanupLogs).toHaveBeenCalledWith(expectedCutoff)
       expect(response.json()).toEqual({ success: true, deleted: 3 })
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('clears all logs and metrics', async () => {
+    mockedClearAll.mockResolvedValueOnce({ logs: 7, metrics: 4 })
+
+    const app = await createApp()
+    try {
+      const response = await app.inject({ method: 'POST', url: '/api/logs/clear' })
+
+      expect(mockedClearAll).toHaveBeenCalledTimes(1)
+      expect(response.statusCode).toBe(200)
+      expect(response.json()).toEqual({ success: true, deleted: 7, metricsCleared: 4 })
     } finally {
       await app.close()
     }

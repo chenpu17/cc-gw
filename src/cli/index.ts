@@ -75,7 +75,9 @@ async function ensureConfigTemplate(port?: string): Promise<boolean> {
       },
       logRetentionDays: 30,
       modelRoutes: {},
-      storePayloads: true
+      storePayloads: true,
+      logLevel: 'info',
+      requestLogging: true
     }
     await fsp.mkdir(path.dirname(CONFIG_FILE), { recursive: true })
     await fsp.writeFile(CONFIG_FILE, JSON.stringify(template, null, 2), 'utf-8')
@@ -174,6 +176,33 @@ async function handleStart(options: { daemon?: boolean; port?: string }): Promis
   if (configCreated) {
     console.log(green(`已在 ${CONFIG_FILE} 生成默认配置`))
     console.log(yellow(`首次启动：待服务就绪后，请在浏览器访问 http://127.0.0.1:${effectivePort}/ui 进行配置。`))
+  }
+
+  if (!options.daemon) {
+    const forwardSignal = (signal: NodeJS.Signals) => {
+      if (!child.killed) {
+        try {
+          child.kill(signal)
+        } catch {}
+      }
+    }
+
+    process.on('SIGINT', forwardSignal)
+    process.on('SIGTERM', forwardSignal)
+
+    await new Promise<void>((resolve) => {
+      child.on('exit', () => resolve())
+      child.on('close', () => resolve())
+    })
+
+    process.off('SIGINT', forwardSignal)
+    process.off('SIGTERM', forwardSignal)
+
+    await removePid()
+
+    if (child.exitCode && child.exitCode !== 0) {
+      process.exitCode = child.exitCode
+    }
   }
 }
 

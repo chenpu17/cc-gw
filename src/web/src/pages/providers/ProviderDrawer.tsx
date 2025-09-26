@@ -27,7 +27,6 @@ interface FormState {
 
 interface FormErrors {
   id?: string
-  label?: string
   baseUrl?: string
   models?: string
 }
@@ -61,6 +60,9 @@ const PROVIDER_TYPE_PRESETS: Record<Exclude<ProviderConfig['type'], undefined> |
   },
   deepseek: {
     baseUrl: 'https://api.deepseek.com/v1'
+  },
+  huawei: {
+    baseUrl: 'https://api.modelarts-maas.com/v1'
   },
   kimi: {
     baseUrl: 'https://api.moonshot.cn/v1'
@@ -149,6 +151,8 @@ export function ProviderDrawer({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDivElement | null>(null)
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const providerIdRef = useRef<HTMLInputElement | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(mode === 'edit')
 
   useEffect(() => {
     if (open) {
@@ -156,8 +160,9 @@ export function ProviderDrawer({
       setErrors({})
       setSubmitError(null)
       setSubmitting(false)
+      setShowAdvanced(mode === 'edit')
     }
-  }, [open, provider])
+  }, [open, provider, mode])
 
   useEffect(() => {
     if (!open) return undefined
@@ -171,15 +176,29 @@ export function ProviderDrawer({
   }, [open, onClose])
 
   useEffect(() => {
-    if (open && closeButtonRef.current) {
+    if (!open) return
+    if (mode === 'create' && providerIdRef.current) {
+      providerIdRef.current.focus()
+      return
+    }
+    if (closeButtonRef.current) {
       closeButtonRef.current.focus()
     }
-  }, [open, form.id])
+  }, [open, mode])
 
   const availableDefaultModels = useMemo(() => form.models.filter((model) => model.id.trim().length > 0), [form.models])
 
   const handleInputChange = (field: keyof FormState) => (value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleProviderIdChange = (value: string) => {
+    setForm((prev) => {
+      const shouldSyncLabel =
+        !showAdvanced || prev.label.trim().length === 0 || prev.label === prev.id
+      const nextLabel = shouldSyncLabel ? value : prev.label
+      return { ...prev, id: value, label: nextLabel }
+    })
   }
 
   const handleTypeChange = (value: ProviderConfig['type']) => {
@@ -216,6 +235,26 @@ export function ProviderDrawer({
       const nextModels = [...prev.models]
       nextModels[index] = { ...nextModels[index], ...patch }
       return { ...prev, models: nextModels }
+    })
+  }
+
+  const handleModelIdChange = (index: number, value: string) => {
+    setForm((prev) => {
+      const nextModels = [...prev.models]
+      const current = nextModels[index]
+      if (!current) return prev
+      const shouldSyncLabel =
+        !showAdvanced || !current.label || current.label === current.id
+      const nextModel: FormModel = {
+        ...current,
+        id: value,
+        label: shouldSyncLabel ? value : current.label
+      }
+      nextModels[index] = nextModel
+
+      const nextDefault = prev.defaultModel === current.id ? value : prev.defaultModel
+
+      return { ...prev, models: nextModels, defaultModel: nextDefault }
     })
   }
 
@@ -256,7 +295,6 @@ export function ProviderDrawer({
   const validate = (): boolean => {
     const nextErrors: FormErrors = {}
     const trimmedId = form.id.trim()
-    const trimmedLabel = form.label.trim()
     const trimmedUrl = form.baseUrl.trim()
 
     if (mode === 'create') {
@@ -269,10 +307,6 @@ export function ProviderDrawer({
 
     if (mode === 'edit' && trimmedId.length === 0) {
       nextErrors.id = t('providers.drawer.errors.idRequired')
-    }
-
-    if (trimmedLabel.length === 0) {
-      nextErrors.label = t('providers.drawer.errors.labelRequired')
     }
 
     if (trimmedUrl.length === 0) {
@@ -330,7 +364,7 @@ export function ProviderDrawer({
 
     return {
       id: form.id.trim(),
-      label: form.label.trim(),
+      label: form.label.trim() || form.id.trim(),
       baseUrl: form.baseUrl.trim(),
       apiKey: form.apiKey.trim() || undefined,
       type: form.type ?? 'custom',
@@ -396,12 +430,24 @@ export function ProviderDrawer({
             <div id="provider-basic-fields" className="sr-only">
               {t('providers.drawer.description')}
             </div>
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((prev) => !prev)}
+                className="rounded-md border border-slate-200 px-3 py-1 text-xs transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+              >
+                {showAdvanced
+                  ? t('providers.drawer.fields.hideAdvanced')
+                  : t('providers.drawer.fields.showAdvanced')}
+              </button>
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm">
                 <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.id')}</span>
                 <input
                   value={form.id}
-                  onChange={(event) => handleInputChange('id')(event.target.value)}
+                  ref={providerIdRef}
+                  onChange={(event) => handleProviderIdChange(event.target.value)}
                   disabled={!isCreate}
                   placeholder={t('providers.drawer.fields.idPlaceholder')}
                   className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
@@ -409,17 +455,17 @@ export function ProviderDrawer({
                 />
                 {errors.id ? <span className="text-xs text-red-500">{errors.id}</span> : null}
               </label>
-              <label className="flex flex-col gap-2 text-sm">
-                <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.label')}</span>
-                <input
-                  value={form.label}
-                  onChange={(event) => handleInputChange('label')(event.target.value)}
-                  placeholder={t('providers.drawer.fields.labelPlaceholder')}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                  aria-invalid={Boolean(errors.label)}
-                />
-                {errors.label ? <span className="text-xs text-red-500">{errors.label}</span> : null}
-              </label>
+              {showAdvanced ? (
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.label')}</span>
+                  <input
+                    value={form.label}
+                    onChange={(event) => handleInputChange('label')(event.target.value)}
+                    placeholder={t('providers.drawer.fields.labelPlaceholder')}
+                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
+                  />
+                </label>
+              ) : null}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -443,6 +489,7 @@ export function ProviderDrawer({
                 >
                   <option value="openai">OpenAI</option>
                   <option value="deepseek">DeepSeek</option>
+                  <option value="huawei">华为云</option>
                   <option value="kimi">Kimi</option>
                   <option value="anthropic">Anthropic (Claude)</option>
                   <option value="custom">Custom</option>
@@ -480,73 +527,77 @@ export function ProviderDrawer({
 
             {errors.models ? <p className="text-xs text-red-500">{errors.models}</p> : null}
 
-            <div className="space-y-4">
-              {form.models.map((model, index) => (
-                <div
-                  key={model._key}
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/40"
-                >
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="flex flex-col gap-2 text-sm">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.modelId')}</span>
-                      <input
-                        value={model.id}
-                        onChange={(event) => handleModelChange(index, { id: event.target.value })}
-                        placeholder={t('providers.drawer.fields.modelIdPlaceholder')}
-                        className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-2 text-sm">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.modelLabel')}</span>
-                      <input
-                        value={model.label ?? ''}
-                        onChange={(event) => handleModelChange(index, { label: event.target.value })}
-                        placeholder={t('providers.drawer.fields.modelLabelPlaceholder')}
-                        className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="flex flex-col gap-2 text-sm">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.maxTokens')}</span>
-                      <input
-                        type="number"
-                        min={1}
-                        value={model.maxTokens ?? ''}
-                        onChange={(event) =>
-                          handleModelChange(index, {
-                            maxTokens: event.target.value ? Number(event.target.value) : undefined
-                          })
-                        }
-                        placeholder="128000"
-                        className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                      />
-                    </label>
-                    <div className="flex flex-col gap-2 text-sm">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.capabilities')}</span>
-                      <div className="flex flex-wrap gap-3">
-                        <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+              <div className="space-y-4">
+                {form.models.map((model, index) => (
+                  <div
+                    key={model._key}
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/40"
+                  >
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="flex flex-col gap-2 text-sm">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.modelId')}</span>
+                        <input
+                          value={model.id}
+                          onChange={(event) => handleModelIdChange(index, event.target.value)}
+                          placeholder={t('providers.drawer.fields.modelIdPlaceholder')}
+                          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
+                        />
+                      </label>
+                      {showAdvanced ? (
+                        <label className="flex flex-col gap-2 text-sm">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.modelLabel')}</span>
                           <input
-                            type="checkbox"
-                            checked={Boolean(model.capabilities?.thinking)}
-                            onChange={() => handleCapabilityToggle(index, 'thinking')}
-                            className="h-4 w-4 rounded border-slate-300"
+                            value={model.label ?? ''}
+                            onChange={(event) => handleModelChange(index, { label: event.target.value })}
+                            placeholder={t('providers.drawer.fields.modelLabelPlaceholder')}
+                            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
                           />
-                          {t('providers.drawer.fields.capabilityThinking')}
                         </label>
-                        <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(model.capabilities?.tools)}
-                            onChange={() => handleCapabilityToggle(index, 'tools')}
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                          {t('providers.drawer.fields.capabilityTools')}
-                        </label>
-                      </div>
+                      ) : null}
                     </div>
-                  </div>
+
+                    {showAdvanced ? (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <label className="flex flex-col gap-2 text-sm">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.maxTokens')}</span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={model.maxTokens ?? ''}
+                            onChange={(event) =>
+                              handleModelChange(index, {
+                                maxTokens: event.target.value ? Number(event.target.value) : undefined
+                              })
+                            }
+                            placeholder="128000"
+                            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
+                          />
+                        </label>
+                        <div className="flex flex-col gap-2 text-sm">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.capabilities')}</span>
+                          <div className="flex flex-wrap gap-3">
+                            <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(model.capabilities?.thinking)}
+                                onChange={() => handleCapabilityToggle(index, 'thinking')}
+                                className="h-4 w-4 rounded border-slate-300"
+                              />
+                              {t('providers.drawer.fields.capabilityThinking')}
+                            </label>
+                            <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(model.capabilities?.tools)}
+                                onChange={() => handleCapabilityToggle(index, 'tools')}
+                                className="h-4 w-4 rounded border-slate-300"
+                              />
+                              {t('providers.drawer.fields.capabilityTools')}
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
 
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
                     <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">

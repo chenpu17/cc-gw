@@ -5,6 +5,7 @@ export interface LogRecord {
   provider: string
   model: string
   client_model: string | null
+  stream: boolean
   latency_ms: number | null
   status_code: number | null
   input_tokens: number | null

@@ -203,46 +203,20 @@ export default function DashboardPage() {
     }
   }, [daily, t])
 
-  const modelOption = useMemo<EChartsOption>(() => {
+  const modelRequestsOption = useMemo<EChartsOption>(() => {
     const categories = models.map((item) => `${item.provider}/${item.model}`)
     const requestLabel = t('dashboard.charts.barRequests')
-    const ttftLabel = t('dashboard.charts.ttftLabel')
-    const tpotLabel = t('dashboard.charts.tpotLabel')
+    const inputLabel = t('dashboard.charts.lineInput')
+    const outputLabel = t('dashboard.charts.lineOutput')
 
     return {
-      tooltip: {
-        trigger: 'axis',
-        formatter(params) {
-          if (!Array.isArray(params) || params.length === 0) return ''
-          const index = params[0]?.dataIndex ?? 0
-          const metric = models[index]
-          if (!metric) return ''
-          const lines = [
-            `<strong>${categories[index]}</strong>`,
-            `${requestLabel}: ${metric.requests.toLocaleString()}`,
-            `${ttftLabel}: ${formatLatencyValue(metric.avgTtftMs, t('common.units.ms'))}`,
-            `${tpotLabel}: ${formatLatencyValue(metric.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}`
-          ]
-          return lines.join('<br/>')
-        }
-      },
-      legend: { data: [requestLabel, ttftLabel, tpotLabel] },
+      tooltip: { trigger: 'axis' },
+      legend: { data: [requestLabel, inputLabel, outputLabel] },
       grid: { left: 50, right: 40, top: 40, bottom: 70 },
-      xAxis: {
-        type: 'category',
-        data: categories,
-        axisLabel: { rotate: 30 }
-      },
+      xAxis: { type: 'category', data: categories, axisLabel: { rotate: 30 } },
       yAxis: [
-        {
-          type: 'value',
-          name: requestLabel
-        },
-        {
-          type: 'value',
-          name: t('dashboard.charts.axisLatency'),
-          position: 'right'
-        }
+        { type: 'value', name: requestLabel },
+        { type: 'value', name: t('dashboard.charts.axisTokens'), position: 'right' }
       ],
       series: [
         {
@@ -253,19 +227,76 @@ export default function DashboardPage() {
           yAxisIndex: 0
         },
         {
-          name: ttftLabel,
+          name: inputLabel,
           type: 'line',
           yAxisIndex: 1,
           smooth: true,
-          data: models.map((item) => item.avgTtftMs ?? 0),
+          data: models.map((item) => item.inputTokens ?? 0),
           itemStyle: { color: '#22c55e' }
         },
         {
-          name: tpotLabel,
+          name: outputLabel,
           type: 'line',
           yAxisIndex: 1,
           smooth: true,
-          lineStyle: { type: 'dashed' },
+          data: models.map((item) => item.outputTokens ?? 0),
+          itemStyle: { color: '#f97316' }
+        }
+      ]
+    }
+  }, [models, t])
+
+  const ttftOption = useMemo<EChartsOption>(() => {
+    const categories = models.map((item) => `${item.provider}/${item.model}`)
+    const ttftLabel = t('dashboard.charts.ttftLabel')
+
+    return {
+      tooltip: {
+        trigger: 'axis',
+        formatter(params) {
+          if (!Array.isArray(params) || params.length === 0) return ''
+          const index = params[0]?.dataIndex ?? 0
+          const metric = models[index]
+          if (!metric) return ''
+          return `<strong>${categories[index]}</strong><br/>${ttftLabel}: ${formatLatencyValue(metric.avgTtftMs, t('common.units.ms'))}`
+        }
+      },
+      grid: { left: 50, right: 30, top: 40, bottom: 70 },
+      xAxis: { type: 'category', data: categories, axisLabel: { rotate: 30 } },
+      yAxis: { type: 'value', name: t('dashboard.charts.ttftAxis') },
+      series: [
+        {
+          name: ttftLabel,
+          type: 'bar',
+          data: models.map((item) => item.avgTtftMs ?? 0),
+          itemStyle: { color: '#2563eb' }
+        }
+      ]
+    }
+  }, [models, t])
+
+  const tpotOption = useMemo<EChartsOption>(() => {
+    const categories = models.map((item) => `${item.provider}/${item.model}`)
+    const tpotLabel = t('dashboard.charts.tpotLabel')
+
+    return {
+      tooltip: {
+        trigger: 'axis',
+        formatter(params) {
+          if (!Array.isArray(params) || params.length === 0) return ''
+          const index = params[0]?.dataIndex ?? 0
+          const metric = models[index]
+          if (!metric) return ''
+          return `<strong>${categories[index]}</strong><br/>${tpotLabel}: ${formatLatencyValue(metric.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}`
+        }
+      },
+      grid: { left: 50, right: 30, top: 40, bottom: 70 },
+      xAxis: { type: 'category', data: categories, axisLabel: { rotate: 30 } },
+      yAxis: { type: 'value', name: t('dashboard.charts.tpotAxis') },
+      series: [
+        {
+          name: tpotLabel,
+          type: 'bar',
           data: models.map((item) => item.avgTpotMs ?? 0),
           itemStyle: { color: '#f97316' }
         }
@@ -341,12 +372,35 @@ export default function DashboardPage() {
           description={t('dashboard.charts.requestsDesc')}
           loading={dailyQuery.isPending}
           option={dailyOption}
+          empty={!daily.length}
+          emptyText={t('dashboard.charts.empty')}
         />
         <ChartCard
           title={t('dashboard.charts.modelTitle')}
           description={t('dashboard.charts.modelDesc')}
           loading={modelUsageQuery.isPending}
-          option={modelOption}
+          option={modelRequestsOption}
+          empty={!models.length}
+          emptyText={t('dashboard.charts.empty')}
+        />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <ChartCard
+          title={t('dashboard.charts.ttftTitle')}
+          description={t('dashboard.charts.ttftDesc')}
+          loading={modelUsageQuery.isPending}
+          option={ttftOption}
+          empty={!models.some((metric) => metric.avgTtftMs != null && metric.avgTtftMs > 0)}
+          emptyText={t('dashboard.charts.ttftEmpty')}
+        />
+        <ChartCard
+          title={t('dashboard.charts.tpotTitle')}
+          description={t('dashboard.charts.tpotDesc')}
+          loading={modelUsageQuery.isPending}
+          option={tpotOption}
+          empty={!models.some((metric) => metric.avgTpotMs != null && metric.avgTpotMs > 0)}
+          emptyText={t('dashboard.charts.tpotEmpty')}
         />
       </div>
 
@@ -373,12 +427,16 @@ function ChartCard({
   title,
   description,
   option,
-  loading
+  loading,
+  empty,
+  emptyText
 }: {
   title: string
   description: string
   option: EChartsOption
   loading?: boolean
+  empty?: boolean
+  emptyText?: string
 }) {
   const { t } = useTranslation()
   return (
@@ -389,6 +447,10 @@ function ChartCard({
       </div>
       {loading ? (
         <div className="flex h-60 items-center justify-center text-sm text-slate-400">{t('common.loadingShort')}</div>
+      ) : empty ? (
+        <div className="flex h-60 items-center justify-center text-sm text-slate-400">
+          {emptyText ?? t('dashboard.charts.empty')}
+        </div>
       ) : (
         <ReactECharts option={option} style={{ height: 260 }} notMerge lazyUpdate theme={undefined} />
       )}

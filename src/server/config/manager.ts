@@ -4,6 +4,15 @@ import os from 'node:os'
 import { EventEmitter } from 'node:events'
 import type { GatewayConfig, ModelRouteMap } from './types.js'
 
+const LOG_LEVELS = new Set<NonNullable<GatewayConfig['logLevel']>>([
+  'fatal',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace'
+])
+
 export const HOME_DIR = path.join(os.homedir(), '.cc-gw')
 export const CONFIG_PATH = path.join(HOME_DIR, 'config.json')
 
@@ -62,6 +71,12 @@ function parseConfig(raw: string): GatewayConfig {
       sanitized[trimmedKey] = trimmedValue
     }
     data.modelRoutes = sanitized
+  }
+  if (typeof data.logLevel !== 'string' || !LOG_LEVELS.has(data.logLevel as any)) {
+    data.logLevel = 'info'
+  }
+  if (typeof data.requestLogging !== 'boolean') {
+    data.requestLogging = true
   }
   return data as GatewayConfig
 }

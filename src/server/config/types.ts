@@ -16,7 +16,7 @@ export interface ProviderConfig {
   defaultModel?: string
   models?: ProviderModelConfig[]
   extraHeaders?: Record<string, string>
-  type?: 'openai' | 'deepseek' | 'kimi' | 'anthropic' | 'custom'
+  type?: 'openai' | 'deepseek' | 'kimi' | 'anthropic' | 'huawei' | 'custom'
 }
 
 export interface DefaultsConfig {
@@ -36,4 +36,6 @@ export interface GatewayConfig {
   logRetentionDays?: number
   modelRoutes?: ModelRouteMap
   storePayloads?: boolean
+  logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
+  requestLogging?: boolean
 }
