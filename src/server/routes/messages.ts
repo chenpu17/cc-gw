@@ -547,6 +547,10 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             : estimateTextTokens('', target.modelId)
         }
 
+        if (!firstTokenAt) {
+          firstTokenAt = requestStart
+        }
+
         const totalLatencyMs = Date.now() - requestStart
         const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
         if (usageCached === null) {
@@ -834,6 +838,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
       if (!completed) {
         reply.raw.end()
+        if (!firstTokenAt) {
+          firstTokenAt = requestStart
+        }
         const totalLatencyMs = Date.now() - requestStart
         const fallbackPrompt = usagePrompt || target.tokenEstimate || estimateTokens(normalized, target.modelId)
         const fallbackCompletion = usageCompletion || estimateTextTokens(accumulatedContent, target.modelId)
