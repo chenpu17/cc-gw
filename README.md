@@ -13,7 +13,7 @@ cc-gw 是一个面向 Claude Code 与同类客户端的本地多模型网关，�
 
 | 模块 | 说明 |
 | ---- | ---- |
-| `@cc-gw/server` | Fastify 服务，实现协议转换、模型路由、Provider 适配与日志存储 |
+| `@cc-gw/server` | Fastify 服务，实现协议转换、模型路由、Provider 适配与日志存储（支持 Anthropic 原生 payload/headers 透传与缓存统计） |
 | `@cc-gw/web` | React + Vite Web UI，包含仪表盘、日志面板、模型管理、系统设置 |
 | `@cc-gw/cli` | CLI 守护工具，封装 start/stop/restart/status 并托管 PID/日志 |
 
@@ -107,6 +107,12 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 - `requestLogging`：是否输出每个 HTTP 请求的访问日志，关闭后终端更加安静。
 - 推荐通过 Web UI 的“模型管理 / 系统设置”在线编辑并热加载，无需手工修改文件。
 
+#### Anthropic Provider 额外说明
+
+- 当 Provider `type` 设置为 `anthropic` 时，网关会保留 Claude Code 发来的完整 payload，并将其原样转发到 `<baseUrl>/v1/messages`，无需转换工具调用或 metadata 字段。
+- 所有自定义 Header（如 `x-stainless-*`、`anthropic-beta`、`anthropic-dangerous-direct-browser-access`）会自动透传到下游，确保 Claude Code 的诊断与调试能力不受影响。
+- usage 统计会解析 `cache_read_input_tokens` / `cache_creation_input_tokens`，从而在日志与 Web UI 的 Token 指标中显示缓存命中或写入量；Moonshot / Anthropic 若未返回上述字段，则 `cached` 会继续显示为空。
+
 ### 环境变量
 
 | 变量 | 说明 |
@@ -198,6 +204,7 @@ claude "help me review this file"
 ### Configuration Snapshot
 
 - Providers include `type`, `baseUrl`, `apiKey`, and `models` descriptions.
+- When `type` is `anthropic`, cc-gw forwards the original Claude payload and all headers to `<baseUrl>/v1/messages`, so tool calls/metadata remain intact.
 - Model routes use `providerId:modelId` syntax to remap Claude requests.
 - `storePayloads` toggles compressed body retention; disable to keep only metadata.
 - `logLevel` adjusts Fastify/Pino verbosity (`fatal` → `trace`).
@@ -207,7 +214,7 @@ claude "help me review this file"
 ### Observability & Storage
 
 - SQLite file under `~/.cc-gw/data/gateway.db` tracks logs and aggregated metrics.
-- Dashboard surfaces per-model TTFT/TPOT, cache hits, and DB size.
+- Dashboard surfaces per-model TTFT/TPOT, cache hits（including Anthropic `cache_read_input_tokens` / `cache_creation_input_tokens`）, and DB size.
 - Logs can be filtered/exported/cleaned directly from the UI.
 
 ### CLI Reference

@@ -7,10 +7,10 @@
 ## 支持特性 Supported Capabilities
 | 功能 Feature | 描述 Description |
 |--------------|------------------|
-| 协议转换 Protocol adaptation | 标准化 Claude payload，构建 OpenAI、Anthropic、Kimi K2 兼容请求，并保持工具调用/思考模式。 |
+| 协议转换 Protocol adaptation | 标准化 Claude payload，构建 OpenAI、Anthropic、Kimi K2 兼容请求，并保持工具调用/思考模式；Anthropic 分支支持原样透传 payload/headers。 |
 | 模型路由 Model routing | 依据 `modelRoutes` 与默认策略在 Provider/模型之间切换，支持长上下文与推理模型。 |
-| Provider 适配 Provider adapters | 内置 OpenAI-compatible、Anthropic Messages、Kimi 连接器，统一鉴权、超时与错误映射。 |
-| 日志与指标 Logging & metrics | SQLite 记录请求明细、每日 token 统计、缓存命中；Web UI 支持筛选/导出/清理。 |
+| Provider 适配 Provider adapters | 内置 OpenAI-compatible、Anthropic Messages、Kimi 连接器，统一鉴权、超时与错误映射；Anthropic 适配器自动拼接 `/v1/messages` 并处理 `x-api-key`。 |
+| 日志与指标 Logging & metrics | SQLite 记录请求明细、每日 token 统计、缓存命中（含 `cache_read_input_tokens` / `cache_creation_input_tokens`）；Web UI 支持筛选/导出/清理。 |
 | Web 控制台 Web console | React + Vite 仪表盘、日志、模型管理、设置页面，支持中英双语与暗黑模式。 |
 | CLI 守护 CLI daemon | `cc-gw` 命令封装 start/stop/restart/status，`--daemon` 输出 PID 与日志文件。 |
 | Token 估算 Token accounting | 下游缺少 usage 时使用 `tiktoken` 估算输入/输出，并透传缓存命中数。 |
@@ -27,8 +27,8 @@
 
 ## 模块设计 Module Breakdown
 ### 协议层 Protocol Layer
-- 中文：`normalizeClaudePayload` 合并 system/developer、工具调用、思考块；`buildProviderBody` / `buildAnthropicBody` 生成目标 Provider 请求体，保留 `cache_control`、工具参数。
-- English: normalization merges Claude messages, preserving tool calls; provider builders craft OpenAI-style or Anthropic messages with cache-control hints intact.
+- 中文：`normalizeClaudePayload` 合并 system/developer、工具调用、思考块；OpenAI/Kimi 通过 `buildProviderBody` 生成目标请求体，Anthropic 分支则克隆原始 payload，确保 metadata、parallel tool calls 与缓存提示完整透传。
+- English: normalization merges Claude messages, preserving tool calls; OpenAI/Kimi use `buildProviderBody`, while the Anthropic path clones the original payload so metadata and cache hints reach upstream unchanged.
 
 ### 路由策略 Routing Strategy
 - 中文：`resolveRoute` 结合 `modelRoutes`、默认模型与 `longContextThreshold`，并通过 `estimateTokens` 预估 token，决定下游 Provider/模型。
@@ -39,8 +39,8 @@
 - English: adapters (OpenAI-compatible, Anthropic, Kimi) share a common interface, making it easy to plug in more providers.
 
 ### 日志与指标 Logging & Metrics
-- 中文：请求到达时调用 `recordLog`，完成后 `updateLogTokens` 写入 token/TTFT/TPOT 等指标，并由 `updateMetrics` 累加日度统计；流式响应尾包会提取 usage（含缓存命中）。
-- English: lifecycle hooks persist logs (tokens plus TTFT/TPOT) into SQLite before rolling up daily aggregates; the Web UI consumes `/api/logs` & `/api/stats` endpoints.
+- 中文：请求到达时调用 `recordLog`，完成后 `updateLogTokens` 写入 token/TTFT/TPOT 等指标，并由 `updateMetrics` 累加日度统计；流式响应尾包会解析 usage（含 Anthropic `cache_read_input_tokens` / `cache_creation_input_tokens`）。
+- English: lifecycle hooks persist logs (tokens plus TTFT/TPOT) into SQLite before rolling up daily aggregates; the streaming tail now inspects Anthropic cache fields before the Web UI surfaces them.
 
 ### Web UI
 - 中文：包含 Dashboard（统计，含模型级别的 TTFT/TPOT 指标）、Logs（筛选、分页、抽屉详情）、Model Management（Provider CRUD、连通性测试、路由映射）、Settings（端口、日志策略、日志级别/访问日志开关、配置路径）。

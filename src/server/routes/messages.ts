@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { normalizeClaudePayload } from '../protocol/normalize.js'
 import { resolveRoute } from '../router/index.js'
-import { buildProviderBody, buildAnthropicBody } from '../protocol/toProvider.js'
+import { buildProviderBody } from '../protocol/toProvider.js'
 import { getConnector } from '../providers/registry.js'
 import { finalizeLog, recordLog, updateLogTokens, updateMetrics, upsertLogPayload } from '../logging/logger.js'
 import { estimateTokens, estimateTextTokens } from '../protocol/tokenizer.js'
@@ -136,7 +136,21 @@ function resolveCachedTokens(usage: any): number | null {
   if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
     return promptDetails.cached_tokens
   }
+  if (typeof usage.cache_read_input_tokens === 'number') {
+    return usage.cache_read_input_tokens
+  }
+  if (typeof usage.cache_creation_input_tokens === 'number') {
+    return usage.cache_creation_input_tokens
+  }
   return null
+}
+
+function cloneOriginalPayload<T>(value: T): T {
+  const structuredCloneFn = (globalThis as any).structuredClone as (<U>(input: U) => U) | undefined
+  if (structuredCloneFn) {
+    return structuredCloneFn(value)
+  }
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
 function buildClaudeResponse(openAI: any, model: string) {
@@ -185,6 +199,18 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       return { error: 'Invalid request body' }
     }
 
+    const rawUrl = typeof request.raw?.url === 'string' ? request.raw.url : request.url ?? ''
+    let querySuffix: string | null = null
+    if (typeof rawUrl === 'string' && rawUrl.includes('?')) {
+      querySuffix = rawUrl.slice(rawUrl.indexOf('?'))
+    } else if (typeof (request as any).querystring === 'string' && (request as any).querystring.length > 0) {
+      querySuffix = `?${(request as any).querystring}`
+    }
+
+    if (querySuffix) {
+      console.info(`[cc-gw] inbound url ${rawUrl} query ${querySuffix}`)
+    }
+
     const normalized = normalizeClaudePayload(payload)
 
     const requestedModel = typeof payload.model === 'string' ? payload.model : undefined
@@ -206,19 +232,48 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
     const toolChoice = supportsTools ? payload.tool_choice : undefined
     const overrideTools = supportsTools ? payload.tools : undefined
 
-    const providerBody = providerType === 'anthropic'
-      ? buildAnthropicBody(normalizedForProvider, {
-          maxTokens: maxTokensOverride,
-          temperature: payload.temperature,
-          toolChoice,
-          overrideTools
-        })
-      : buildProviderBody(normalizedForProvider, {
-          maxTokens: maxTokensOverride,
-          temperature: payload.temperature,
-          toolChoice,
-          overrideTools
-        })
+    let providerBody: any
+    let providerHeaders: Record<string, string> | undefined
+    if (providerType === 'anthropic') {
+      providerBody = cloneOriginalPayload(payload)
+      providerBody.model = target.modelId
+      if (normalized.stream !== undefined) {
+        providerBody.stream = normalized.stream
+      }
+      const collected: Record<string, string> = {}
+      const skip = new Set(['content-length', 'host', 'connection', 'transfer-encoding'])
+      const sourceHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
+      for (const [headerKey, headerValue] of Object.entries(sourceHeaders)) {
+        const lower = headerKey.toLowerCase()
+        if (skip.has(lower)) continue
+
+        let value: string | undefined
+        if (typeof headerValue === 'string') {
+          value = headerValue
+        } else if (Array.isArray(headerValue)) {
+          value = headerValue.find((item): item is string => typeof item === 'string' && item.length > 0)
+        }
+
+        if (value && value.length > 0) {
+          collected[lower] = value
+        }
+      }
+
+      if (!('content-type' in collected)) {
+        collected['content-type'] = 'application/json'
+      }
+
+      if (Object.keys(collected).length > 0) {
+        providerHeaders = collected
+      }
+    } else {
+      providerBody = buildProviderBody(normalizedForProvider, {
+        maxTokens: maxTokensOverride,
+        temperature: payload.temperature,
+        toolChoice,
+        overrideTools
+      })
+    }
 
     const connector = getConnector(target.providerId)
     const requestStart = Date.now()
@@ -286,13 +341,18 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       const upstream = await connector.send({
         model: target.modelId,
         body: providerBody,
-        stream: normalized.stream
+        stream: normalized.stream,
+        query: querySuffix,
+        headers: providerHeaders
       })
 
       if (upstream.status >= 400) {
         reply.code(upstream.status)
         const bodyText = upstream.body ? await new Response(upstream.body).text() : ''
         const errorText = bodyText || 'Upstream provider error'
+        console.warn(
+          `[cc-gw][provider:${target.providerId}] upstream error status=${upstream.status} body=${bodyText || '<empty>'}`
+        )
         if (storePayloads) {
           await upsertLogPayload(logId, { response: bodyText || null })
         }
@@ -411,6 +471,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       reply.header('content-type', 'text/event-stream; charset=utf-8')
       reply.header('cache-control', 'no-cache, no-store, must-revalidate')
       reply.header('connection', 'keep-alive')
+      reply.hijack()
       reply.raw.writeHead(200)
 
       if (providerType === 'anthropic') {
@@ -422,6 +483,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         let usageCompletion = 0
         let usageCached: number | null = null
         let accumulatedContent = ''
+        let firstTokenAt: number | null = null
+        let lastUsagePayload: any = null
 
         while (true) {
           const { value, done } = await reader.read()
@@ -445,12 +508,17 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
                   if (data?.usage) {
                     usagePrompt = data.usage.input_tokens ?? usagePrompt
                     usageCompletion = data.usage.output_tokens ?? usageCompletion
-                    if (typeof data.usage.cached_tokens === 'number') {
-                      usageCached = data.usage.cached_tokens
+                    const maybeCached = resolveCachedTokens(data.usage)
+                    if (maybeCached !== null) {
+                      usageCached = maybeCached
                     }
+                    lastUsagePayload = data.usage
                   }
                   const deltaText = data?.delta?.text
                   if (typeof deltaText === 'string') {
+                    if (!firstTokenAt && deltaText.length > 0) {
+                      firstTokenAt = Date.now()
+                    }
                     accumulatedContent += deltaText
                   }
                 } catch (error) {
@@ -481,6 +549,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
         const totalLatencyMs = Date.now() - requestStart
         const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
+        if (usageCached === null) {
+          usageCached = resolveCachedTokens(lastUsagePayload)
+        }
         logUsage('stream.anthropic.final', {
           input: usagePrompt,
           output: usageCompletion,
