@@ -41,6 +41,27 @@ pnpm --filter @cc-gw/web build
 pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 ```
 
+> ✅ 首次启动后推荐直接使用 Web 管理台完成 Provider、模型、日志等设置；仅在自动化或高级场景下再手动编辑配置文件。
+
+## Web 管理台
+
+强烈建议以 Web 管理台作为主要的配置入口，可视化界面涵盖仪表盘、请求日志、模型管理与系统设置，所见即所得，避免手工改动 JSON 引入错误。
+
+访问 `http://<host>:<port>/ui`，主要页面：
+
+- **Dashboard**：展示请求量、Token 使用、缓存命中、各模型 TTFT（Time To First Token）/TPOT（Total Processing Time）、SQLite 数据库占用。
+- **请求日志**：多条件筛选（时间、Provider、模型、状态），查看压缩日志详情，支持分页导出与清理。
+- **模型管理**：维护 Provider 列表、预置模型、路由策略；一键测试连通性（发送诊断 PROMPT）。
+- **系统设置**：端口、日志保留策略、是否存储请求 payload、日志级别与访问日志开关、日志清理工具。
+
+UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供键盘可达性（Skip Link、焦点管理）。
+
+#### 界面预览
+
+![Dashboard Overview](docs/images/dashboard.png)
+
+![Request Logs](docs/images/logs.png)
+
 ### 连接 Claude Code
 1. 启动 cc-gw 并确认配置中 `host` 为 `127.0.0.1`，`port` 与 CLI 启动一致。
 2. 在安装了 Claude Code 的终端设置环境变量：
@@ -52,7 +73,7 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 
 ## 配置说明
 
-配置文件位于 `~/.cc-gw/config.json`：
+大多数场景请通过 Web 管理台调整设置，以下仅作为 `~/.cc-gw/config.json` 结构参考，便于脚本化或排查：
 
 ```json
 {
@@ -120,17 +141,6 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 | `PORT` | CLI 启动时临时覆盖监听端口 |
 | `CC_GW_UI_ROOT` | 指定 Web UI 静态目录（默认自动检测 `@cc-gw/web` build 结果） |
 | `CC_GW_DEBUG_ENDPOINTS` | 设为 `1` 可在日志中输出下游请求 URL |
-
-## Web 管理台
-
-访问 `http://<host>:<port>/ui`，主要页面：
-
-- **Dashboard**：展示请求量、Token 使用、缓存命中、各模型 TTFT（Time To First Token）/TPOT（Total Processing Time）、SQLite 数据库占用。
-- **请求日志**：多条件筛选（时间、Provider、模型、状态），查看压缩日志详情，支持分页导出与清理。
-- **模型管理**：维护 Provider 列表、预置模型、路由策略；一键测试连通性（发送诊断 PROMPT）。
-- **系统设置**：端口、日志保留策略、是否存储请求 payload、日志级别与访问日志开关、日志清理工具。
-
-UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供键盘可达性（Skip Link、焦点管理）。
 
 ## CLI 守护
 
