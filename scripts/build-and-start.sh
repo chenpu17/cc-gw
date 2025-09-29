@@ -18,4 +18,4 @@ echo "[cc-gw] Stopping existing gateway (if running)..."
 pnpm --filter @cc-gw/cli exec node dist/index.js stop || true
 
 echo "[cc-gw] Starting gateway..."
-pnpm --filter @cc-gw/cli exec node dist/index.js start "$@"
+pnpm --filter @cc-gw/cli exec node dist/index.js start --foreground "$@"

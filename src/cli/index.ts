@@ -125,7 +125,7 @@ async function isServiceRunning(): Promise<{ running: boolean; pid?: number }> {
   return { running: false }
 }
 
-async function handleStart(options: { daemon?: boolean; port?: string }): Promise<void> {
+async function handleStart(options: { daemon?: boolean; port?: string; foreground?: boolean }): Promise<void> {
   await ensureHomeDir()
   const { running, pid } = await isServiceRunning()
   if (running && pid) {
@@ -148,10 +148,12 @@ async function handleStart(options: { daemon?: boolean; port?: string }): Promis
     }
   }
 
+  const daemonMode = options.foreground ? false : options.daemon !== false
+
   const spawnOptions: any = {
     env,
-    detached: Boolean(options.daemon),
-    stdio: options.daemon
+    detached: daemonMode,
+    stdio: daemonMode
       ? [
           'ignore',
           fs.openSync(LOG_FILE, 'a'),
@@ -167,7 +169,7 @@ async function handleStart(options: { daemon?: boolean; port?: string }): Promis
 
   await writePid(child.pid)
 
-  if (options.daemon) {
+  if (daemonMode) {
     child.unref()
     console.log(green(`cc-gw 已以守护进程方式启动 (pid: ${child.pid})`))
   }
@@ -178,7 +180,11 @@ async function handleStart(options: { daemon?: boolean; port?: string }): Promis
     console.log(yellow(`首次启动：待服务就绪后，请在浏览器访问 http://127.0.0.1:${effectivePort}/ui 进行配置。`))
   }
 
-  if (!options.daemon) {
+  if (daemonMode) {
+    console.log(green(`Web UI 已就绪: http://127.0.0.1:${effectivePort}/ui`))
+  }
+
+  if (!daemonMode) {
     const forwardSignal = (signal: NodeJS.Signals) => {
       if (!child.killed) {
         try {
@@ -247,7 +253,8 @@ program
 program
   .command('start')
   .description('启动 cc-gw 服务')
-  .option('--daemon', '以守护进程方式运行')
+  .option('--daemon', '以守护进程方式运行（默认）')
+  .option('--foreground', '以前台模式运行并保持控制台输出')
   .option('--port <port>', '指定服务监听端口')
   .action(async (options) => {
     try {
