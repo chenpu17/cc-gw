@@ -108,7 +108,7 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
     "longContextThreshold": 60000
   },
   "modelRoutes": {
-    "claude-sonnet-4-20250514": "kimi:kimi-k2-0905-preview",
+    "claude-sonnet-4-5-20250929": "kimi:kimi-k2-0905-preview",
     "claude-opus-4-1-20250805": "anthropic:claude-3-5-sonnet-latest"
   },
   "logRetentionDays": 30,

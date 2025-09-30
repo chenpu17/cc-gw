@@ -69,8 +69,14 @@ const PROVIDER_TYPE_PRESETS: Record<Exclude<ProviderConfig['type'], undefined> |
   },
   anthropic: {
     baseUrl: 'https://api.anthropic.com/v1',
-    defaultModel: 'claude-sonnet-4-20250514',
+    defaultModel: 'claude-sonnet-4-5-20250929',
     models: [
+      {
+        id: 'claude-sonnet-4-5-20250929',
+        label: 'Claude Sonnet 4.5 (2025-09-29)',
+        capabilities: { thinking: true, tools: true },
+        maxTokens: 200000
+      },
       {
         id: 'claude-sonnet-4-20250514',
         label: 'Claude Sonnet 4 (2025-05-14)',

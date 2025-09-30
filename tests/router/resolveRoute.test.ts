@@ -95,10 +95,10 @@ describe('resolveRoute', () => {
     mockedGetConfig.mockReturnValueOnce({
       ...baseConfig,
       modelRoutes: {
-        'claude-sonnet-4-20250514': 'kimi:kimi-think'
+        'claude-sonnet-4-5-20250929': 'kimi:kimi-think'
       }
     })
-    const result = resolveRoute({ payload, requestedModel: 'claude-sonnet-4-20250514' })
+    const result = resolveRoute({ payload, requestedModel: 'claude-sonnet-4-5-20250929' })
     expect(result).toMatchObject({ providerId: 'kimi', modelId: 'kimi-think' })
   })
 
@@ -106,10 +106,10 @@ describe('resolveRoute', () => {
     mockedGetConfig.mockReturnValueOnce({
       ...baseConfig,
       modelRoutes: {
-        'claude-sonnet-4-20250514': 'missing:unknown'
+        'claude-sonnet-4-5-20250929': 'missing:unknown'
       }
     })
-    const result = resolveRoute({ payload, requestedModel: 'claude-sonnet-4-20250514' })
+    const result = resolveRoute({ payload, requestedModel: 'claude-sonnet-4-5-20250929' })
     expect(result).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-chat' })
   })
 
