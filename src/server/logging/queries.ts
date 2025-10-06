@@ -17,6 +17,9 @@ export interface LogRecord {
   ttft_ms: number | null
   tpot_ms: number | null
   error: string | null
+  api_key_id: number | null
+  api_key_name: string | null
+  api_key_value: string | null
 }
 
 export interface LogListOptions {
@@ -27,6 +30,7 @@ export interface LogListOptions {
   status?: 'success' | 'error'
   from?: number
   to?: number
+  apiKeyIds?: number[]
 }
 
 export interface LogListResult {
@@ -67,6 +71,16 @@ export async function queryLogs(options: LogListOptions = {}): Promise<LogListRe
     params.$to = options.to
   }
 
+  if (options.apiKeyIds && options.apiKeyIds.length > 0) {
+    const placeholders: string[] = []
+    options.apiKeyIds.forEach((id, index) => {
+      const key = `$apiKey${index}`
+      placeholders.push(key)
+      params[key] = id
+    })
+    conditions.push(`(api_key_id IN (${placeholders.join(', ')}))`)
+  }
+
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
   const totalRow = await getOne<{ count: number }>(
@@ -77,7 +91,7 @@ export async function queryLogs(options: LogListOptions = {}): Promise<LogListRe
   const items = await getAll<LogRecord>(
     `SELECT id, timestamp, session_id, provider, model, client_model,
             stream, latency_ms, status_code, input_tokens, output_tokens,
-            cached_tokens, ttft_ms, tpot_ms, error
+            cached_tokens, ttft_ms, tpot_ms, error, api_key_id, api_key_name, api_key_value
        FROM request_logs
        ${whereClause}
        ORDER BY timestamp DESC
@@ -100,7 +114,7 @@ export async function getLogDetail(id: number): Promise<LogRecord | null> {
   const record = await getOne<LogRecord>(
     `SELECT id, timestamp, session_id, provider, model, client_model,
             stream, latency_ms, status_code, input_tokens, output_tokens,
-            cached_tokens, ttft_ms, tpot_ms, error
+            cached_tokens, ttft_ms, tpot_ms, error, api_key_id, api_key_name, api_key_value
        FROM request_logs
        WHERE id = ?`,
     [id]
@@ -300,5 +314,79 @@ export async function getModelUsageMetrics(days = 7, limit = 10): Promise<ModelU
     avgLatencyMs: row.requests ? Math.round((row.totalLatency ?? 0) / row.requests) : 0,
     avgTtftMs: roundValue(row.avgTtftMs, 0),
     avgTpotMs: roundValue(row.avgTpotMs, 2)
+  }))
+}
+
+export interface ApiKeyOverviewMetrics {
+  totalKeys: number
+  enabledKeys: number
+  activeKeys: number
+  rangeDays: number
+}
+
+export async function getApiKeyOverviewMetrics(rangeDays = 7): Promise<ApiKeyOverviewMetrics> {
+  const totals = await getOne<{
+    total: number
+    enabled: number
+  }>('SELECT COUNT(*) AS total, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled FROM api_keys')
+
+  const since = Date.now() - rangeDays * 24 * 60 * 60 * 1000
+  const active = await getOne<{ count: number }>(
+    `SELECT COUNT(DISTINCT api_key_id) AS count
+       FROM request_logs
+      WHERE api_key_id IS NOT NULL
+        AND timestamp >= ?`,
+    [since]
+  )
+
+  return {
+    totalKeys: totals?.total ?? 0,
+    enabledKeys: totals?.enabled ?? 0,
+    activeKeys: active?.count ?? 0,
+    rangeDays
+  }
+}
+
+export interface ApiKeyUsageMetric {
+  apiKeyId: number | null
+  apiKeyName: string | null
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  lastUsedAt: string | null
+}
+
+export async function getApiKeyUsageMetrics(days = 7, limit = 10): Promise<ApiKeyUsageMetric[]> {
+  const since = Date.now() - days * 24 * 60 * 60 * 1000
+  const rows = await getAll<{
+    apiKeyId: number | null
+    apiKeyName: string | null
+    requests: number
+    inputTokens: number
+    outputTokens: number
+    lastUsedAt: number | null
+  }>(
+    `SELECT
+       api_key_id AS apiKeyId,
+       api_key_name AS apiKeyName,
+       COUNT(*) AS requests,
+       COALESCE(SUM(input_tokens), 0) AS inputTokens,
+       COALESCE(SUM(output_tokens), 0) AS outputTokens,
+       MAX(timestamp) AS lastUsedAt
+     FROM request_logs
+     WHERE timestamp >= ?
+     GROUP BY api_key_id, api_key_name
+     ORDER BY requests DESC
+     LIMIT ?`,
+    [since, limit]
+  )
+
+  return rows.map((row) => ({
+    apiKeyId: row.apiKeyId ?? null,
+    apiKeyName: row.apiKeyName ?? null,
+    requests: row.requests ?? 0,
+    inputTokens: row.inputTokens ?? 0,
+    outputTokens: row.outputTokens ?? 0,
+    lastUsedAt: row.lastUsedAt ? new Date(row.lastUsedAt).toISOString() : null
   }))
 }

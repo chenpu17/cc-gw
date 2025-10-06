@@ -3,7 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import sqlite3 from 'sqlite3'
 
-export const HOME_DIR = path.join(os.homedir(), '.cc-gw')
+const HOME_OVERRIDE = process.env.CC_GW_HOME
+export const HOME_DIR = path.resolve(HOME_OVERRIDE ?? path.join(os.homedir(), '.cc-gw'))
 export const DATA_DIR = path.join(HOME_DIR, 'data')
 export const DB_PATH = path.join(DATA_DIR, 'gateway.db')
 
@@ -114,7 +115,10 @@ async function ensureSchema(db: sqlite3.Database): Promise<void> {
       cached_tokens INTEGER,
       ttft_ms INTEGER,
       tpot_ms REAL,
-      error TEXT
+      error TEXT,
+      api_key_id INTEGER,
+      api_key_name TEXT,
+      api_key_value TEXT
     );
 
     CREATE TABLE IF NOT EXISTS request_payloads (
@@ -130,6 +134,35 @@ async function ensureSchema(db: sqlite3.Database): Promise<void> {
       total_input_tokens INTEGER DEFAULT 0,
       total_output_tokens INTEGER DEFAULT 0,
       total_latency_ms INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      key_ciphertext TEXT,
+      key_prefix TEXT,
+      key_suffix TEXT,
+      is_wildcard INTEGER DEFAULT 0,
+      enabled INTEGER DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER,
+      last_used_at INTEGER,
+      request_count INTEGER DEFAULT 0,
+      total_input_tokens INTEGER DEFAULT 0,
+      total_output_tokens INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS api_key_audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      api_key_id INTEGER,
+      api_key_name TEXT,
+      operation TEXT NOT NULL,
+      operator TEXT,
+      details TEXT,
+      ip_address TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(api_key_id) REFERENCES api_keys(id) ON DELETE SET NULL
     );`
   )
 
@@ -138,6 +171,36 @@ async function ensureSchema(db: sqlite3.Database): Promise<void> {
   await maybeAddColumn(db, 'request_logs', 'ttft_ms', 'INTEGER')
   await maybeAddColumn(db, 'request_logs', 'tpot_ms', 'REAL')
   await maybeAddColumn(db, 'request_logs', 'stream', 'INTEGER')
+  await maybeAddColumn(db, 'request_logs', 'api_key_id', 'INTEGER')
+  await maybeAddColumn(db, 'request_logs', 'api_key_name', 'TEXT')
+  await maybeAddColumn(db, 'request_logs', 'api_key_value', 'TEXT')
+
+  const hasKeyHash = await columnExists(db, 'api_keys', 'key_hash')
+  if (!hasKeyHash) {
+    await run(db, 'ALTER TABLE api_keys ADD COLUMN key_hash TEXT')
+  }
+  await maybeAddColumn(db, 'api_keys', 'key_ciphertext', 'TEXT')
+  await maybeAddColumn(db, 'api_keys', 'key_prefix', 'TEXT')
+  await maybeAddColumn(db, 'api_keys', 'key_suffix', 'TEXT')
+  await maybeAddColumn(db, 'api_keys', 'updated_at', 'INTEGER')
+  await maybeAddColumn(db, 'api_keys', 'last_used_at', 'INTEGER')
+  await maybeAddColumn(db, 'api_keys', 'request_count', 'INTEGER DEFAULT 0')
+  await maybeAddColumn(db, 'api_keys', 'total_input_tokens', 'INTEGER DEFAULT 0')
+  await maybeAddColumn(db, 'api_keys', 'total_output_tokens', 'INTEGER DEFAULT 0')
+
+  await run(db, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash) WHERE key_hash IS NOT NULL')
+  await run(db, "UPDATE api_keys SET key_hash = '*' WHERE is_wildcard = 1 AND (key_hash IS NULL OR key_hash = '')")
+  await run(db, 'UPDATE api_keys SET updated_at = created_at WHERE updated_at IS NULL')
+
+  const wildcardRow = await get<{ count: number }>(db, 'SELECT COUNT(*) as count FROM api_keys WHERE is_wildcard = 1')
+  if (!wildcardRow || wildcardRow.count === 0) {
+    const now = Date.now()
+    await run(
+      db,
+      'INSERT INTO api_keys (name, key_hash, is_wildcard, enabled, created_at, updated_at) VALUES (?, ?, 1, 1, ?, ?)',
+      ['Any Key', '*', now, now]
+    )
+  }
 }
 
 export async function getDb(): Promise<sqlite3.Database> {

@@ -13,7 +13,8 @@ const LOG_LEVELS = new Set<NonNullable<GatewayConfig['logLevel']>>([
   'trace'
 ])
 
-export const HOME_DIR = path.join(os.homedir(), '.cc-gw')
+const HOME_OVERRIDE = process.env.CC_GW_HOME
+export const HOME_DIR = path.resolve(HOME_OVERRIDE ?? path.join(os.homedir(), '.cc-gw'))
 export const CONFIG_PATH = path.join(HOME_DIR, 'config.json')
 
 type ConfigEvents = {

@@ -12,6 +12,7 @@ const resources = {
         dashboard: '仪表盘',
         logs: '请求日志',
         models: '模型管理',
+        apiKeys: 'API 密钥',
         settings: '设置',
         about: '关于'
       },
@@ -141,6 +142,8 @@ const resources = {
         },
         filters: {
           provider: 'Provider',
+          apiKey: 'API Key',
+          apiKeyHint: '可多选，不选择时将展示全部密钥。',
           modelId: '模型 ID',
           modelPlaceholder: '如 deepseek-chat',
           status: '状态',
@@ -148,7 +151,9 @@ const resources = {
           statusSuccess: '成功',
           statusError: '失败',
           startDate: '起始日期',
-          endDate: '结束日期'
+          endDate: '结束日期',
+          apiKeyAll: '全部密钥',
+          apiKeySelected: '{{count}} 个已选'
         },
         actions: {
           manualRefresh: '手动刷新',
@@ -159,11 +164,13 @@ const resources = {
           loading: '正在加载日志...',
           empty: '未找到符合条件的日志记录。',
           requestedModelFallback: '未指定',
+          apiKeyUnknown: '未知密钥',
           columns: {
             time: '时间',
             provider: 'Provider',
             requestedModel: '请求模型',
             routedModel: '路由模型',
+            apiKey: 'API Key',
             inputTokens: '输入 Tokens',
             cachedTokens: '缓存 Tokens',
             outputTokens: '输出 Tokens',
@@ -231,9 +238,21 @@ const resources = {
             emptyRequest: '暂无请求内容',
             emptyResponse: '暂无响应内容'
           },
+          apiKey: {
+            title: '密钥信息',
+            name: '密钥名称',
+            identifier: '密钥 ID',
+            masked: '掩码展示',
+            maskedUnavailable: '暂无掩码信息',
+            raw: '原始密钥',
+            rawUnavailable: '未记录原始密钥',
+            missing: '未记录',
+            lastUsed: '最后使用'
+          },
           copy: {
             requestSuccess: '请求体已复制到剪贴板。',
             responseSuccess: '响应体已复制到剪贴板。',
+            keySuccess: 'API 密钥已复制到剪贴板。',
             empty: '{{label}}为空，无法复制。',
             failure: '复制失败',
             failureFallback: '无法复制内容，请稍后再试。'
@@ -466,6 +485,72 @@ const resources = {
           },
           updatesPlanned: '检查更新功能将在后续版本提供。'
         }
+      },
+      apiKeys: {
+        title: 'API 密钥管理',
+        description: '创建和管理用于访问网关的 API 密钥',
+        createNew: '创建新密钥',
+        createAction: '创建',
+        createDescription: '创建一个新的 API 密钥用于身份验证',
+        keyNamePlaceholder: '输入密钥名称',
+        keyCreated: 'API 密钥已创建',
+        saveKeyWarning: '这是唯一一次看到完整密钥的机会，请妥善保存！',
+        wildcard: '通配符',
+        status: {
+          enabled: '已启用',
+          disabled: '已禁用'
+        },
+        actions: {
+          enable: '启用',
+          disable: '禁用',
+          delete: '删除'
+        },
+        created: '创建时间',
+        lastUsed: '最后使用',
+        requestCount: '请求次数',
+        totalTokens: '总令牌数',
+        confirmDelete: '确定要删除此 API 密钥吗？此操作无法撤销。',
+        errors: {
+          nameRequired: '密钥名称不能为空'
+        },
+        analytics: {
+          title: '密钥使用分析',
+          description: '展示最近 {{days}} 天的密钥调用情况',
+          range: {
+            today: '今日',
+            week: '近 7 天',
+            month: '近 30 天'
+          },
+          cards: {
+            total: '总密钥数',
+            enabled: '启用密钥',
+            active: '活跃密钥（{{days}} 天）'
+          },
+          charts: {
+            requests: '按密钥的请求次数（Top 10）',
+            tokens: '按密钥的 Token 消耗（Top 10）'
+          },
+          tokens: {
+            input: '输入 Token',
+            output: '输出 Token'
+          },
+          requestsSeries: '请求次数',
+          empty: '所选时间范围内暂无统计数据。',
+          unknownKey: '未知密钥'
+        },
+        list: {
+          title: '密钥列表',
+          empty: '尚未创建 API 密钥，点击右上角按钮开始创建。'
+        },
+        toast: {
+          keyCreated: 'API 密钥创建成功',
+          keyUpdated: 'API 密钥已更新',
+          keyDeleted: 'API 密钥已删除',
+          keyCopied: '密钥已复制到剪贴板',
+          createFailure: '创建失败：{{message}}',
+          updateFailure: '更新失败：{{message}}',
+          deleteFailure: '删除失败：{{message}}'
+        }
       }
     }
   },
@@ -479,6 +564,7 @@ const resources = {
         dashboard: 'Dashboard',
         logs: 'Logs',
         models: 'Model Management',
+        apiKeys: 'API Keys',
         settings: 'Settings',
         about: 'About'
       },
@@ -608,6 +694,8 @@ const resources = {
         },
         filters: {
           provider: 'Provider',
+          apiKey: 'API Key',
+          apiKeyHint: 'Select one or more keys; leave empty to include all.',
           modelId: 'Model ID',
           modelPlaceholder: 'e.g. deepseek-chat',
           status: 'Status',
@@ -615,7 +703,9 @@ const resources = {
           statusSuccess: 'Success',
           statusError: 'Error',
           startDate: 'Start date',
-          endDate: 'End date'
+          endDate: 'End date',
+          apiKeyAll: 'All keys',
+          apiKeySelected: '{{count}} selected'
         },
         actions: {
           manualRefresh: 'Manual refresh',
@@ -626,11 +716,13 @@ const resources = {
           loading: 'Loading logs...',
           empty: 'No records match the current filters.',
           requestedModelFallback: 'Not specified',
+          apiKeyUnknown: 'Unknown key',
           columns: {
             time: 'Time',
             provider: 'Provider',
             requestedModel: 'Requested model',
             routedModel: 'Routed model',
+            apiKey: 'API Key',
             inputTokens: 'Input Tokens',
             cachedTokens: 'Cached Tokens',
             outputTokens: 'Output Tokens',
@@ -698,9 +790,21 @@ const resources = {
             emptyRequest: 'No request content',
             emptyResponse: 'No response content'
           },
+          apiKey: {
+            title: 'API key',
+            name: 'Key name',
+            identifier: 'Key ID',
+            masked: 'Masked form',
+            maskedUnavailable: 'No mask available',
+            raw: 'Raw key',
+            rawUnavailable: 'Raw key not stored',
+            missing: 'Not recorded',
+            lastUsed: 'Last used'
+          },
           copy: {
             requestSuccess: 'Request body copied to clipboard.',
             responseSuccess: 'Response body copied to clipboard.',
+            keySuccess: 'API key copied to clipboard.',
             empty: 'Cannot copy empty {{label}}.',
             failure: 'Copy failed',
             failureFallback: 'Unable to copy content. Please try again later.'
@@ -893,6 +997,73 @@ const resources = {
           clearAll: 'Clear everything',
           clearingAll: 'Clearing…',
           clearAllWarning: 'Deletes every log entry and daily metric. This cannot be undone.'
+        }
+      },
+
+      apiKeys: {
+        title: 'API Keys Management',
+        description: 'Create and manage API keys for gateway access',
+        createNew: 'Create New Key',
+        createAction: 'Create',
+        createDescription: 'Create a new API key for authentication',
+        keyNamePlaceholder: 'Enter key name',
+        keyCreated: 'API Key Created',
+        saveKeyWarning: 'This is the only time you\'ll see the full key. Save it securely!',
+        wildcard: 'Wildcard',
+        status: {
+          enabled: 'Enabled',
+          disabled: 'Disabled'
+        },
+        actions: {
+          enable: 'Enable',
+          disable: 'Disable',
+          delete: 'Delete'
+        },
+        created: 'Created',
+        lastUsed: 'Last Used',
+        requestCount: 'Requests',
+        totalTokens: 'Total Tokens',
+        confirmDelete: 'Are you sure you want to delete this API key? This action cannot be undone.',
+        errors: {
+          nameRequired: 'Key name is required'
+        },
+        analytics: {
+          title: 'Key Usage Analytics',
+          description: 'Highlights for the past {{days}} days of API key activity',
+          range: {
+            today: 'Today',
+            week: 'Last 7 days',
+            month: 'Last 30 days'
+          },
+          cards: {
+            total: 'Total keys',
+            enabled: 'Enabled keys',
+            active: 'Active keys ({{days}} days)'
+          },
+          charts: {
+            requests: 'Top 10 keys by request count',
+            tokens: 'Top 10 keys by token usage'
+          },
+          tokens: {
+            input: 'Input tokens',
+            output: 'Output tokens'
+          },
+          requestsSeries: 'Requests',
+          empty: 'No activity for the selected range.',
+          unknownKey: 'Unknown key'
+        },
+        list: {
+          title: 'Key Inventory',
+          empty: 'No API keys found. Use the button above to create one.'
+        },
+        toast: {
+          keyCreated: 'API key created successfully',
+          keyUpdated: 'API key updated successfully',
+          keyDeleted: 'API key deleted successfully',
+          keyCopied: 'Key copied to clipboard',
+          createFailure: 'Failed to create: {{message}}',
+          updateFailure: 'Failed to update: {{message}}',
+          deleteFailure: 'Failed to delete: {{message}}'
         }
       },
 

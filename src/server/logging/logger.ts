@@ -7,12 +7,16 @@ interface LogEntry {
   provider: string
   model: string
   clientModel?: string
+  stream?: boolean
   latencyMs?: number
   statusCode?: number
   inputTokens?: number
   outputTokens?: number
   cachedTokens?: number
   error?: string | null
+  apiKeyId?: number | null
+  apiKeyName?: string | null
+  apiKeyValue?: string | null
 }
 
 const BROTLI_OPTIONS = {
@@ -55,8 +59,9 @@ export async function recordLog(entry: LogEntry): Promise<number> {
   const result = await runQuery(
     `INSERT INTO request_logs (
       timestamp, session_id, provider, model, client_model, stream,
-      latency_ms, status_code, input_tokens, output_tokens, cached_tokens, error
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      latency_ms, status_code, input_tokens, output_tokens, cached_tokens, error,
+      api_key_id, api_key_name, api_key_value
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.timestamp,
       entry.sessionId ?? null,
@@ -69,7 +74,10 @@ export async function recordLog(entry: LogEntry): Promise<number> {
       entry.inputTokens ?? null,
       entry.outputTokens ?? null,
       entry.cachedTokens ?? null,
-      entry.error ?? null
+      entry.error ?? null,
+      entry.apiKeyId ?? null,
+      entry.apiKeyName ?? null,
+      entry.apiKeyValue ?? null
     ]
   )
   return Number(result.lastID)

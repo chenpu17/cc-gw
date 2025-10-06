@@ -1,6 +1,8 @@
 last_session_id
 参考代码/
 项目需求/
+.claude/
+CLAUDE.md
 # Node / pnpm artifacts
 node_modules/
 .pnpm-store/
@@ -13,6 +15,7 @@ dist/
 src/**/dist/
 coverage/
 .vitest/
+test-results/
 
 # Logs & runtime data
 *.log

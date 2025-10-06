@@ -8,6 +8,8 @@ import { estimateTokens, estimateTextTokens } from '../protocol/tokenizer.js'
 import { decrementActiveRequests, incrementActiveRequests } from '../metrics/activity.js'
 import { getConfig } from '../config/manager.js'
 import type { NormalizedPayload } from '../protocol/types.js'
+import { resolveApiKey, ApiKeyError, recordApiKeyUsage } from '../api-keys/service.js'
+import { encryptSecret } from '../security/encryption.js'
 
 function mapStopReason(reason: string | null | undefined): string | null {
   switch (reason) {
@@ -199,6 +201,55 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       return { error: 'Invalid request body' }
     }
 
+    const resolveHeaderValue = (value: string | string[] | undefined): string | undefined => {
+      if (!value) return undefined
+      if (typeof value === 'string') return value
+      if (Array.isArray(value)) {
+        const found = value.find((item) => typeof item === 'string' && item.trim().length > 0)
+        return found
+      }
+      return undefined
+    }
+
+    let providedApiKey = resolveHeaderValue(request.headers['x-api-key'] as any)
+    if (!providedApiKey) {
+      const authHeader = resolveHeaderValue(request.headers['authorization'] as any)
+      if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+        providedApiKey = authHeader.slice(7)
+      }
+    }
+
+    let apiKeyContext: Awaited<ReturnType<typeof resolveApiKey>>
+    try {
+      apiKeyContext = await resolveApiKey(providedApiKey, { ipAddress: request.ip })
+    } catch (error) {
+      if (error instanceof ApiKeyError) {
+        reply.code(401)
+        return {
+          error: {
+            code: 'invalid_api_key',
+            message: error.message
+          }
+        }
+      }
+      throw error
+    }
+
+    const encryptedApiKeyValue = apiKeyContext.providedKey ? encryptSecret(apiKeyContext.providedKey) : null
+    let usageRecorded = false
+    const commitUsage = async (inputTokens: number, outputTokens: number) => {
+      if (usageRecorded) return
+      usageRecorded = true
+      if (apiKeyContext.id) {
+        const safeInput = Number.isFinite(inputTokens) ? inputTokens : 0
+        const safeOutput = Number.isFinite(outputTokens) ? outputTokens : 0
+        await recordApiKeyUsage(apiKeyContext.id, {
+          inputTokens: safeInput,
+          outputTokens: safeOutput
+        })
+      }
+    }
+
     const rawUrl = typeof request.raw?.url === 'string' ? request.raw.url : request.url ?? ''
     let querySuffix: string | null = null
     if (typeof rawUrl === 'string' && rawUrl.includes('?')) {
@@ -285,7 +336,10 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       model: target.modelId,
       clientModel: requestedModel,
       sessionId: payload.metadata?.user_id,
-      stream: normalized.stream
+      stream: normalized.stream,
+      apiKeyId: apiKeyContext.id,
+      apiKeyName: apiKeyContext.name,
+      apiKeyValue: encryptedApiKeyValue
     })
 
     incrementActiveRequests()
@@ -356,6 +410,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         if (storePayloads) {
           await upsertLogPayload(logId, { response: bodyText || null })
         }
+        await commitUsage(0, 0)
         await finalize(upstream.status, errorText)
         return { error: errorText }
       }
@@ -391,6 +446,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             ttftMs: latencyMs,
             tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
           })
+          await commitUsage(inputTokens, outputTokens)
           await updateMetrics(new Date().toISOString().slice(0, 10), {
             requests: 1,
             inputTokens,
@@ -440,6 +496,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           ttftMs: latencyMs,
           tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
         })
+        await commitUsage(inputTokens, outputTokens)
         await updateMetrics(new Date().toISOString().slice(0, 10), {
           requests: 1,
           inputTokens,
@@ -464,6 +521,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
       if (!upstream.body) {
         reply.code(500)
+        await commitUsage(0, 0)
         await finalize(500, 'Upstream returned empty body')
         return { error: 'Upstream returned empty body' }
       }
@@ -571,6 +629,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             ttftMs
           })
         })
+        await commitUsage(usagePrompt, usageCompletion)
         await updateMetrics(new Date().toISOString().slice(0, 10), {
           requests: 1,
           inputTokens: usagePrompt,
@@ -695,6 +754,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
                 ttftMs
               })
             })
+            await commitUsage(finalPromptTokens, finalCompletionTokens)
             await updateMetrics(new Date().toISOString().slice(0, 10), {
               requests: 1,
               inputTokens: finalPromptTokens,
@@ -860,6 +920,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             ttftMs
           })
         })
+        await commitUsage(fallbackPrompt, fallbackCompletion)
         await updateMetrics(new Date().toISOString().slice(0, 10), {
           requests: 1,
           inputTokens: fallbackPrompt,
@@ -892,6 +953,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       if (!reply.sent) {
         reply.code(500)
       }
+      await commitUsage(0, 0)
       await finalize(reply.statusCode >= 400 ? reply.statusCode : 500, message)
       return { error: message }
     } finally {

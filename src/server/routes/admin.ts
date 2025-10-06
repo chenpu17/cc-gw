@@ -12,17 +12,42 @@ import {
   getMetricsOverview,
   getDailyMetrics,
   getModelUsageMetrics,
+  getApiKeyOverviewMetrics,
+  getApiKeyUsageMetrics,
   queryLogs
 } from '../logging/queries.js'
 import { getOne } from '../storage/index.js'
 import { getActiveRequestCount } from '../metrics/activity.js'
+import {
+  listApiKeys,
+  createApiKey,
+  setApiKeyEnabled,
+  deleteApiKey,
+  ensureWildcardMetadata,
+  decryptApiKeyValue
+} from '../api-keys/service.js'
 
 export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
+  try {
+    await ensureWildcardMetadata()
+  } catch (error) {
+    app.log.warn({ error }, '[api-keys] failed to ensure wildcard metadata')
+  }
 
-  const mapLogRecord = (record: any) => ({
-    ...record,
-    stream: Boolean(record?.stream)
-  })
+  const mapLogRecord = (record: any, options?: { includeKeyValue?: boolean; decryptedKey?: string | null }) => {
+    const base: any = {
+      ...record,
+      stream: Boolean(record?.stream)
+    }
+
+    if (options?.includeKeyValue) {
+      base.api_key_value = options.decryptedKey ?? record?.api_key_value ?? null
+    } else {
+      delete base.api_key_value
+    }
+
+    return base
+  }
   app.get('/api/status', async () => {
     const config = getConfig()
     return {
@@ -208,9 +233,26 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const from = parseTime(query.from)
     const to = parseTime(query.to)
 
-    const { items, total } = await queryLogs({ limit, offset, provider, model, status, from, to })
+    const collectApiKeyIds = (value: unknown): number[] => {
+      if (!value) return []
+      if (Array.isArray(value)) {
+        return value.flatMap((item) => collectApiKeyIds(item))
+      }
+      if (typeof value === 'string') {
+        return value
+          .split(',')
+          .map((part) => Number(part.trim()))
+          .filter((num) => Number.isFinite(num))
+      }
+      return []
+    }
+
+    const apiKeyIdsRaw = collectApiKeyIds(query.apiKeys ?? query.apiKeyIds ?? query.apiKey)
+    const apiKeyIds = apiKeyIdsRaw.length > 0 ? Array.from(new Set(apiKeyIdsRaw)) : undefined
+
+    const { items, total } = await queryLogs({ limit, offset, provider, model, status, from, to, apiKeyIds })
     reply.header('x-total-count', String(total))
-    return { total, items: items.map(mapLogRecord) }
+    return { total, items: items.map((item) => mapLogRecord(item)) }
   })
 
   app.get('/api/logs/:id', async (request, reply) => {
@@ -225,7 +267,8 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       return { error: 'Not found' }
     }
     const payload = await getLogPayload(id)
-    return { ...mapLogRecord(record), payload }
+    const decryptedKey = await decryptApiKeyValue(record.api_key_value)
+    return { ...mapLogRecord(record, { includeKeyValue: true, decryptedKey }), payload }
   })
 
   app.post('/api/logs/cleanup', async () => {
@@ -271,5 +314,89 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 90)) : 7
     const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 50)) : 10
     return getModelUsageMetrics(days, limit)
+  })
+
+  app.get('/api/stats/api-keys/overview', async (request) => {
+    const query: any = request.query ?? {}
+    const daysRaw = Number(query.days ?? 7)
+    const rangeDays = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 90)) : 7
+    return getApiKeyOverviewMetrics(rangeDays)
+  })
+
+  app.get('/api/stats/api-keys/usage', async (request) => {
+    const query: any = request.query ?? {}
+    const daysRaw = Number(query.days ?? 7)
+    const limitRaw = Number(query.limit ?? 10)
+    const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 90)) : 7
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 50)) : 10
+    return getApiKeyUsageMetrics(days, limit)
+  })
+
+  // API Keys Management
+  app.get('/api/keys', async () => {
+    return listApiKeys()
+  })
+
+  app.post('/api/keys', async (request, reply) => {
+    const body = request.body as { name?: string }
+    if (!body?.name || typeof body.name !== 'string') {
+      reply.code(400)
+      return { error: 'Name is required' }
+    }
+
+    try {
+      return await createApiKey(body.name, { ipAddress: request.ip })
+    } catch (error) {
+      reply.code(400)
+      return { error: error instanceof Error ? error.message : 'Failed to create API key' }
+    }
+  })
+
+  app.patch('/api/keys/:id', async (request, reply) => {
+    const id = Number((request.params as any).id)
+    if (!Number.isFinite(id)) {
+      reply.code(400)
+      return { error: 'Invalid id' }
+    }
+
+    const body = request.body as { enabled?: boolean }
+    if (typeof body?.enabled !== 'boolean') {
+      reply.code(400)
+      return { error: 'enabled field is required' }
+    }
+
+    try {
+      await setApiKeyEnabled(id, body.enabled, { ipAddress: request.ip })
+      return { success: true }
+    } catch (error) {
+      if (error instanceof Error && error.message === 'API key not found') {
+        reply.code(404)
+      } else {
+        reply.code(400)
+      }
+      return { error: error instanceof Error ? error.message : 'Failed to update API key' }
+    }
+  })
+
+  app.delete('/api/keys/:id', async (request, reply) => {
+    const id = Number((request.params as any).id)
+    if (!Number.isFinite(id)) {
+      reply.code(400)
+      return { error: 'Invalid id' }
+    }
+
+    try {
+      await deleteApiKey(id, { ipAddress: request.ip })
+      return { success: true }
+    } catch (error) {
+      if (error instanceof Error && error.message === 'API key not found') {
+        reply.code(404)
+      } else if (error instanceof Error && error.message === 'Cannot delete wildcard key') {
+        reply.code(403)
+      } else {
+        reply.code(400)
+      }
+      return { error: error instanceof Error ? error.message : 'Failed to delete API key' }
+    }
   })
 }

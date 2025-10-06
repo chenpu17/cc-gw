@@ -7,6 +7,7 @@ import { Loader } from '@/components/Loader'
 const DashboardPage = lazy(() => import('@/pages/Dashboard'))
 const LogsPage = lazy(() => import('@/pages/Logs'))
 const ModelManagementPage = lazy(() => import('@/pages/ModelManagement'))
+const ApiKeysPage = lazy(() => import('@/pages/ApiKeys'))
 const SettingsPage = lazy(() => import('@/pages/Settings'))
 const AboutPage = lazy(() => import('@/pages/About'))
 
@@ -21,6 +22,7 @@ export function App() {
               <Route path="logs" element={<LogsPage />} />
               <Route path="models" element={<ModelManagementPage />} />
               <Route path="providers" element={<ModelManagementPage />} />
+              <Route path="api-keys" element={<ApiKeysPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="about" element={<AboutPage />} />
             </Route>

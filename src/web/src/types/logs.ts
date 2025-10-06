@@ -14,6 +14,8 @@ export interface LogRecord {
   ttft_ms: number | null
   tpot_ms: number | null
   error: string | null
+  api_key_id: number | null
+  api_key_name: string | null
 }
 
 export interface LogPayload {
@@ -23,6 +25,7 @@ export interface LogPayload {
 
 export interface LogDetail extends LogRecord {
   payload: LogPayload | null
+  api_key_value?: string | null
 }
 
 export interface LogListResponse {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, Cog, FileText, Layers, Menu, Settings, X } from 'lucide-react'
+import { BarChart3, Cog, FileText, Key, Layers, Menu, Settings, X } from 'lucide-react'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 
@@ -9,6 +9,7 @@ const navItems = [
   { to: '/', icon: BarChart3, labelKey: 'nav.dashboard' },
   { to: '/logs', icon: FileText, labelKey: 'nav.logs' },
   { to: '/models', icon: Layers, labelKey: 'nav.models' },
+  { to: '/api-keys', icon: Key, labelKey: 'nav.apiKeys' },
   { to: '/settings', icon: Settings, labelKey: 'nav.settings' },
   { to: '/about', icon: Cog, labelKey: 'nav.about' }
 ]

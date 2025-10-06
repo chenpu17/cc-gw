@@ -4,6 +4,7 @@ import { useToast } from '@/providers/ToastProvider'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import type { ApiError } from '@/services/api'
 import type { LogDetail, LogListResponse, LogRecord } from '@/types/logs'
+import type { ApiKeySummary } from '@/types/apiKeys'
 import { Loader } from '@/components/Loader'
 
 interface ProviderSummary {
@@ -67,10 +68,11 @@ export default function LogsPage() {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [selectedApiKeys, setSelectedApiKeys] = useState<number[]>([])
 
   useEffect(() => {
     setPage(1)
-  }, [providerFilter, modelFilter, statusFilter, fromDate, toDate, pageSize])
+  }, [providerFilter, modelFilter, statusFilter, fromDate, toDate, pageSize, selectedApiKeys])
 
   const queryParams = useMemo(() => {
     const params: Record<string, unknown> = {
@@ -94,8 +96,11 @@ export default function LogsPage() {
     if (toTs !== undefined) {
       params.to = toTs
     }
+    if (selectedApiKeys.length > 0) {
+      params.apiKeys = selectedApiKeys.join(',')
+    }
     return params
-  }, [providerFilter, modelFilter, statusFilter, fromDate, toDate, page, pageSize])
+  }, [providerFilter, modelFilter, statusFilter, fromDate, toDate, page, pageSize, selectedApiKeys])
 
   const logsQuery = useApiQuery<LogListResponse, ApiError>(
     ['logs', queryParams],
@@ -105,6 +110,11 @@ export default function LogsPage() {
   const providersQuery = useApiQuery<ProviderSummary[], ApiError>(
     ['providers', 'all'],
     { url: '/api/providers', method: 'GET' }
+  )
+
+  const apiKeysQuery = useApiQuery<ApiKeySummary[], ApiError>(
+    ['api-keys'],
+    { url: '/api/keys', method: 'GET' }
   )
 
   useEffect(() => {
@@ -148,6 +158,15 @@ export default function LogsPage() {
     return map
   }, [providerOptions])
 
+  const apiKeys = apiKeysQuery.data ?? []
+  const apiKeyMap = useMemo(() => {
+    const map = new Map<number, ApiKeySummary>()
+    for (const key of apiKeys) {
+      map.set(key.id, key)
+    }
+    return map
+  }, [apiKeys])
+
   const statusOptions = useMemo(
     () => [
       { value: 'all', label: t('logs.filters.statusAll') },
@@ -163,6 +182,7 @@ export default function LogsPage() {
     setStatusFilter('all')
     setFromDate('')
     setToDate('')
+    setSelectedApiKeys([])
   }
 
   const handleOpenDetail = useCallback((id: number) => {
@@ -214,6 +234,13 @@ export default function LogsPage() {
               ))}
             </select>
           </div>
+
+          <ApiKeyFilter
+            apiKeys={apiKeys}
+            selected={selectedApiKeys}
+            disabled={apiKeysQuery.isLoading}
+            onChange={setSelectedApiKeys}
+          />
 
           <div className="flex flex-col text-sm">
             <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -290,6 +317,7 @@ export default function LogsPage() {
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.provider')}</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.requestedModel')}</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.routedModel')}</th>
+                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.apiKey')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.inputTokens')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.cachedTokens')}</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.outputTokens')}</th>
@@ -305,13 +333,13 @@ export default function LogsPage() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {logsQuery.isPending ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={15} className="px-4 py-10 text-center text-sm text-slate-400">
                     {t('logs.table.loading')}
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={15} className="px-4 py-10 text-center text-sm text-slate-400">
                     {t('logs.table.empty')}
                   </td>
                 </tr>
@@ -321,6 +349,7 @@ export default function LogsPage() {
                     key={item.id}
                     record={item}
                     providerLabelMap={providerLabelMap}
+                    apiKeyMap={apiKeyMap}
                     onSelect={handleOpenDetail}
                   />
                 ))
@@ -376,6 +405,7 @@ export default function LogsPage() {
         logId={selectedLogId}
         onClose={handleCloseDetail}
         providerLabelMap={providerLabelMap}
+        apiKeyMap={apiKeyMap}
       />
     </div>
   )
@@ -384,16 +414,34 @@ export default function LogsPage() {
 function LogRow({
   record,
   providerLabelMap,
+  apiKeyMap,
   onSelect
 }: {
   record: LogRecord
   providerLabelMap: Map<string, string>
+  apiKeyMap: Map<number, ApiKeySummary>
   onSelect: (id: number) => void
 }) {
   const { t } = useTranslation()
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
   const isError = Boolean(record.error)
   const requestedModel = record.client_model ?? t('logs.table.requestedModelFallback')
+  const apiKeyMeta = record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
+  const apiKeyLabel = (() => {
+    if (record.api_key_id == null) {
+      return t('logs.table.apiKeyUnknown')
+    }
+    if (apiKeyMeta?.isWildcard) {
+      return t('apiKeys.wildcard')
+    }
+    if (apiKeyMeta?.name) {
+      return apiKeyMeta.name
+    }
+    if (record.api_key_name) {
+      return record.api_key_name
+    }
+    return t('logs.table.apiKeyUnknown')
+  })()
 
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
@@ -401,6 +449,11 @@ function LogRow({
       <td className="px-4 py-2">{providerLabel}</td>
       <td className="px-4 py-2">{requestedModel}</td>
       <td className="px-4 py-2">{record.model}</td>
+      <td className="px-4 py-2">
+        <span className="block truncate" title={apiKeyLabel}>
+          {apiKeyLabel}
+        </span>
+      </td>
       <td className="px-4 py-2 text-right">{formatNumber(record.input_tokens)}</td>
       <td className="px-4 py-2 text-right">{formatNumber(record.cached_tokens)}</td>
       <td className="px-4 py-2 text-right">{formatNumber(record.output_tokens)}</td>
@@ -448,12 +501,14 @@ function LogDetailsDrawer({
   open,
   logId,
   onClose,
-  providerLabelMap
+  providerLabelMap,
+  apiKeyMap
 }: {
   open: boolean
   logId: number | null
   onClose: () => void
   providerLabelMap: Map<string, string>
+  apiKeyMap: Map<number, ApiKeySummary>
 }) {
   const { t } = useTranslation()
   const { pushToast } = useToast()
@@ -522,6 +577,7 @@ function LogDetailsDrawer({
 
   const record = logDetailQuery.data
   const providerLabel = record ? providerLabelMap.get(record.provider) ?? record.provider : ''
+  const apiKeyMeta = record && record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -653,6 +709,66 @@ function LogDetailsDrawer({
               </section>
 
               <section className="space-y-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {t('logs.detail.apiKey.title')}
+                </h3>
+                <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.apiKey.name')}</dt>
+                    <dd className="font-medium">
+                      {record.api_key_id == null && !record.api_key_name
+                        ? t('logs.detail.apiKey.missing')
+                        : apiKeyMeta?.isWildcard
+                          ? t('apiKeys.wildcard')
+                          : apiKeyMeta?.name ?? record.api_key_name ?? t('logs.detail.apiKey.missing')}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.apiKey.identifier')}</dt>
+                    <dd className="font-medium">{record.api_key_id ?? t('common.noData')}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.apiKey.masked')}</dt>
+                    <dd className="font-medium">
+                      {apiKeyMeta?.isWildcard
+                        ? t('apiKeys.wildcard')
+                        : apiKeyMeta?.maskedKey ?? record.api_key_name ?? t('logs.detail.apiKey.maskedUnavailable')}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.apiKey.lastUsed')}</dt>
+                    <dd className="font-medium">
+                      {apiKeyMeta?.lastUsedAt ? new Date(apiKeyMeta.lastUsedAt).toLocaleString() : t('common.noData')}
+                    </dd>
+                  </div>
+                </dl>
+                <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300">
+                  <div>
+                    <p className="font-medium text-slate-700 dark:text-slate-200">
+                      {t('logs.detail.apiKey.raw')}
+                    </p>
+                    <p className="mt-1 text-xs">
+                      {record.api_key_value ? record.api_key_value : t('logs.detail.apiKey.rawUnavailable')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!record.api_key_value}
+                    onClick={() =>
+                      handleCopy(
+                        t('logs.detail.apiKey.raw'),
+                        record.api_key_value,
+                        'logs.detail.copy.keySuccess'
+                      )
+                    }
+                    className="rounded-md border border-slate-200 px-2 py-1 text-xs transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  >
+                    {t('common.actions.copy')}
+                  </button>
+                </div>
+              </section>
+
+              <section className="space-y-2">
                 <header className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     {t('logs.detail.payload.request')}
@@ -703,6 +819,143 @@ function LogDetailsDrawer({
           )}
         </div>
       </aside>
+    </div>
+  )
+}
+
+function ApiKeyFilter({
+  apiKeys,
+  selected,
+  onChange,
+  disabled
+}: {
+  apiKeys: ApiKeySummary[]
+  selected: number[]
+  onChange: (next: number[]) => void
+  disabled?: boolean
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handle = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    window.addEventListener('mousedown', handle)
+    return () => window.removeEventListener('mousedown', handle)
+  }, [open])
+
+  const selectedLabels = useMemo(() => {
+    if (selected.length === 0) return []
+    const mapping = new Map<number, ApiKeySummary>()
+    for (const key of apiKeys) {
+      mapping.set(key.id, key)
+    }
+    return selected
+      .map((id) => {
+        const key = mapping.get(id)
+        if (!key) return null
+        if (key.isWildcard) {
+          return t('apiKeys.wildcard')
+        }
+        return key.name
+      })
+      .filter((value): value is string => Boolean(value))
+  }, [apiKeys, selected, t])
+
+  const summaryText = selected.length === 0
+    ? t('logs.filters.apiKeyAll')
+    : t('logs.filters.apiKeySelected', { count: selected.length })
+
+  const handleToggle = (id: number) => {
+    if (selected.includes(id)) {
+      onChange(selected.filter((item) => item !== id))
+    } else {
+      onChange([...selected, id])
+    }
+  }
+
+  return (
+    <div className="relative flex flex-col text-sm" ref={containerRef}>
+      <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        {t('logs.filters.apiKey')}
+      </label>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        disabled={disabled || apiKeys.length === 0}
+        title={t('logs.filters.apiKeyHint')}
+        className={`flex w-48 items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:ring-blue-400/40 ${
+          selected.length > 0 ? 'border-blue-500 dark:border-blue-500' : 'border-slate-200'
+        }`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="truncate">
+          {summaryText}
+          {selectedLabels.length > 0 && (
+            <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
+              {selectedLabels.join(', ')}
+            </span>
+          )}
+        </span>
+        <svg
+          className={`h-4 w-4 text-slate-500 transition-transform dark:text-slate-300 ${open ? 'rotate-180' : ''}`}
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-2 w-56 rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-300">
+            <span>{summaryText}</span>
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              disabled={selected.length === 0}
+              className="text-blue-600 hover:underline disabled:opacity-40 dark:text-blue-400"
+            >
+              {t('common.actions.reset')}
+            </button>
+          </div>
+          <div className="max-h-56 overflow-y-auto px-2 py-2">
+            {apiKeys.map((key) => {
+              const label = key.isWildcard ? t('apiKeys.wildcard') : key.name
+              const checked = selected.includes(key.id)
+              return (
+                <label
+                  key={key.id}
+                  className={`flex items-center gap-2 rounded px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${checked ? 'bg-slate-100 dark:bg-slate-800/70' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={checked}
+                    onChange={() => handleToggle(key.id)}
+                  />
+                  <span className="truncate">{label}</span>
+                </label>
+              )
+            })}
+            {apiKeys.length === 0 && (
+              <p className="px-2 py-2 text-xs text-slate-500 dark:text-slate-400">
+                {t('logs.filters.apiKeyAll')}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
