@@ -194,7 +194,7 @@ function buildClaudeResponse(openAI: any, model: string) {
 }
 
 export async function registerMessagesRoute(app: FastifyInstance): Promise<void> {
-  app.post('/v1/messages', async (request, reply) => {
+  const handler = async (request: any, reply: any) => {
     const payload = request.body
     if (!payload || typeof payload !== 'object') {
       reply.code(400)
@@ -271,15 +271,14 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
     })
 
     const providerType = target.provider.type ?? 'custom'
-    const modelDefinition = target.provider.models?.find((m) => m.id === target.modelId)
-    const supportsTools = modelDefinition?.capabilities?.tools === true
+    const supportsTools = (target.provider.type ?? 'custom') !== 'custom'
     const supportsMetadata = providerType !== 'custom'
 
     let normalizedForProvider = supportsTools ? normalized : stripTooling(normalized)
     if (!supportsMetadata) {
       normalizedForProvider = stripMetadata(normalizedForProvider)
     }
-    const maxTokensOverride = payload.max_tokens ?? modelDefinition?.maxTokens
+    const maxTokensOverride = payload.max_tokens ?? undefined
     const toolChoice = supportsTools ? payload.tool_choice : undefined
     const overrideTools = supportsTools ? payload.tools : undefined
 
@@ -332,6 +331,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
     const logId = await recordLog({
       timestamp: requestStart,
+      endpoint: 'anthropic',
       provider: target.providerId,
       model: target.modelId,
       clientModel: requestedModel,
@@ -447,7 +447,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
           })
           await commitUsage(inputTokens, outputTokens)
-          await updateMetrics(new Date().toISOString().slice(0, 10), {
+          await updateMetrics(new Date().toISOString().slice(0, 10), 'anthropic', {
             requests: 1,
             inputTokens,
             outputTokens,
@@ -497,7 +497,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
         })
         await commitUsage(inputTokens, outputTokens)
-        await updateMetrics(new Date().toISOString().slice(0, 10), {
+        await updateMetrics(new Date().toISOString().slice(0, 10), 'anthropic', {
           requests: 1,
           inputTokens,
           outputTokens,
@@ -630,7 +630,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           })
         })
         await commitUsage(usagePrompt, usageCompletion)
-        await updateMetrics(new Date().toISOString().slice(0, 10), {
+        await updateMetrics(new Date().toISOString().slice(0, 10), 'anthropic', {
           requests: 1,
           inputTokens: usagePrompt,
           outputTokens: usageCompletion,
@@ -755,7 +755,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
               })
             })
             await commitUsage(finalPromptTokens, finalCompletionTokens)
-            await updateMetrics(new Date().toISOString().slice(0, 10), {
+            await updateMetrics(new Date().toISOString().slice(0, 10), 'anthropic', {
               requests: 1,
               inputTokens: finalPromptTokens,
               outputTokens: finalCompletionTokens,
@@ -921,7 +921,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           })
         })
         await commitUsage(fallbackPrompt, fallbackCompletion)
-        await updateMetrics(new Date().toISOString().slice(0, 10), {
+        await updateMetrics(new Date().toISOString().slice(0, 10), 'anthropic', {
           requests: 1,
           inputTokens: fallbackPrompt,
           outputTokens: fallbackCompletion,
@@ -962,5 +962,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         await finalize(reply.statusCode ?? 200, null)
       }
     }
-  })
+  }
+
+  app.post('/v1/messages', handler)
+  app.post('/anthropic/v1/messages', handler)
 }

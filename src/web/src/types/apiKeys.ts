@@ -1,6 +1,7 @@
 export interface ApiKeySummary {
   id: number
   name: string
+  description: string | null
   maskedKey: string | null
   isWildcard: boolean
   enabled: boolean
@@ -15,6 +16,7 @@ export interface NewApiKeyResponse {
   id: number
   key: string
   name: string
+  description: string | null
   createdAt: string
 }
 

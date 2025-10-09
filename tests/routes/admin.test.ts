@@ -2,21 +2,34 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GatewayConfig } from '../../src/server/config/types.ts'
 
 vi.mock('../../src/server/config/manager.ts', () => {
+  const emptyDefaults = {
+    completion: null,
+    reasoning: null,
+    background: null,
+    longContextThreshold: 60000
+  }
+
   const defaultConfig: GatewayConfig = {
     port: 4100,
     host: '127.0.0.1',
     providers: [],
-    defaults: {
-      completion: null,
-      reasoning: null,
-      background: null,
-      longContextThreshold: 60000
-    },
+    defaults: { ...emptyDefaults },
     logRetentionDays: 30,
     modelRoutes: {},
+    endpointRouting: {
+      anthropic: {
+        defaults: { ...emptyDefaults },
+        modelRoutes: {}
+      },
+      openai: {
+        defaults: { ...emptyDefaults },
+        modelRoutes: {}
+      }
+    },
     storePayloads: true,
     logLevel: 'info',
-    requestLogging: true
+    requestLogging: true,
+    responseLogging: true
   }
   return {
     getConfig: vi.fn(() => defaultConfig),
@@ -59,6 +72,13 @@ const mockedQueryLogs = vi.mocked(queryLogs)
 const mockedCleanupLogs = vi.mocked(cleanupLogsBefore)
 const mockedClearAll = vi.mocked(clearAllLogs)
 
+const baseDefaults = {
+  completion: 'deepseek:deepseek-chat',
+  reasoning: null,
+  background: null,
+  longContextThreshold: 60000
+}
+
 const baseConfig: GatewayConfig = {
   port: 4100,
   host: '127.0.0.1',
@@ -71,13 +91,20 @@ const baseConfig: GatewayConfig = {
       defaultModel: 'deepseek-chat'
     }
   ],
-  defaults: {
-    completion: 'deepseek:deepseek-chat',
-    reasoning: null,
-    background: null,
-    longContextThreshold: 60000
+  defaults: { ...baseDefaults },
+  endpointRouting: {
+    anthropic: {
+      defaults: { ...baseDefaults },
+      modelRoutes: {}
+    },
+    openai: {
+      defaults: { ...baseDefaults },
+      modelRoutes: {}
+    }
   },
-  logRetentionDays: 30
+  logRetentionDays: 30,
+  requestLogging: true,
+  responseLogging: true
 }
 
 async function createApp() {
@@ -116,7 +143,9 @@ describe('admin routes', () => {
         model: undefined,
         status: 'success',
         from: undefined,
-        to: Date.parse('2024-01-01')
+        to: Date.parse('2024-01-01'),
+        apiKeyIds: undefined,
+        endpoint: undefined
       })
       expect(response.statusCode).toBe(200)
       expect(response.headers['x-total-count']).toBe('42')

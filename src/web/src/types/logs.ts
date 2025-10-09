@@ -2,6 +2,7 @@ export interface LogRecord {
   id: number
   timestamp: number
   session_id: string | null
+  endpoint: string
   provider: string
   model: string
   client_model: string | null

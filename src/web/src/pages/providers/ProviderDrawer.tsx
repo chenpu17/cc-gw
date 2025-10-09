@@ -42,11 +42,7 @@ function createEmptyModel(): FormModel {
   return {
     _key: createKey(),
     id: '',
-    label: '',
-    capabilities: {
-      thinking: false,
-      tools: false
-    }
+    label: ''
   }
 }
 
@@ -73,27 +69,19 @@ const PROVIDER_TYPE_PRESETS: Record<Exclude<ProviderConfig['type'], undefined> |
     models: [
       {
         id: 'claude-sonnet-4-5-20250929',
-        label: 'Claude Sonnet 4.5 (2025-09-29)',
-        capabilities: { thinking: true, tools: true },
-        maxTokens: 200000
+        label: 'Claude Sonnet 4.5 (2025-09-29)'
       },
       {
         id: 'claude-sonnet-4-20250514',
-        label: 'Claude Sonnet 4 (2025-05-14)',
-        capabilities: { thinking: true, tools: true },
-        maxTokens: 200000
+        label: 'Claude Sonnet 4 (2025-05-14)'
       },
       {
         id: 'claude-opus-4-1-20250805',
-        label: 'Claude Opus 4.1 (2025-08-05)',
-        capabilities: { thinking: true, tools: true },
-        maxTokens: 200000
+        label: 'Claude Opus 4.1 (2025-08-05)'
       },
       {
         id: 'claude-3-5-haiku-20241022',
-        label: 'Claude 3.5 Haiku (2024-10-22)',
-        capabilities: { thinking: true, tools: true },
-        maxTokens: 200000
+        label: 'Claude 3.5 Haiku (2024-10-22)'
       }
     ]
   },
@@ -123,8 +111,7 @@ function buildInitialState(provider?: ProviderConfig): FormState {
     defaultModel: provider.defaultModel ?? '',
     models: (provider.models ?? []).map((model) => ({
       ...model,
-      _key: createKey(),
-      capabilities: model.capabilities ?? {}
+      _key: createKey()
     }))
   }
 }
@@ -133,12 +120,7 @@ function mapPresetModel(model: Omit<FormModel, '_key'>): FormModel {
   return {
     _key: createKey(),
     id: model.id,
-    label: model.label,
-    maxTokens: model.maxTokens,
-    capabilities: {
-      thinking: Boolean(model.capabilities?.thinking),
-      tools: Boolean(model.capabilities?.tools)
-    }
+    label: model.label
   }
 }
 
@@ -264,21 +246,6 @@ export function ProviderDrawer({
     })
   }
 
-  const handleCapabilityToggle = (index: number, capability: 'thinking' | 'tools') => {
-    setForm((prev) => {
-      const nextModels = [...prev.models]
-      const current = nextModels[index]
-      nextModels[index] = {
-        ...current,
-        capabilities: {
-          ...current.capabilities,
-          [capability]: !current.capabilities?.[capability]
-        }
-      }
-      return { ...prev, models: nextModels }
-    })
-  }
-
   const handleRemoveModel = (index: number) => {
     setForm((prev) => {
       if (prev.models.length <= 1) return prev
@@ -358,12 +325,7 @@ export function ProviderDrawer({
   const serialize = (): ProviderConfig => {
     const trimmedModels: ProviderModelConfig[] = form.models.map((model) => ({
       id: model.id.trim(),
-      label: model.label?.trim() ? model.label.trim() : undefined,
-      capabilities: model.capabilities,
-      maxTokens:
-        typeof model.maxTokens === 'number' && Number.isFinite(model.maxTokens)
-          ? model.maxTokens
-          : undefined
+      label: model.label?.trim() ? model.label.trim() : undefined
     }))
 
     const extraHeaders = provider?.extraHeaders && Object.keys(provider.extraHeaders).length > 0 ? provider.extraHeaders : undefined
@@ -561,49 +523,6 @@ export function ProviderDrawer({
                         </label>
                       ) : null}
                     </div>
-
-                    {showAdvanced ? (
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <label className="flex flex-col gap-2 text-sm">
-                          <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.maxTokens')}</span>
-                          <input
-                            type="number"
-                            min={1}
-                            value={model.maxTokens ?? ''}
-                            onChange={(event) =>
-                              handleModelChange(index, {
-                                maxTokens: event.target.value ? Number(event.target.value) : undefined
-                              })
-                            }
-                            placeholder="128000"
-                            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                          />
-                        </label>
-                        <div className="flex flex-col gap-2 text-sm">
-                          <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.capabilities')}</span>
-                          <div className="flex flex-wrap gap-3">
-                            <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(model.capabilities?.thinking)}
-                                onChange={() => handleCapabilityToggle(index, 'thinking')}
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
-                              {t('providers.drawer.fields.capabilityThinking')}
-                            </label>
-                            <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(model.capabilities?.tools)}
-                                onChange={() => handleCapabilityToggle(index, 'tools')}
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
-                              {t('providers.drawer.fields.capabilityTools')}
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
 
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
                     <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">

@@ -14,6 +14,7 @@ const resources = {
         models: '模型管理',
         apiKeys: 'API 密钥',
         settings: '设置',
+        help: '使用指南',
         about: '关于'
       },
       language: {
@@ -65,6 +66,12 @@ const resources = {
       },
       dashboard: {
         description: '快速了解请求规模与实时运行状态。',
+        filters: {
+          endpoint: '端点筛选',
+          endpointAll: '全部端点',
+          endpointAnthropic: 'anthropic',
+          endpointOpenAI: 'openai'
+        },
         status: {
           listening: '监听：{{host}}:{{port}}',
           providers: 'Provider 数量：{{value}}',
@@ -115,6 +122,7 @@ const resources = {
           routePlaceholder: '未指定',
           columns: {
             time: '时间',
+            endpoint: '端点',
             provider: 'Provider',
             route: '路由',
             latency: '耗时(ms)',
@@ -142,6 +150,11 @@ const resources = {
         },
         filters: {
           provider: 'Provider',
+          providerAll: '全部 Provider',
+          endpoint: '请求端点',
+          endpointAll: '全部端点',
+          endpointAnthropic: 'anthropic',
+          endpointOpenAI: 'openai',
           apiKey: 'API Key',
           apiKeyHint: '可多选，不选择时将展示全部密钥。',
           modelId: '模型 ID',
@@ -167,6 +180,7 @@ const resources = {
           apiKeyUnknown: '未知密钥',
           columns: {
             time: '时间',
+            endpoint: '端点',
             provider: 'Provider',
             requestedModel: '请求模型',
             routedModel: '路由模型',
@@ -190,6 +204,8 @@ const resources = {
             pageLabel: '第 {{page}} / {{total}} 页'
           }
         },
+        endpointAnthropic: 'anthropic',
+        endpointOpenAI: 'openai',
         toast: {
           listError: {
             title: '日志获取失败',
@@ -211,6 +227,7 @@ const resources = {
           info: {
             time: '时间',
             sessionId: 'Session ID',
+            endpoint: '端点',
             provider: 'Provider',
             requestedModel: '请求模型',
             noRequestedModel: '未指定',
@@ -311,8 +328,8 @@ const resources = {
         drawer: {
           createTitle: '新增 Provider',
           editTitle: '编辑 Provider',
-          description: '配置基础信息、模型列表与能力标记。',
-          modelsDescription: '维护支持的模型列表及能力标记。',
+          description: '配置基础信息与模型列表。',
+          modelsDescription: '维护支持的模型列表。',
           defaultHint: '当前默认模型：{{model}}',
           fields: {
             id: 'Provider ID',
@@ -332,10 +349,6 @@ const resources = {
             modelIdPlaceholder: '如 claude-sonnet-4-5-20250929',
             modelLabel: '显示名称（可选）',
             modelLabelPlaceholder: '如 GPT-4 旗舰',
-            maxTokens: '最大 Tokens（可选）',
-            capabilities: '能力标签',
-            capabilityThinking: 'Thinking',
-            capabilityTools: 'Tools',
             setDefault: '设为默认模型',
             removeModel: '删除模型'
           },
@@ -359,6 +372,14 @@ const resources = {
       modelManagement: {
         title: '模型管理',
         description: '统一维护模型提供商配置与模型路由映射。',
+        tabs: {
+          providers: '模型提供商',
+          providersDesc: '配置上游模型提供商以及认证信息。',
+          anthropic: 'Anthropic 路由',
+          anthropicDesc: '管理 /anthropic 端点的模型映射和默认配置。',
+          openai: 'OpenAI 路由',
+          openaiDesc: '管理 /openai 端点的模型映射和默认配置。'
+        },
         actions: {
           saveRoutes: '保存路由'
         },
@@ -410,7 +431,9 @@ const resources = {
             trace: '跟踪 (trace)'
           },
           requestLogging: '输出访问日志',
-          requestLoggingHint: '关闭后将不再在终端打印每个请求的访问日志。'
+          requestLoggingHint: '关闭后将不再在终端打印每个请求的访问日志。',
+          responseLogging: '输出响应日志',
+          responseLoggingHint: '关闭后将不再输出请求完成时的日志。'
         },
         validation: {
           port: '请输入 1-65535 之间的端口号',
@@ -427,14 +450,20 @@ const resources = {
         routing: {
           title: '模型路由映射',
           description: '为 Claude Code 发起的模型请求指定实际 Provider 与模型 ID（如将 claude 系列映射至 Kimi）。如需禁用映射，可留空或移除。',
+          titleByEndpoint: '{{endpoint}} 路由配置',
+          descriptionByEndpoint: {
+            anthropic: '当 Claude Code 通过 /anthropic 端点请求特定模型时，将根据此映射选择目标 Provider 与模型。',
+            openai: '当 Codex 通过 /openai 端点请求特定模型时，将根据此映射选择目标 Provider 与模型。'
+          },
           add: '新增映射',
           empty: '尚未配置映射，系统将使用默认模型策略。',
           sourceLabel: '来源模型',
           sourcePlaceholder: '如 claude-sonnet-4-5-20250929',
           targetLabel: '目标 Provider:模型',
           targetPlaceholder: '如 kimi:kimi-k2-0905-preview',
+          customTargetOption: '自定义目标…',
           remove: '移除',
-          suggested: '常用 Claude 模型'
+          suggested: '常用 Anthropic 模型'
         },
         file: {
           description: '当前配置存储在本地文件，可通过编辑该文件进行离线修改。',
@@ -445,6 +474,52 @@ const resources = {
           clearAll: '彻底清空',
           clearingAll: '清空中...',
           clearAllWarning: '该操作会删除所有日志记录及日统计数据，请谨慎操作。'
+        }
+      },
+      help: {
+        title: '使用指南',
+        intro: '本页汇总了如何通过 Web UI 完成配置与日常运维，帮助新接入者快速上手 cc-gw。',
+        note: '所有变更都会实时写入 ~/.cc-gw/config.json，并立即影响正在运行的网关；建议通过 Web UI 完成常规操作，CLI 仅用于启动/重启。',
+        sections: {
+          configuration: {
+            title: '一、初始配置',
+            items: [
+              '在“系统设置”中确认监听地址、端口以及日志策略，并视需要开启或关闭请求/响应日志。',
+              '前往“模型管理 → 模型提供商”添加上游 Provider，填写 Base URL、API Key、默认模型等信息。',
+              '使用“测试连接”按钮验证 Provider 是否可用；如果失败，请检查网络连通性与密钥权限。',
+              '在“模型管理 → 路由配置”中为 /anthropic 与 /openai 端点指定目标模型，保存后立即生效。'
+            ]
+          },
+          usage: {
+            title: '二、日常使用',
+            items: [
+              'Dashboard 提供实时请求量、Token、缓存命中以及 TTFT/TPOT 指标，便于了解服务运行状况。',
+              '“请求日志”支持多维度筛选，并可查看完整的请求/响应 Payload，适合排查联调问题。',
+              '“模型管理”可以快速切换默认模型或更新路由映射，适合 IDE / 自动化场景的随时切换。',
+              '“系统设置”中可调整日志保留天数、Payload 存储策略以及日志输出级别。'
+            ]
+          },
+          tips: {
+            title: '三、实用技巧',
+            items: [
+              '开启“保存请求/响应内容”后，可在日志详情中复制原始 Payload，定位上游兼容性问题。',
+              '分别关闭“访问日志”或“响应日志”可降低终端噪声，同时仍保留数据库与统计数据。',
+              '若手动修改配置文件后 UI 未更新，可使用“系统设置”页的刷新按钮或重启 cc-gw。'
+            ]
+          }
+        },
+        faq: {
+          title: '常见问题',
+          items: [
+            {
+              q: '如何切换不同端点的默认模型？',
+              a: '在“模型管理 → 路由配置”中分别选择 /anthropic 与 /openai 的默认模型并保存，即可立即生效。'
+            },
+            {
+              q: '为什么日志里没有缓存命中数据？',
+              a: '需要上游模型返回 cached_tokens 或 input_tokens_details.cached_tokens 字段，确认 Provider 已启用相关功能。'
+            }
+          ]
         }
       },
 
@@ -491,11 +566,14 @@ const resources = {
         description: '创建和管理用于访问网关的 API 密钥',
         createNew: '创建新密钥',
         createAction: '创建',
-        createDescription: '创建一个新的 API 密钥用于身份验证',
+        createDescription: '创建一个新的 API 密钥用于身份验证，可选填写密钥描述。',
+        descriptionLabel: '密钥描述（可选）',
+        keyDescriptionPlaceholder: '例如：仅供内部测试环境使用',
         keyNamePlaceholder: '输入密钥名称',
         keyCreated: 'API 密钥已创建',
         saveKeyWarning: '这是唯一一次看到完整密钥的机会，请妥善保存！',
         wildcard: '通配符',
+        wildcardHint: '启用该密钥后，任何自定义密钥与空密钥都可以通过认证；如需限制访问，可随时禁用该密钥。',
         status: {
           enabled: '已启用',
           disabled: '已禁用'
@@ -566,6 +644,7 @@ const resources = {
         models: 'Model Management',
         apiKeys: 'API Keys',
         settings: 'Settings',
+        help: 'Help',
         about: 'About'
       },
       language: {
@@ -617,6 +696,12 @@ const resources = {
       },
       dashboard: {
         description: 'Monitor request volume and runtime health at a glance.',
+        filters: {
+          endpoint: 'Endpoint',
+          endpointAll: 'All endpoints',
+          endpointAnthropic: 'anthropic',
+          endpointOpenAI: 'openai'
+        },
         status: {
           listening: 'Listening: {{host}}:{{port}}',
           providers: 'Providers: {{value}}',
@@ -667,6 +752,7 @@ const resources = {
           routePlaceholder: 'Not specified',
           columns: {
             time: 'Time',
+            endpoint: 'Endpoint',
             provider: 'Provider',
             route: 'Route',
             latency: 'Latency (ms)',
@@ -694,6 +780,11 @@ const resources = {
         },
         filters: {
           provider: 'Provider',
+          providerAll: 'All providers',
+          endpoint: 'Endpoint',
+          endpointAll: 'All endpoints',
+          endpointAnthropic: 'anthropic',
+          endpointOpenAI: 'openai',
           apiKey: 'API Key',
           apiKeyHint: 'Select one or more keys; leave empty to include all.',
           modelId: 'Model ID',
@@ -719,6 +810,7 @@ const resources = {
           apiKeyUnknown: 'Unknown key',
           columns: {
             time: 'Time',
+            endpoint: 'Endpoint',
             provider: 'Provider',
             requestedModel: 'Requested model',
             routedModel: 'Routed model',
@@ -742,6 +834,8 @@ const resources = {
             pageLabel: 'Page {{page}} / {{total}}'
           }
         },
+        endpointAnthropic: 'anthropic',
+        endpointOpenAI: 'openai',
         stream: {
           streaming: 'Streaming',
           single: 'Non-streaming'
@@ -763,6 +857,7 @@ const resources = {
           info: {
             time: 'Time',
             sessionId: 'Session ID',
+            endpoint: 'Endpoint',
             provider: 'Provider',
             requestedModel: 'Requested model',
             noRequestedModel: 'Not specified',
@@ -815,7 +910,7 @@ const resources = {
 
       providers: {
         title: 'Model Providers',
-        description: 'Manage integrated services, default models, and capabilities.',
+        description: 'Manage integrated services and default models.',
         emptyState: 'No providers yet. Click "Add provider" to get started.',
         count: '{{count}} providers configured',
         toast: {
@@ -863,8 +958,8 @@ const resources = {
         drawer: {
           createTitle: 'Add Provider',
           editTitle: 'Edit Provider',
-          description: 'Configure base settings, model list, and capabilities.',
-          modelsDescription: 'Maintain supported models and capability flags.',
+          description: 'Configure base settings and model list.',
+          modelsDescription: 'Maintain supported models.',
           defaultHint: 'Current default model: {{model}}',
           fields: {
             id: 'Provider ID',
@@ -884,10 +979,6 @@ const resources = {
             modelIdPlaceholder: 'e.g. claude-sonnet-4-5-20250929',
             modelLabel: 'Display name (optional)',
             modelLabelPlaceholder: 'e.g. GPT-4 Flagship',
-            maxTokens: 'Max tokens (optional)',
-            capabilities: 'Capabilities',
-            capabilityThinking: 'Thinking',
-            capabilityTools: 'Tools',
             setDefault: 'Set as default',
             removeModel: 'Remove model'
           },
@@ -911,6 +1002,14 @@ const resources = {
       modelManagement: {
         title: 'Model Management',
         description: 'Configure providers and maintain model routing rules in one place.',
+        tabs: {
+          providers: 'Providers',
+          providersDesc: 'Manage upstream providers and authentication.',
+          anthropic: 'Anthropic Routing',
+          anthropicDesc: 'Control mappings for the /anthropic endpoint.',
+          openai: 'OpenAI Routing',
+          openaiDesc: 'Control mappings for the /openai endpoint.'
+        },
         actions: {
           saveRoutes: 'Save routes'
         },
@@ -962,7 +1061,9 @@ const resources = {
             trace: 'Trace'
           },
           requestLogging: 'Emit request logs',
-          requestLoggingHint: 'Disable to stop printing each HTTP request in the console.'
+          requestLoggingHint: 'Disable to stop printing each HTTP request in the console.',
+          responseLogging: 'Emit response logs',
+          responseLoggingHint: 'Disable to stop printing completion logs for each HTTP request.'
         },
         validation: {
           port: 'Enter a port between 1 and 65535',
@@ -979,14 +1080,20 @@ const resources = {
         routing: {
           title: 'Model routing map',
           description: 'Override Claude Code model requests with provider:model targets (e.g., map Claude to Kimi). Leave empty to fall back to defaults.',
+          titleByEndpoint: '{{endpoint}} routing',
+          descriptionByEndpoint: {
+            anthropic: 'Requests hitting the /anthropic endpoint will use these mappings.',
+            openai: 'Requests hitting the /openai endpoint will use these mappings.'
+          },
           add: 'Add route',
           empty: 'No custom routes configured. Default strategy will be used.',
           sourceLabel: 'Source model',
           sourcePlaceholder: 'e.g. claude-sonnet-4-5-20250929',
           targetLabel: 'Target provider:model',
           targetPlaceholder: 'e.g. kimi:kimi-k2-0905-preview',
+          customTargetOption: 'Custom target…',
           remove: 'Remove',
-          suggested: 'Claude presets'
+          suggested: 'Anthropic presets'
         },
         file: {
           description: 'Configuration is stored locally; edit the file for offline adjustments.',
@@ -999,17 +1106,66 @@ const resources = {
           clearAllWarning: 'Deletes every log entry and daily metric. This cannot be undone.'
         }
       },
+      help: {
+        title: 'Help & Guidance',
+        intro: 'This page summarises how to configure cc-gw via the Web UI and how to operate it day to day.',
+        note: 'Changes are written to ~/.cc-gw/config.json immediately. Prefer editing through the Web UI; use the CLI mainly to start or restart the daemon.',
+        sections: {
+          configuration: {
+            title: '1. Initial setup',
+            items: [
+              'Review “Settings” to confirm the listening host/port and decide whether to emit request or response access logs.',
+              'Open “Model Management → Providers” to add upstream providers, including base URL, API key, and default model.',
+              'Click “Test connection” to ensure the provider is reachable. If it fails, double-check network access and API key permissions.',
+              'Configure “Model Management → Routing” for both /anthropic and /openai endpoints, then save to apply immediately.'
+            ]
+          },
+          usage: {
+            title: '2. Daily usage',
+            items: [
+              'Use the dashboard to keep an eye on request volume, token usage, cache hits, and TTFT/TPOT trends.',
+              '“Request Logs” provides rich filters plus full payload replay for debugging client/provider compatibility issues.',
+              '“Model Management” lets you switch defaults or update mappings without redeploying IDE extensions or automation scripts.',
+              '“Settings” controls log retention, payload storage, and log verbosity to suit your operations.'
+            ]
+          },
+          tips: {
+            title: '3. Practical tips',
+            items: [
+              'Enable “Store request/response bodies” to copy raw payloads from the log drawer when troubleshooting.',
+              'Turn off request or response logs individually to keep the console quiet while preserving metrics and database records.',
+              'If you edit ~/.cc-gw/config.json manually, refresh the Settings page or restart cc-gw so the UI reflects the latest configuration.'
+            ]
+          }
+        },
+        faq: {
+          title: 'Frequently asked questions',
+          items: [
+            {
+              q: 'How can I change the default model for each endpoint?',
+              a: 'Go to “Model Management → Routing” and choose defaults for /anthropic and /openai. Saving applies the change right away.'
+            },
+            {
+              q: 'Why are cached token numbers missing?',
+              a: 'Upstream providers must return cached_tokens or input_tokens_details.cached_tokens. Enable cache metrics on the provider if supported.'
+            }
+          ]
+        }
+      },
 
       apiKeys: {
         title: 'API Keys Management',
         description: 'Create and manage API keys for gateway access',
         createNew: 'Create New Key',
         createAction: 'Create',
-        createDescription: 'Create a new API key for authentication',
+        createDescription: 'Create a new API key for authentication and optionally add a description.',
+        descriptionLabel: 'Key description (optional)',
+        keyDescriptionPlaceholder: 'e.g. Internal staging access only',
         keyNamePlaceholder: 'Enter key name',
         keyCreated: 'API Key Created',
         saveKeyWarning: 'This is the only time you\'ll see the full key. Save it securely!',
-        wildcard: 'Wildcard',
+        wildcard: 'Any Key',
+        wildcardHint: 'When enabled, any custom key — including an empty key — is accepted. Disable this key to enforce strict authentication.',
         status: {
           enabled: 'Enabled',
           disabled: 'Disabled'

@@ -7,6 +7,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { loadConfig, onConfigChange, getConfig } from './config/manager.js'
 import { registerMessagesRoute } from './routes/messages.js'
+import { registerOpenAiRoutes } from './routes/openai.js'
 import { registerAdminRoutes } from './routes/admin.js'
 import { startMaintenanceTimers } from './tasks/maintenance.js'
 
@@ -41,12 +42,57 @@ function resolveWebDist(): string | null {
 
 export async function createServer(): Promise<FastifyInstance> {
   const config = cachedConfig ?? loadConfig()
+  const requestLogEnabled = config.requestLogging !== false
+  const responseLogEnabled = config.responseLogging !== false
+
   const app = Fastify({
     logger: {
       level: config.logLevel ?? 'info'
     },
-    disableRequestLogging: config.requestLogging === false
+    disableRequestLogging: true
   })
+
+  if (requestLogEnabled) {
+    app.addHook('onRequest', (request, _reply, done) => {
+      const socket = request.socket
+      const hostname =
+        typeof request.hostname === 'string' && request.hostname.length > 0
+          ? request.hostname
+          : typeof request.headers.host === 'string'
+          ? request.headers.host
+          : undefined
+      app.log.info(
+        {
+          reqId: request.id,
+          req: {
+            method: request.method,
+            url: request.url,
+            hostname,
+            remoteAddress: request.ip,
+            remotePort: socket && typeof socket.remotePort === 'number' ? socket.remotePort : undefined
+          }
+        },
+        'incoming request'
+      )
+      done()
+    })
+  }
+
+  if (responseLogEnabled) {
+    app.addHook('onResponse', (request, reply, done) => {
+      app.log.info(
+        {
+          reqId: request.id,
+          res: {
+            statusCode: reply.statusCode
+          },
+          responseTime: typeof reply.getResponseTime === 'function' ? reply.getResponseTime() : undefined
+        },
+        'request completed'
+      )
+      done()
+    })
+  }
 
   await app.register(fastifyCors, {
     origin: true,
@@ -93,6 +139,7 @@ export async function createServer(): Promise<FastifyInstance> {
   }
 
   await registerMessagesRoute(app)
+  await registerOpenAiRoutes(app)
   await registerAdminRoutes(app)
   startMaintenanceTimers()
 

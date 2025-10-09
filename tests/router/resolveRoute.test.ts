@@ -22,6 +22,13 @@ import { estimateTokens } from '../../src/server/protocol/tokenizer.ts'
 const mockedGetConfig = vi.mocked(getConfig)
 const mockedEstimateTokens = vi.mocked(estimateTokens)
 
+const defaultDefaults = {
+  completion: 'deepseek:deepseek-chat',
+  reasoning: 'kimi:kimi-think',
+  background: 'background:bg-long',
+  longContextThreshold: 1000
+}
+
 const baseConfig: GatewayConfig = {
   port: 4100,
   host: '127.0.0.1',
@@ -54,14 +61,19 @@ const baseConfig: GatewayConfig = {
       defaultModel: 'bg-long'
     }
   ],
-  defaults: {
-    completion: 'deepseek:deepseek-chat',
-    reasoning: 'kimi:kimi-think',
-    background: 'background:bg-long',
-    longContextThreshold: 1000
-  },
+  defaults: { ...defaultDefaults },
   logRetentionDays: 30,
-  modelRoutes: {}
+  modelRoutes: {},
+  endpointRouting: {
+    anthropic: {
+      defaults: { ...defaultDefaults },
+      modelRoutes: {}
+    },
+    openai: {
+      defaults: { ...defaultDefaults },
+      modelRoutes: {}
+    }
+  }
 }
 
 const payload = {
@@ -83,64 +95,87 @@ describe('resolveRoute', () => {
 
   it('throws when no providers configured', () => {
     mockedGetConfig.mockReturnValueOnce({ ...baseConfig, providers: [] })
-    expect(() => resolveRoute({ payload })).toThrow(/未配置任何模型提供商/)
+    expect(() => resolveRoute({ payload, endpoint: 'anthropic' })).toThrow(/未配置任何模型提供商/)
   })
 
   it('honors explicit provider:model request identifier', () => {
-    const result = resolveRoute({ payload, requestedModel: 'kimi:kimi-think' })
+    const result = resolveRoute({ payload, requestedModel: 'kimi:kimi-think', endpoint: 'anthropic' })
     expect(result).toMatchObject({ providerId: 'kimi', modelId: 'kimi-think' })
   })
 
   it('applies configured model route mapping when present', () => {
     mockedGetConfig.mockReturnValueOnce({
       ...baseConfig,
-      modelRoutes: {
-        'claude-sonnet-4-5-20250929': 'kimi:kimi-think'
+      endpointRouting: {
+        ...baseConfig.endpointRouting,
+        anthropic: {
+          defaults: { ...baseConfig.endpointRouting!.anthropic!.defaults },
+          modelRoutes: {
+            'claude-sonnet-4-5-20250929': 'kimi:kimi-think'
+          }
+        }
       }
     })
-    const result = resolveRoute({ payload, requestedModel: 'claude-sonnet-4-5-20250929' })
+    const result = resolveRoute({ payload, requestedModel: 'claude-sonnet-4-5-20250929', endpoint: 'anthropic' })
     expect(result).toMatchObject({ providerId: 'kimi', modelId: 'kimi-think' })
   })
 
   it('falls back to defaults when mapped target is invalid', () => {
     mockedGetConfig.mockReturnValueOnce({
       ...baseConfig,
-      modelRoutes: {
-        'claude-sonnet-4-5-20250929': 'missing:unknown'
+      endpointRouting: {
+        ...baseConfig.endpointRouting,
+        anthropic: {
+          defaults: { ...baseConfig.endpointRouting!.anthropic!.defaults },
+          modelRoutes: {
+            'claude-sonnet-4-5-20250929': 'missing:unknown'
+          }
+        }
       }
     })
-    const result = resolveRoute({ payload, requestedModel: 'claude-sonnet-4-5-20250929' })
+    const result = resolveRoute({ payload, requestedModel: 'claude-sonnet-4-5-20250929', endpoint: 'anthropic' })
     expect(result).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-chat' })
   })
 
   it('routes reasoning requests to reasoning default when thinking enabled', () => {
     const thinkingPayload = { ...payload, thinking: true }
-    const result = resolveRoute({ payload: thinkingPayload })
+    const result = resolveRoute({ payload: thinkingPayload, endpoint: 'anthropic' })
     expect(result).toMatchObject({ providerId: 'kimi', modelId: 'kimi-think' })
   })
 
   it('falls back to background provider when token estimate exceeds threshold', () => {
     mockedEstimateTokens.mockReturnValueOnce(5000)
-    const result = resolveRoute({ payload, requestedModel: undefined })
+    const result = resolveRoute({ payload, requestedModel: undefined, endpoint: 'anthropic' })
     expect(result).toMatchObject({ providerId: 'background', modelId: 'bg-long' })
   })
 
   it('uses completion default when no other strategy applies', () => {
-    const result = resolveRoute({ payload })
+    const result = resolveRoute({ payload, endpoint: 'anthropic' })
     expect(result).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-chat' })
   })
 
   it('falls back to first provider model when defaults missing', () => {
+    const emptyDefaults = {
+      completion: null,
+      reasoning: null,
+      background: null,
+      longContextThreshold: 1000
+    }
     mockedGetConfig.mockReturnValueOnce({
       ...baseConfig,
-      defaults: {
-        completion: null,
-        reasoning: null,
-        background: null,
-        longContextThreshold: 1000
+      defaults: { ...emptyDefaults },
+      endpointRouting: {
+        anthropic: {
+          defaults: { ...emptyDefaults },
+          modelRoutes: {}
+        },
+        openai: {
+          defaults: { ...emptyDefaults },
+          modelRoutes: {}
+        }
       }
     })
-    const result = resolveRoute({ payload })
+    const result = resolveRoute({ payload, endpoint: 'anthropic' })
     expect(result).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-chat' })
   })
 })

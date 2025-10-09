@@ -5,6 +5,7 @@ export interface LogRecord {
   id: number
   timestamp: number
   session_id: string | null
+  endpoint: string
   provider: string
   model: string
   client_model: string | null
@@ -31,6 +32,7 @@ export interface LogListOptions {
   from?: number
   to?: number
   apiKeyIds?: number[]
+  endpoint?: string
 }
 
 export interface LogListResult {
@@ -48,6 +50,11 @@ export async function queryLogs(options: LogListOptions = {}): Promise<LogListRe
   if (options.provider) {
     conditions.push('provider = $provider')
     params.$provider = options.provider
+  }
+
+  if (options.endpoint) {
+    conditions.push('endpoint = $endpoint')
+    params.$endpoint = options.endpoint
   }
 
   if (options.model) {
@@ -89,7 +96,7 @@ export async function queryLogs(options: LogListOptions = {}): Promise<LogListRe
   )
 
   const items = await getAll<LogRecord>(
-    `SELECT id, timestamp, session_id, provider, model, client_model,
+    `SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
             stream, latency_ms, status_code, input_tokens, output_tokens,
             cached_tokens, ttft_ms, tpot_ms, error, api_key_id, api_key_name, api_key_value
        FROM request_logs
@@ -112,7 +119,7 @@ export async function listLogs(limit = 50, offset = 0): Promise<LogRecord[]> {
 
 export async function getLogDetail(id: number): Promise<LogRecord | null> {
   const record = await getOne<LogRecord>(
-    `SELECT id, timestamp, session_id, provider, model, client_model,
+    `SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
             stream, latency_ms, status_code, input_tokens, output_tokens,
             cached_tokens, ttft_ms, tpot_ms, error, api_key_id, api_key_name, api_key_value
        FROM request_logs
@@ -162,7 +169,12 @@ export interface DailyMetric {
   avgLatencyMs: number
 }
 
-export async function getDailyMetrics(days = 7): Promise<DailyMetric[]> {
+export async function getDailyMetrics(days = 7, endpoint?: string): Promise<DailyMetric[]> {
+  const params: Array<number | string> = [days]
+  const whereClause = endpoint ? 'WHERE endpoint = ?' : ''
+  if (endpoint) {
+    params.unshift(endpoint)
+  }
   const rows = await getAll<{
     date: string
     requestCount: number | null
@@ -176,9 +188,10 @@ export async function getDailyMetrics(days = 7): Promise<DailyMetric[]> {
             total_output_tokens AS outputTokens,
             total_latency_ms AS totalLatency
        FROM daily_metrics
+       ${whereClause}
        ORDER BY date DESC
        LIMIT ?`,
-    [days]
+    params
   )
 
   return rows
@@ -207,7 +220,8 @@ export interface MetricsOverview {
   }
 }
 
-export async function getMetricsOverview(): Promise<MetricsOverview> {
+export async function getMetricsOverview(endpoint?: string): Promise<MetricsOverview> {
+  const totalsWhere = endpoint ? 'WHERE endpoint = ?' : ''
   const totalsRow = await getOne<{
     requests: number
     inputTokens: number
@@ -219,7 +233,9 @@ export async function getMetricsOverview(): Promise<MetricsOverview> {
        COALESCE(SUM(total_input_tokens), 0) AS inputTokens,
        COALESCE(SUM(total_output_tokens), 0) AS outputTokens,
        COALESCE(SUM(total_latency_ms), 0) AS totalLatency
-     FROM daily_metrics`
+     FROM daily_metrics
+     ${totalsWhere}`,
+    endpoint ? [endpoint] : []
   )
 
   const todayKey = new Date().toISOString().slice(0, 10)
@@ -234,8 +250,9 @@ export async function getMetricsOverview(): Promise<MetricsOverview> {
             total_output_tokens AS outputTokens,
             total_latency_ms AS totalLatency
        FROM daily_metrics
-       WHERE date = ?`,
-    [todayKey]
+       WHERE date = ?
+         ${endpoint ? 'AND endpoint = ?' : ''}`,
+    endpoint ? [todayKey, endpoint] : [todayKey]
   )
 
   const resolveAvg = (totalLatency: number, requests: number) => (requests > 0 ? Math.round(totalLatency / requests) : 0)
@@ -273,8 +290,13 @@ export interface ModelUsageMetric {
   avgTpotMs: number | null
 }
 
-export async function getModelUsageMetrics(days = 7, limit = 10): Promise<ModelUsageMetric[]> {
+export async function getModelUsageMetrics(days = 7, limit = 10, endpoint?: string): Promise<ModelUsageMetric[]> {
   const since = Date.now() - days * 24 * 60 * 60 * 1000
+  const params: Array<number | string> = [since]
+  const endpointClause = endpoint ? 'AND endpoint = ?' : ''
+  if (endpoint) {
+    params.push(endpoint)
+  }
   const rows = await getAll<{
     model: string
     provider: string
@@ -296,10 +318,11 @@ export async function getModelUsageMetrics(days = 7, limit = 10): Promise<ModelU
        AVG(CASE WHEN tpot_ms IS NULL THEN NULL ELSE tpot_ms END) AS avgTpotMs
      FROM request_logs
      WHERE timestamp >= ?
+       ${endpointClause}
      GROUP BY provider, model
      ORDER BY requests DESC
      LIMIT ?`,
-    [since, limit]
+    [...params, limit]
   )
 
   const roundValue = (value: number | null | undefined, fractionDigits = 0) =>
@@ -324,19 +347,25 @@ export interface ApiKeyOverviewMetrics {
   rangeDays: number
 }
 
-export async function getApiKeyOverviewMetrics(rangeDays = 7): Promise<ApiKeyOverviewMetrics> {
+export async function getApiKeyOverviewMetrics(rangeDays = 7, endpoint?: string): Promise<ApiKeyOverviewMetrics> {
   const totals = await getOne<{
     total: number
     enabled: number
   }>('SELECT COUNT(*) AS total, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled FROM api_keys')
 
   const since = Date.now() - rangeDays * 24 * 60 * 60 * 1000
+  const params: Array<number | string> = [since]
+  const endpointClause = endpoint ? 'AND endpoint = ?' : ''
+  if (endpoint) {
+    params.push(endpoint)
+  }
   const active = await getOne<{ count: number }>(
     `SELECT COUNT(DISTINCT api_key_id) AS count
        FROM request_logs
       WHERE api_key_id IS NOT NULL
-        AND timestamp >= ?`,
-    [since]
+        AND timestamp >= ?
+        ${endpointClause}`,
+    params
   )
 
   return {
@@ -356,8 +385,13 @@ export interface ApiKeyUsageMetric {
   lastUsedAt: string | null
 }
 
-export async function getApiKeyUsageMetrics(days = 7, limit = 10): Promise<ApiKeyUsageMetric[]> {
+export async function getApiKeyUsageMetrics(days = 7, limit = 10, endpoint?: string): Promise<ApiKeyUsageMetric[]> {
   const since = Date.now() - days * 24 * 60 * 60 * 1000
+  const params: Array<number | string> = [since]
+  const endpointClause = endpoint ? 'AND endpoint = ?' : ''
+  if (endpoint) {
+    params.push(endpoint)
+  }
   const rows = await getAll<{
     apiKeyId: number | null
     apiKeyName: string | null
@@ -375,10 +409,11 @@ export async function getApiKeyUsageMetrics(days = 7, limit = 10): Promise<ApiKe
        MAX(timestamp) AS lastUsedAt
      FROM request_logs
      WHERE timestamp >= ?
+       ${endpointClause}
      GROUP BY api_key_id, api_key_name
      ORDER BY requests DESC
      LIMIT ?`,
-    [since, limit]
+    [...params, limit]
   )
 
   return rows.map((row) => ({

@@ -63,21 +63,33 @@ async function ensureConfigTemplate(port?: string): Promise<boolean> {
     return false
   } catch {
     const selectedPort = port ? Number.parseInt(port, 10) || DEFAULT_PORT : DEFAULT_PORT
+    const baseDefaults = {
+      completion: null,
+      reasoning: null,
+      background: null,
+      longContextThreshold: 60000
+    }
     const template = {
       host: '127.0.0.1',
       port: selectedPort,
       providers: [],
-      defaults: {
-        completion: null,
-        reasoning: null,
-        background: null,
-        longContextThreshold: 60000
+      defaults: { ...baseDefaults },
+      endpointRouting: {
+        anthropic: {
+          defaults: { ...baseDefaults },
+          modelRoutes: {}
+        },
+        openai: {
+          defaults: { ...baseDefaults },
+          modelRoutes: {}
+        }
       },
       logRetentionDays: 30,
       modelRoutes: {},
       storePayloads: true,
       logLevel: 'info',
-      requestLogging: true
+      requestLogging: true,
+      responseLogging: true
     }
     await fsp.mkdir(path.dirname(CONFIG_FILE), { recursive: true })
     await fsp.writeFile(CONFIG_FILE, JSON.stringify(template, null, 2), 'utf-8')

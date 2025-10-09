@@ -105,6 +105,13 @@ function writeConfig(tempHome: string, gatewayPort: number, stubPort: number): v
   const configDir = path.join(tempHome, '.cc-gw')
   fs.mkdirSync(configDir, { recursive: true })
   const configPath = path.join(configDir, 'config.json')
+  const baseDefaults = {
+    completion: 'stub:stub-model',
+    reasoning: null,
+    background: null,
+    longContextThreshold: 60000
+  }
+
   const config = {
     host: '127.0.0.1',
     port: gatewayPort,
@@ -121,11 +128,16 @@ function writeConfig(tempHome: string, gatewayPort: number, stubPort: number): v
         ]
       }
     ],
-    defaults: {
-      completion: 'stub:stub-model',
-      reasoning: null,
-      background: null,
-      longContextThreshold: 60000
+    defaults: { ...baseDefaults },
+    endpointRouting: {
+      anthropic: {
+        defaults: { ...baseDefaults },
+        modelRoutes: {}
+      },
+      openai: {
+        defaults: { ...baseDefaults },
+        modelRoutes: {}
+      }
     },
     logRetentionDays: 30,
     modelRoutes: {},

@@ -1,11 +1,6 @@
 export interface ProviderModelConfig {
   id: string
   label?: string
-  capabilities?: {
-    thinking?: boolean
-    tools?: boolean
-  }
-  maxTokens?: number
 }
 
 export interface ProviderConfig {
@@ -26,6 +21,13 @@ export interface DefaultsConfig {
   longContextThreshold: number
 }
 
+export type GatewayEndpoint = 'anthropic' | 'openai'
+
+export interface EndpointRoutingConfig {
+  defaults: DefaultsConfig
+  modelRoutes: Record<string, string>
+}
+
 export interface GatewayConfig {
   port: number
   host?: string
@@ -33,9 +35,11 @@ export interface GatewayConfig {
   defaults: DefaultsConfig
   logRetentionDays?: number
   modelRoutes?: Record<string, string>
+  endpointRouting?: Partial<Record<GatewayEndpoint, EndpointRoutingConfig>>
   storePayloads?: boolean
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
   requestLogging?: boolean
+  responseLogging?: boolean
 }
 
 export interface ConfigInfoResponse {

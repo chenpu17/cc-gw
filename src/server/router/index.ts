@@ -1,11 +1,12 @@
 import { getConfig } from '../config/manager.js'
-import type { ProviderConfig } from '../config/types.js'
+import type { GatewayEndpoint, ProviderConfig } from '../config/types.js'
 import { estimateTokens } from '../protocol/tokenizer.js'
 import type { NormalizedPayload } from '../protocol/types.js'
 
 export interface RouteContext {
   payload: NormalizedPayload
   requestedModel?: string
+  endpoint: GatewayEndpoint
 }
 
 export interface RouteTarget {
@@ -35,13 +36,17 @@ function resolveByIdentifier(identifier: string | null | undefined, providers: P
 
 export function resolveRoute(ctx: RouteContext): RouteTarget {
   const config = getConfig()
+  const endpointConfig = config.endpointRouting?.[ctx.endpoint] ?? config.endpointRouting?.anthropic
+  if (!endpointConfig) {
+    throw new Error(`未找到端点 ${ctx.endpoint} 的路由配置`)
+  }
   const providers = config.providers
   if (!providers.length) {
     throw new Error('未配置任何模型提供商，请先在 Web UI 中添加 Provider。')
   }
 
   const requestedModel = ctx.requestedModel?.trim()
-  const mappedIdentifier = requestedModel ? (config.modelRoutes?.[requestedModel] ?? null) : null
+  const mappedIdentifier = requestedModel ? (endpointConfig.modelRoutes?.[requestedModel] ?? null) : null
   const fallbackModelId = providers[0].defaultModel ?? providers[0].models?.[0]?.id ?? 'gpt-4o'
   const tokenEstimate = estimateTokens(
     ctx.payload,
@@ -49,7 +54,7 @@ export function resolveRoute(ctx: RouteContext): RouteTarget {
   )
 
   const strategy = ctx.payload
-  const defaults = config.defaults
+  const defaults = endpointConfig.defaults
 
   if (mappedIdentifier) {
     const mapped = resolveByIdentifier(mappedIdentifier, providers)

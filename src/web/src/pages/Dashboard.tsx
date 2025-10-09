@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
@@ -86,20 +86,41 @@ function formatBytes(value: number | null | undefined): string {
 export default function DashboardPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
+  const [endpointFilter, setEndpointFilter] = useState<'all' | 'anthropic' | 'openai'>('all')
+  const endpointParam = endpointFilter === 'all' ? undefined : endpointFilter
 
   const overviewQuery = useApiQuery<OverviewStats, ApiError>(
-    ['stats', 'overview'],
-    { url: '/api/stats/overview', method: 'GET' }
+    ['stats', 'overview', endpointFilter],
+    {
+      url: '/api/stats/overview',
+      method: 'GET',
+      params: endpointParam ? { endpoint: endpointParam } : undefined
+    }
   )
 
   const dailyQuery = useApiQuery<DailyMetric[], ApiError>(
-    ['stats', 'daily', 14],
-    { url: '/api/stats/daily', method: 'GET', params: { days: 14 } }
+    ['stats', 'daily', 14, endpointFilter],
+    {
+      url: '/api/stats/daily',
+      method: 'GET',
+      params: {
+        days: 14,
+        ...(endpointParam ? { endpoint: endpointParam } : {})
+      }
+    }
   )
 
   const modelUsageQuery = useApiQuery<ModelUsageMetric[], ApiError>(
-    ['stats', 'model', 7, 6],
-    { url: '/api/stats/model', method: 'GET', params: { days: 7, limit: 6 } }
+    ['stats', 'model', 7, 6, endpointFilter],
+    {
+      url: '/api/stats/model',
+      method: 'GET',
+      params: {
+        days: 7,
+        limit: 6,
+        ...(endpointParam ? { endpoint: endpointParam } : {})
+      }
+    }
   )
 
   const statusQuery = useApiQuery<ServiceStatus, ApiError>(
@@ -113,8 +134,15 @@ export default function DashboardPage() {
   )
 
   const latestLogsQuery = useApiQuery<LogListResponse, ApiError>(
-    ['logs', 'recent'],
-    { url: '/api/logs', method: 'GET', params: { limit: 5 } },
+    ['logs', 'recent', endpointFilter],
+    {
+      url: '/api/logs',
+      method: 'GET',
+      params: {
+        limit: 5,
+        ...(endpointParam ? { endpoint: endpointParam } : {})
+      }
+    },
     { refetchInterval: 30_000 }
   )
 
@@ -341,6 +369,21 @@ export default function DashboardPage() {
             </span>
           </div>
         ) : null}
+
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t('dashboard.filters.endpoint')}
+          </label>
+          <select
+            value={endpointFilter}
+            onChange={(event) => setEndpointFilter(event.target.value as 'all' | 'anthropic' | 'openai')}
+            className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
+          >
+            <option value="all">{t('dashboard.filters.endpointAll')}</option>
+            <option value="anthropic">{t('dashboard.filters.endpointAnthropic')}</option>
+            <option value="openai">{t('dashboard.filters.endpointOpenAI')}</option>
+          </select>
+        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -542,6 +585,9 @@ function RecentRequestsTable({ records, loading }: { records: LogRecord[]; loadi
                   {t('dashboard.recent.columns.time')}
                 </th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">
+                  {t('dashboard.recent.columns.endpoint')}
+                </th>
+                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">
                   {t('dashboard.recent.columns.provider')}
                 </th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">
@@ -560,6 +606,13 @@ function RecentRequestsTable({ records, loading }: { records: LogRecord[]; loadi
                 <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                   <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
                     {new Date(item.timestamp).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                    {item.endpoint === 'anthropic'
+                      ? t('logs.table.endpointAnthropic')
+                      : item.endpoint === 'openai'
+                      ? t('logs.table.endpointOpenAI')
+                      : item.endpoint}
                   </td>
                   <td className="px-4 py-2">{item.provider}</td>
                   <td className="px-4 py-2">

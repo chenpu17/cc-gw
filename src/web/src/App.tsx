@@ -10,6 +10,7 @@ const ModelManagementPage = lazy(() => import('@/pages/ModelManagement'))
 const ApiKeysPage = lazy(() => import('@/pages/ApiKeys'))
 const SettingsPage = lazy(() => import('@/pages/Settings'))
 const AboutPage = lazy(() => import('@/pages/About'))
+const HelpPage = lazy(() => import('@/pages/Help'))
 
 export function App() {
   return (
@@ -25,6 +26,7 @@ export function App() {
               <Route path="api-keys" element={<ApiKeysPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="about" element={<AboutPage />} />
+              <Route path="help" element={<HelpPage />} />
             </Route>
           </Routes>
         </Suspense>

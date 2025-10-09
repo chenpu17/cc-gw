@@ -27,6 +27,14 @@ const CLAUDE_MODEL_SUGGESTIONS = [
   'claude-3-5-haiku-20241022'
 ]
 
+const OPENAI_MODEL_SUGGESTIONS = [
+  'gpt-4o-mini',
+  'gpt-4o',
+  'o4-mini',
+  'o4-large',
+  'gpt-5-codex'
+]
+
 function createEntryId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -43,6 +51,20 @@ function mapRoutesToEntries(routes: Record<string, string> | undefined): ModelRo
   }))
 }
 
+function deriveRoutesFromConfig(config: GatewayConfig | null): Record<'anthropic' | 'openai', ModelRouteEntry[]> {
+  if (!config) {
+    return {
+      anthropic: [],
+      openai: []
+    }
+  }
+  const routing = config.endpointRouting ?? {}
+  return {
+    anthropic: mapRoutesToEntries(routing.anthropic?.modelRoutes ?? config.modelRoutes ?? {}),
+    openai: mapRoutesToEntries(routing.openai?.modelRoutes ?? {})
+  }
+}
+
 export default function ModelManagementPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
@@ -52,14 +74,28 @@ export default function ModelManagementPage() {
     { url: '/api/config', method: 'GET' }
   )
 
+  type Endpoint = 'anthropic' | 'openai'
+  const tabs: Array<{ key: 'providers' | Endpoint; label: string; description: string }> = [
+    { key: 'providers', label: t('modelManagement.tabs.providers'), description: t('modelManagement.tabs.providersDesc') },
+    { key: 'anthropic', label: t('modelManagement.tabs.anthropic'), description: t('modelManagement.tabs.anthropicDesc') },
+    { key: 'openai', label: t('modelManagement.tabs.openai'), description: t('modelManagement.tabs.openaiDesc') }
+  ]
+
+  const [activeTab, setActiveTab] = useState<'providers' | Endpoint>('providers')
   const [config, setConfig] = useState<GatewayConfig | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [editingProvider, setEditingProvider] = useState<ProviderConfig | undefined>(undefined)
   const [testingProviderId, setTestingProviderId] = useState<string | null>(null)
-  const [modelRouteEntries, setModelRouteEntries] = useState<ModelRouteEntry[]>([])
-  const [routeError, setRouteError] = useState<string | null>(null)
-  const [savingRoutes, setSavingRoutes] = useState(false)
+  const [routesByEndpoint, setRoutesByEndpoint] = useState<Record<Endpoint, ModelRouteEntry[]>>({
+    anthropic: [],
+    openai: []
+  })
+  const [routeError, setRouteError] = useState<Record<Endpoint, string | null>>({
+    anthropic: null,
+    openai: null
+  })
+  const [savingRouteFor, setSavingRouteFor] = useState<Endpoint | null>(null)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
   const [quickAddApiKey, setQuickAddApiKey] = useState('')
   const [quickAddError, setQuickAddError] = useState<string | null>(null)
@@ -70,9 +106,11 @@ export default function ModelManagementPage() {
 
   useEffect(() => {
     if (configQuery.data) {
-      setConfig(configQuery.data)
-      setModelRouteEntries(mapRoutesToEntries(configQuery.data.modelRoutes))
-      setRouteError(null)
+      const incoming = configQuery.data
+      setConfig(incoming)
+
+      setRoutesByEndpoint(deriveRoutesFromConfig(incoming))
+      setRouteError({ anthropic: null, openai: null })
     }
   }, [configQuery.data])
 
@@ -124,7 +162,9 @@ export default function ModelManagementPage() {
       }
     }
 
-    for (const entry of modelRouteEntries) {
+    const combinedEntries = [...routesByEndpoint.anthropic, ...routesByEndpoint.openai]
+
+    for (const entry of combinedEntries) {
       const trimmed = entry.target.trim()
       if (trimmed && !seen.has(trimmed)) {
         seen.add(trimmed)
@@ -133,7 +173,7 @@ export default function ModelManagementPage() {
     }
 
     return options
-  }, [providers, modelRouteEntries])
+  }, [providers, routesByEndpoint])
 
   const ensureConfig = () => {
     if (!config) {
@@ -201,27 +241,15 @@ export default function ModelManagementPage() {
       models: [
         {
           id: 'deepseek-v3.1',
-          label: 'DeepSeek V3.1',
-          capabilities: {
-            thinking: false,
-            tools: true
-          }
+          label: 'DeepSeek V3.1'
         },
         {
           id: 'KIMI-K2',
-          label: 'KIMI-K2',
-          capabilities: {
-            thinking: false,
-            tools: true
-          }
+          label: 'KIMI-K2'
         },
         {
           id: 'qwen3-235b-a22b',
-          label: 'Qwen3 235B A22B',
-          capabilities: {
-            thinking: false,
-            tools: true
-          }
+          label: 'Qwen3 235B A22B'
         }
       ]
     }
@@ -235,7 +263,7 @@ export default function ModelManagementPage() {
       setQuickAddLoading(true)
       await apiClient.put('/api/config', nextConfig)
       setConfig(nextConfig)
-      setModelRouteEntries(mapRoutesToEntries(nextConfig.modelRoutes))
+      setRoutesByEndpoint(deriveRoutesFromConfig(nextConfig))
       setQuickAddOpen(false)
       pushToast({
         title: t('providers.quickAddHuawei.toast.success'),
@@ -273,7 +301,7 @@ export default function ModelManagementPage() {
 
     await apiClient.put('/api/config', nextConfig)
     setConfig(nextConfig)
-    setModelRouteEntries(mapRoutesToEntries(nextConfig.modelRoutes))
+    setRoutesByEndpoint(deriveRoutesFromConfig(nextConfig))
     void configQuery.refetch()
 
     const toastMessage = drawerMode === 'create'
@@ -327,28 +355,47 @@ export default function ModelManagementPage() {
 
     const nextProviders = providers.filter((item) => item.id !== provider.id)
 
-    const sanitizedRoutes: Record<string, string> = {}
-    if (config?.modelRoutes) {
-      for (const [source, target] of Object.entries(config.modelRoutes)) {
+    const sanitizeRoutes = (routes: Record<string, string> | undefined): Record<string, string> => {
+      const result: Record<string, string> = {}
+      if (!routes) return result
+      for (const [source, target] of Object.entries(routes)) {
         if (!target) continue
         const [targetProvider] = target.split(':')
         if ((targetProvider && targetProvider === provider.id) || target === provider.id) {
           continue
         }
-        sanitizedRoutes[source] = target
+        result[source] = target
       }
+      return result
     }
+
+    const currentRouting = config?.endpointRouting ?? {}
+    const sanitizedAnthropic = sanitizeRoutes(currentRouting.anthropic?.modelRoutes ?? config?.modelRoutes ?? {})
+    const sanitizedOpenAI = sanitizeRoutes(currentRouting.openai?.modelRoutes ?? {})
 
     const nextConfig: GatewayConfig = {
       ...config!,
       providers: nextProviders,
-      modelRoutes: sanitizedRoutes
+      modelRoutes: sanitizedAnthropic,
+      endpointRouting: {
+        anthropic: {
+          defaults: currentRouting.anthropic?.defaults ?? config!.defaults,
+          modelRoutes: sanitizedAnthropic
+        },
+        openai: {
+          defaults: currentRouting.openai?.defaults ?? config!.defaults,
+          modelRoutes: sanitizedOpenAI
+        }
+      }
     }
 
     try {
       await apiClient.put('/api/config', nextConfig)
       setConfig(nextConfig)
-      setModelRouteEntries(mapRoutesToEntries(nextConfig.modelRoutes))
+      setRoutesByEndpoint({
+        anthropic: mapRoutesToEntries(sanitizedAnthropic),
+        openai: mapRoutesToEntries(sanitizedOpenAI)
+      })
       pushToast({
         title: t('providers.toast.deleteSuccess', { name: provider.label || provider.id }),
         variant: 'success'
@@ -364,68 +411,114 @@ export default function ModelManagementPage() {
     }
   }
 
-  const handleAddRoute = () => {
-    setModelRouteEntries((prev) => [...prev, { id: createEntryId(), source: '', target: '' }])
-    setRouteError(null)
+  const handleAddRoute = (endpoint: Endpoint) => {
+    setRoutesByEndpoint((prev) => ({
+      ...prev,
+      [endpoint]: [...prev[endpoint], { id: createEntryId(), source: '', target: '' }]
+    }))
+    setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
-  const handleAddSuggestion = (model: string) => {
-    setModelRouteEntries((prev) => {
-      if (prev.some((entry) => entry.source.trim() === model)) {
+  const handleAddSuggestion = (endpoint: Endpoint, model: string) => {
+    setRoutesByEndpoint((prev) => {
+      if (prev[endpoint].some((entry) => entry.source.trim() === model.trim())) {
         return prev
       }
-      return [...prev, { id: createEntryId(), source: model, target: '' }]
+      return {
+        ...prev,
+        [endpoint]: [...prev[endpoint], { id: createEntryId(), source: model, target: '' }]
+      }
     })
-    setRouteError(null)
+    setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
-  const handleRouteChange = (id: string, field: 'source' | 'target', value: string) => {
-    setModelRouteEntries((prev) => prev.map((entry) => (entry.id === id ? { ...entry, [field]: value } : entry)))
-    setRouteError(null)
+  const handleRouteChange = (endpoint: Endpoint, id: string, field: 'source' | 'target', value: string) => {
+    setRoutesByEndpoint((prev) => ({
+      ...prev,
+      [endpoint]: prev[endpoint].map((entry) => (entry.id === id ? { ...entry, [field]: value } : entry))
+    }))
+    setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
-  const handleRemoveRoute = (id: string) => {
-    setModelRouteEntries((prev) => prev.filter((entry) => entry.id !== id))
-    setRouteError(null)
+  const handleRemoveRoute = (endpoint: Endpoint, id: string) => {
+    setRoutesByEndpoint((prev) => ({
+      ...prev,
+      [endpoint]: prev[endpoint].filter((entry) => entry.id !== id)
+    }))
+    setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
-  const handleResetRoutes = () => {
+  const handleResetRoutes = (endpoint: Endpoint) => {
     if (!config) return
-    setModelRouteEntries(mapRoutesToEntries(config.modelRoutes))
-    setRouteError(null)
+    const routing = config.endpointRouting ?? {}
+    const fallback = endpoint === 'anthropic' ? config.modelRoutes ?? {} : {}
+    const routes = routing[endpoint]?.modelRoutes ?? fallback
+    setRoutesByEndpoint((prev) => ({
+      ...prev,
+      [endpoint]: mapRoutesToEntries(routes)
+    }))
+    setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
-  const handleSaveRoutes = async () => {
+  const handleSaveRoutes = async (endpoint: Endpoint) => {
     if (!ensureConfig()) return
 
+    const currentEntries = routesByEndpoint[endpoint]
     const sanitizedRoutes: Record<string, string> = {}
-    for (const entry of modelRouteEntries) {
+    for (const entry of currentEntries) {
       const source = entry.source.trim()
       const target = entry.target.trim()
       if (!source && !target) {
         continue
       }
       if (!source || !target) {
-        setRouteError(t('settings.validation.routePair'))
+        setRouteError((prev) => ({ ...prev, [endpoint]: t('settings.validation.routePair') }))
         return
       }
       if (sanitizedRoutes[source]) {
-        setRouteError(t('settings.validation.routeDuplicate', { model: source }))
+        setRouteError((prev) => ({
+          ...prev,
+          [endpoint]: t('settings.validation.routeDuplicate', { model: source })
+        }))
         return
       }
       sanitizedRoutes[source] = target
     }
 
-    setRouteError(null)
-    setSavingRoutes(true)
+    setRouteError((prev) => ({ ...prev, [endpoint]: null }))
+    setSavingRouteFor(endpoint)
     try {
+      const routing = config!.endpointRouting ?? {
+        anthropic: {
+          defaults: config!.defaults,
+          modelRoutes: config!.modelRoutes ?? {}
+        },
+        openai: {
+          defaults: config!.endpointRouting?.openai?.defaults ?? config!.defaults,
+          modelRoutes: config!.endpointRouting?.openai?.modelRoutes ?? {}
+        }
+      }
+
+      const nextRouting: GatewayConfig['endpointRouting'] = {
+        ...routing,
+        [endpoint]: {
+          defaults: routing[endpoint]?.defaults ?? config!.defaults,
+          modelRoutes: sanitizedRoutes
+        }
+      }
+
       const nextConfig: GatewayConfig = {
         ...config!,
-        modelRoutes: sanitizedRoutes
+        endpointRouting: nextRouting,
+        modelRoutes: endpoint === 'anthropic' ? sanitizedRoutes : config!.modelRoutes ?? {}
       }
+
       await apiClient.put('/api/config', nextConfig)
       setConfig(nextConfig)
-      setModelRouteEntries(mapRoutesToEntries(nextConfig.modelRoutes))
+      setRoutesByEndpoint((prev) => ({
+        ...prev,
+        [endpoint]: mapRoutesToEntries(sanitizedRoutes)
+      }))
       pushToast({ title: t('modelManagement.toast.routesSaved'), variant: 'success' })
       void configQuery.refetch()
     } catch (error) {
@@ -436,215 +529,247 @@ export default function ModelManagementPage() {
         variant: 'error'
       })
     } finally {
-      setSavingRoutes(false)
+      setSavingRouteFor(null)
     }
   }
 
-  return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">{t('modelManagement.title')}</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{t('modelManagement.description')}</p>
-      </header>
-
-      <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">{t('providers.title')}</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{t('providers.description')}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-            <span>{t('providers.count', { count: providerCount })}</span>
-            <button
-              type="button"
-              className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-              onClick={() => configQuery.refetch()}
-              disabled={configQuery.isFetching}
-            >
-              {configQuery.isFetching ? t('common.actions.refreshing') : t('providers.actions.refresh')}
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-              onClick={handleOpenQuickAdd}
-            >
-              {t('providers.quickAddHuawei.button')}
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-              onClick={handleOpenCreate}
-            >
-              {t('providers.actions.add')}
-            </button>
-          </div>
+  const renderProvidersSection = () => (
+    <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">{t('providers.title')}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t('providers.description')}</p>
         </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+          <span>{t('providers.count', { count: providerCount })}</span>
+          <button
+            type="button"
+            className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            onClick={() => configQuery.refetch()}
+            disabled={configQuery.isFetching}
+          >
+            {configQuery.isFetching ? t('common.actions.refreshing') : t('providers.actions.refresh')}
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            onClick={handleOpenQuickAdd}
+          >
+            {t('providers.quickAddHuawei.button')}
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            onClick={handleOpenCreate}
+          >
+            {t('providers.actions.add')}
+          </button>
+        </div>
+      </div>
 
-        {configQuery.isPending || (!config && configQuery.isFetching) ? (
-          <section className="flex min-h-[200px] items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-            {t('common.loading')}
-          </section>
-        ) : providers.length === 0 ? (
-          <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-            {t('providers.emptyState')}
-          </section>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {providers.map((provider) => (
-              <article
-                key={provider.id}
-                className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold">{provider.label || provider.id}</h3>
-                      {provider.type ? <TypeBadge type={provider.type} /> : null}
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">ID：{provider.id}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Base URL：<span className="break-all text-slate-600 dark:text-slate-300">{provider.baseUrl}</span>
-                    </p>
+      {configQuery.isPending || (!config && configQuery.isFetching) ? (
+        <section className="flex min-h-[200px] items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+          {t('common.loading')}
+        </section>
+      ) : providers.length === 0 ? (
+        <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+          {t('providers.emptyState')}
+        </section>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {providers.map((provider) => (
+            <article
+              key={provider.id}
+              className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold">{provider.label || provider.id}</h3>
+                    {provider.type ? <TypeBadge type={provider.type} /> : null}
                   </div>
-                  <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    {provider.defaultModel ? (
-                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
-                        {t('providers.card.defaultModel', {
-                          model: defaultLabels.get(provider.id) ?? provider.defaultModel
-                        })}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                        {t('providers.card.noDefault')}
-                      </span>
-                    )}
-                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">ID：{provider.id}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Base URL：<span className="break-all text-slate-600 dark:text-slate-300">{provider.baseUrl}</span>
+                  </p>
                 </div>
-
-                <div className="flex flex-col gap-3">
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('providers.card.modelsTitle')}</h4>
-                  {provider.models && provider.models.length > 0 ? (
-                    <ul className="flex flex-wrap gap-2">
-                      {provider.models.map((model) => (
-                        <li
-                          key={model.id}
-                          className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-800/60"
-                        >
-                          <span className="font-medium text-slate-700 dark:text-slate-200">{resolveModelLabel(model)}</span>
-                          <ModelCapabilitiesBadge model={model} />
-                        </li>
-                      ))}
-                    </ul>
+                <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  {provider.defaultModel ? (
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                      {t('providers.card.defaultModel', {
+                        model: defaultLabels.get(provider.id) ?? provider.defaultModel
+                      })}
+                    </span>
                   ) : (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{t('providers.card.noModels')}</p>
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      {t('providers.card.noDefault')}
+                    </span>
                   )}
                 </div>
+              </div>
 
-                <footer className="mt-auto flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="rounded-md border border-slate-200 px-3 py-1 text-sm transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-                    onClick={() => handleOpenEdit(provider)}
-                  >
-                    {t('providers.actions.edit')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleTestConnection(provider)}
-                    disabled={testingProviderId === provider.id}
-                    className="rounded-md border border-slate-200 px-3 py-1 text-sm transition enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:enabled:hover:bg-slate-800"
-                  >
-                    {testingProviderId === provider.id ? t('common.actions.testingConnection') : t('providers.actions.test')}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md border border-red-200 px-3 py-1 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
-                    onClick={() => handleDelete(provider)}
-                  >
-                    {t('providers.actions.delete')}
-                  </button>
-                </footer>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+              <div className="flex flex-col gap-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('providers.card.modelsTitle')}</h4>
+                {provider.models && provider.models.length > 0 ? (
+                  <ul className="flex flex-wrap gap-2">
+                    {provider.models.map((model) => (
+                      <li
+                        key={model.id}
+                        className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-800/60"
+                      >
+                        <span className="font-medium text-slate-700 dark:text-slate-200">{resolveModelLabel(model)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{t('providers.card.noModels')}</p>
+                )}
+              </div>
 
+              <footer className="mt-auto flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-200 px-3 py-1 text-sm transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                  onClick={() => handleOpenEdit(provider)}
+                >
+                  {t('providers.actions.edit')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTestConnection(provider)}
+                  disabled={testingProviderId === provider.id}
+                  className="rounded-md border border-slate-200 px-3 py-1 text-sm transition enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:enabled:hover:bg-slate-800"
+                >
+                  {testingProviderId === provider.id ? t('common.actions.testingConnection') : t('providers.actions.test')}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-red-200 px-3 py-1 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
+                  onClick={() => handleDelete(provider)}
+                >
+                  {t('providers.actions.delete')}
+                </button>
+              </footer>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+
+  const renderRoutesSection = (endpoint: Endpoint) => {
+    const entries = routesByEndpoint[endpoint]
+    const error = routeError[endpoint]
+    const suggestions = endpoint === 'anthropic' ? CLAUDE_MODEL_SUGGESTIONS : OPENAI_MODEL_SUGGESTIONS
+    const isSaving = savingRouteFor === endpoint
+    const endpointLabel = t(`modelManagement.tabs.${endpoint}`)
+    const sourceListId = `route-source-${endpoint}`
+    const targetListId = `route-target-${endpoint}`
+
+    return (
       <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <h2 className="text-lg font-semibold">{t('settings.routing.title')}</h2>
-            <p className="max-w-3xl text-xs text-slate-500 dark:text-slate-400">{t('settings.routing.description')}</p>
+            <h2 className="text-lg font-semibold">{t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}</h2>
+            <p className="max-w-3xl text-xs text-slate-500 dark:text-slate-400">{t(`settings.routing.descriptionByEndpoint.${endpoint}`)}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <button
               type="button"
-              onClick={handleAddRoute}
+              onClick={() => handleAddRoute(endpoint)}
               className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
             >
               {t('settings.routing.add')}
             </button>
             <button
               type="button"
-              onClick={handleResetRoutes}
+              onClick={() => handleResetRoutes(endpoint)}
               className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-              disabled={savingRoutes}
+              disabled={isSaving}
             >
               {t('common.actions.reset')}
             </button>
             <button
               type="button"
-              onClick={handleSaveRoutes}
+              onClick={() => handleSaveRoutes(endpoint)}
               className="rounded-md bg-blue-600 px-3 py-1 text-white transition hover:bg-blue-700 disabled:opacity-60"
-              disabled={savingRoutes}
+              disabled={isSaving}
             >
-              {savingRoutes ? t('common.actions.saving') : t('modelManagement.actions.saveRoutes')}
+              {isSaving ? t('common.actions.saving') : t('modelManagement.actions.saveRoutes')}
             </button>
           </div>
         </div>
 
-        {routeError ? <p className="text-xs text-red-500">{routeError}</p> : null}
+        {error ? <p className="text-xs text-red-500">{error}</p> : null}
 
-        {modelRouteEntries.length === 0 ? (
+        {entries.length === 0 ? (
           <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
             {t('settings.routing.empty')}
           </p>
         ) : (
           <div className="grid gap-3">
-            {modelRouteEntries.map((entry) => (
+            {entries.map((entry) => (
               <div key={entry.id} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                 <label className="flex flex-col gap-2 text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">{t('settings.routing.sourceLabel')}</span>
+                  <span className="text-slate-500 dark:text-slate-400">{t('settings.routing.source')}</span>
                   <input
+                    type="text"
                     value={entry.source}
-                    onChange={(event) => handleRouteChange(entry.id, 'source', event.target.value)}
-                    placeholder={t('settings.routing.sourcePlaceholder')}
-                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
-                    disabled={savingRoutes}
+                    onChange={(event) => handleRouteChange(endpoint, entry.id, 'source', event.target.value)}
+                    className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
+                    placeholder="claude-3.5-sonnet"
+                    list={sourceListId}
+                    disabled={isSaving}
                   />
                 </label>
                 <label className="flex flex-col gap-2 text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">{t('settings.routing.targetLabel')}</span>
-                  <select
-                    value={entry.target}
-                    onChange={(event) => handleRouteChange(entry.id, 'target', event.target.value)}
-                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                    disabled={savingRoutes}
-                  >
-                    <option value="">{t('modelManagement.routing.selectTarget')}</option>
-                    {providerModelOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="text-slate-500 dark:text-slate-400">{t('settings.routing.target')}</span>
+                  {(() => {
+                    const normalizedTarget = entry.target.trim()
+                    const hasMatchingOption = providerModelOptions.some((option) => option.value === normalizedTarget)
+                    const selectValue = hasMatchingOption ? normalizedTarget : '__custom'
+                    return (
+                      <>
+                        <select
+                          value={selectValue}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            if (value === '__custom') {
+                              handleRouteChange(endpoint, entry.id, 'target', normalizedTarget)
+                            } else {
+                              handleRouteChange(endpoint, entry.id, 'target', value)
+                            }
+                          }}
+                          className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
+                          disabled={isSaving}
+                        >
+                          <option value="__custom">{t('settings.routing.customTargetOption')}</option>
+                          {providerModelOptions.map((option) => (
+                            <option key={`${targetListId}-${option.value}`} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {selectValue === '__custom' && (
+                          <input
+                            type="text"
+                            value={entry.target}
+                            onChange={(event) => handleRouteChange(endpoint, entry.id, 'target', event.target.value)}
+                            className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
+                            placeholder="providerId:modelId"
+                            disabled={isSaving}
+                          />
+                        )}
+                      </>
+                    )
+                  })()}
                 </label>
-                <div className="flex items-end justify-start pb-1 md:justify-end">
+                <div className="flex items-end">
                   <button
                     type="button"
-                    onClick={() => handleRemoveRoute(entry.id)}
-                    className="rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                    disabled={savingRoutes}
+                    className="rounded-md border border-slate-200 px-3 py-2 text-xs transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                    onClick={() => handleRemoveRoute(endpoint, entry.id)}
+                    disabled={isSaving}
                   >
                     {t('settings.routing.remove')}
                   </button>
@@ -656,19 +781,57 @@ export default function ModelManagementPage() {
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <span>{t('settings.routing.suggested')}</span>
-          {CLAUDE_MODEL_SUGGESTIONS.map((model) => (
+          {suggestions.map((model) => (
             <button
-              key={model}
+              key={`${endpoint}-${model}`}
               type="button"
-              onClick={() => handleAddSuggestion(model)}
+              onClick={() => handleAddSuggestion(endpoint, model)}
               className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-              disabled={savingRoutes}
+              disabled={isSaving}
             >
               {model}
             </button>
           ))}
         </div>
+
+        <datalist id={sourceListId}>
+          {suggestions.map((model) => (
+            <option key={`${sourceListId}-${model}`} value={model} />
+          ))}
+        </datalist>
       </section>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-col gap-2">
+        <h1 className="text-2xl font-semibold">{t('modelManagement.title')}</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t('modelManagement.description')}</p>
+      </header>
+
+      <div className="flex flex-wrap gap-3">
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.key
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex min-w-[200px] flex-col gap-1 rounded-lg border px-4 py-3 text-left transition ${
+                isActive
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-900/30 dark:text-blue-100'
+                  : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span className="text-sm font-semibold">{tab.label}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">{tab.description}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'providers' ? renderProvidersSection() : renderRoutesSection(activeTab as Endpoint)}
 
       <ProviderDrawer
         open={drawerOpen}
@@ -797,20 +960,6 @@ function resolveModelLabel(model: ProviderModelConfig): string {
     return `${model.label} (${model.id})`
   }
   return model.id
-}
-
-function ModelCapabilitiesBadge({ model }: { model: ProviderModelConfig }) {
-  const caps = model.capabilities
-  if (!caps) return null
-  const labels: string[] = []
-  if (caps.thinking) labels.push('Thinking')
-  if (caps.tools) labels.push('Tools')
-  if (labels.length === 0) return null
-  return (
-    <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-200">
-      {labels.join(' · ')}
-    </span>
-  )
 }
 
 function TypeBadge({ type }: { type: NonNullable<ProviderConfig['type']> }) {

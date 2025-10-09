@@ -3,7 +3,7 @@ import { normalizeClaudePayload } from '../protocol/normalize.js'
 import { buildProviderBody, buildAnthropicBody } from '../protocol/toProvider.js'
 import { getConnector } from '../providers/registry.js'
 import { CONFIG_PATH, getConfig, updateConfig } from '../config/manager.js'
-import type { GatewayConfig } from '../config/types.js'
+import type { GatewayConfig, GatewayEndpoint } from '../config/types.js'
 import {
   getLogDetail,
   getLogPayload,
@@ -126,13 +126,13 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
 
     const providerBody = provider.type === 'anthropic'
       ? buildAnthropicBody(testPayload, {
-          maxTokens: provider.models?.find((m) => m.id === targetModel)?.maxTokens ?? 256,
+          maxTokens: 256,
           temperature: 0,
           toolChoice: undefined,
           overrideTools: undefined
         })
       : buildProviderBody(testPayload, {
-          maxTokens: provider.models?.find((m) => m.id === targetModel)?.maxTokens ?? 256,
+          maxTokens: 256,
           temperature: 0,
           toolChoice: undefined,
           overrideTools: undefined
@@ -164,6 +164,16 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       try {
         parsed = raw ? JSON.parse(raw) : null
       } catch {
+        const fallbackSample = raw?.trim() ?? ''
+        if (provider.type && provider.type !== 'anthropic') {
+          return {
+            ok: fallbackSample.length > 0,
+            status: upstream.status,
+            statusText: fallbackSample ? 'OK (text response)' : 'Empty response',
+            durationMs: duration,
+            sample: fallbackSample ? fallbackSample.slice(0, 200) : null
+          }
+        }
         return {
           ok: false,
           status: upstream.status,
@@ -221,6 +231,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const model = typeof query.model === 'string' && query.model.length > 0 ? query.model : undefined
     const statusParam = typeof query.status === 'string' ? query.status : undefined
     const status = statusParam === 'success' || statusParam === 'error' ? statusParam : undefined
+    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
 
     const parseTime = (value: string | undefined) => {
       if (!value) return undefined
@@ -250,7 +261,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const apiKeyIdsRaw = collectApiKeyIds(query.apiKeys ?? query.apiKeyIds ?? query.apiKey)
     const apiKeyIds = apiKeyIdsRaw.length > 0 ? Array.from(new Set(apiKeyIdsRaw)) : undefined
 
-    const { items, total } = await queryLogs({ limit, offset, provider, model, status, from, to, apiKeyIds })
+    const { items, total } = await queryLogs({ limit, offset, provider, model, status, from, to, apiKeyIds, endpoint })
     reply.header('x-total-count', String(total))
     return { total, items: items.map((item) => mapLogRecord(item)) }
   })
@@ -296,15 +307,18 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  app.get('/api/stats/overview', async () => {
-    return getMetricsOverview()
+  app.get('/api/stats/overview', async (request) => {
+    const query: any = request.query ?? {}
+    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    return getMetricsOverview(endpoint)
   })
 
   app.get('/api/stats/daily', async (request) => {
     const query: any = request.query ?? {}
     const daysRaw = Number(query.days ?? 7)
     const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 30)) : 7
-    return getDailyMetrics(days)
+    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    return getDailyMetrics(days, endpoint)
   })
 
   app.get('/api/stats/model', async (request) => {
@@ -313,14 +327,16 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const limitRaw = Number(query.limit ?? 10)
     const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 90)) : 7
     const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 50)) : 10
-    return getModelUsageMetrics(days, limit)
+    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    return getModelUsageMetrics(days, limit, endpoint)
   })
 
   app.get('/api/stats/api-keys/overview', async (request) => {
     const query: any = request.query ?? {}
     const daysRaw = Number(query.days ?? 7)
     const rangeDays = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 90)) : 7
-    return getApiKeyOverviewMetrics(rangeDays)
+    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    return getApiKeyOverviewMetrics(rangeDays, endpoint)
   })
 
   app.get('/api/stats/api-keys/usage', async (request) => {
@@ -329,7 +345,8 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const limitRaw = Number(query.limit ?? 10)
     const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 90)) : 7
     const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 50)) : 10
-    return getApiKeyUsageMetrics(days, limit)
+    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    return getApiKeyUsageMetrics(days, limit, endpoint)
   })
 
   // API Keys Management
@@ -338,14 +355,14 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.post('/api/keys', async (request, reply) => {
-    const body = request.body as { name?: string }
+    const body = request.body as { name?: string; description?: string }
     if (!body?.name || typeof body.name !== 'string') {
       reply.code(400)
       return { error: 'Name is required' }
     }
 
     try {
-      return await createApiKey(body.name, { ipAddress: request.ip })
+      return await createApiKey(body.name, body.description, { ipAddress: request.ip })
     } catch (error) {
       reply.code(400)
       return { error: error instanceof Error ? error.message : 'Failed to create API key' }
@@ -400,3 +417,5 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 }
+  const isEndpoint = (value: unknown): value is GatewayEndpoint =>
+    value === 'anthropic' || value === 'openai'

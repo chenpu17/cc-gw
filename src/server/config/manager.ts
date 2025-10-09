@@ -2,7 +2,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { EventEmitter } from 'node:events'
-import type { GatewayConfig, ModelRouteMap } from './types.js'
+import type {
+  DefaultsConfig,
+  EndpointRoutingConfig,
+  GatewayConfig,
+  GatewayEndpoint,
+  ModelRouteMap
+} from './types.js'
 
 const LOG_LEVELS = new Set<NonNullable<GatewayConfig['logLevel']>>([
   'fatal',
@@ -34,7 +40,63 @@ class TypedEmitter<T> extends EventEmitter {
 }
 
 const emitter = new TypedEmitter<ConfigEvents>()
+const KNOWN_ENDPOINTS: GatewayEndpoint[] = ['anthropic', 'openai']
+
 let cachedConfig: GatewayConfig | null = null
+
+function sanitizeDefaults(input: Partial<DefaultsConfig> | undefined): DefaultsConfig {
+  const defaults: DefaultsConfig = {
+    completion: null,
+    reasoning: null,
+    background: null,
+    longContextThreshold: 60000
+  }
+  if (input) {
+    if (typeof input.completion === 'string' || input.completion === null) {
+      defaults.completion = input.completion ?? null
+    }
+    if (typeof input.reasoning === 'string' || input.reasoning === null) {
+      defaults.reasoning = input.reasoning ?? null
+    }
+    if (typeof input.background === 'string' || input.background === null) {
+      defaults.background = input.background ?? null
+    }
+    if (typeof input.longContextThreshold === 'number' && Number.isFinite(input.longContextThreshold)) {
+      defaults.longContextThreshold = input.longContextThreshold
+    }
+  }
+  return defaults
+}
+
+function sanitizeModelRoutes(input: Record<string, unknown> | undefined): ModelRouteMap {
+  if (!input) return {}
+  const sanitized: ModelRouteMap = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value !== 'string') continue
+    const trimmedKey = key.trim()
+    const trimmedValue = value.trim()
+    if (!trimmedKey || !trimmedValue) continue
+    sanitized[trimmedKey] = trimmedValue
+  }
+  return sanitized
+}
+
+function resolveEndpointRouting(
+  source: unknown,
+  fallback: EndpointRoutingConfig
+): EndpointRoutingConfig {
+  const defaultsRaw = (typeof source === 'object' && source !== null)
+    ? (source as any).defaults
+    : undefined
+  const routesRaw = (typeof source === 'object' && source !== null)
+    ? (source as any).modelRoutes
+    : undefined
+
+  return {
+    defaults: sanitizeDefaults(defaultsRaw ?? fallback.defaults),
+    modelRoutes: sanitizeModelRoutes(routesRaw ?? fallback.modelRoutes)
+  }
+}
 
 function parseConfig(raw: string): GatewayConfig {
   const data = JSON.parse(raw)
@@ -44,41 +106,50 @@ function parseConfig(raw: string): GatewayConfig {
   if (!Array.isArray(data.providers)) {
     data.providers = []
   }
-  if (!data.defaults) {
-    data.defaults = {
-      completion: null,
-      reasoning: null,
-      background: null,
-      longContextThreshold: 60000
-    }
-  } else {
-    data.defaults.longContextThreshold ??= 60000
-  }
+  const legacyDefaults = sanitizeDefaults(data.defaults)
   if (typeof data.logRetentionDays !== 'number') {
     data.logRetentionDays = 30
   }
   if (typeof data.storePayloads !== 'boolean') {
     data.storePayloads = true
   }
-  if (!data.modelRoutes || typeof data.modelRoutes !== 'object') {
-    data.modelRoutes = {}
-  } else {
-    const sanitized: ModelRouteMap = {}
-    for (const [key, value] of Object.entries(data.modelRoutes as Record<string, unknown>)) {
-      if (typeof value !== 'string') continue
-      const trimmedKey = key.trim()
-      const trimmedValue = value.trim()
-      if (!trimmedKey || !trimmedValue) continue
-      sanitized[trimmedKey] = trimmedValue
-    }
-    data.modelRoutes = sanitized
-  }
+  const legacyRoutes = sanitizeModelRoutes(data.modelRoutes as Record<string, unknown> | undefined)
   if (typeof data.logLevel !== 'string' || !LOG_LEVELS.has(data.logLevel as any)) {
     data.logLevel = 'info'
   }
   if (typeof data.requestLogging !== 'boolean') {
     data.requestLogging = true
   }
+  if (typeof data.responseLogging !== 'boolean') {
+    data.responseLogging = data.requestLogging !== false
+  }
+
+  const endpointRouting: Partial<Record<GatewayEndpoint, EndpointRoutingConfig>> = {}
+  const sourceRouting = (data.endpointRouting && typeof data.endpointRouting === 'object')
+    ? data.endpointRouting
+    : {}
+
+  const fallbackAnthropic: EndpointRoutingConfig = {
+    defaults: legacyDefaults,
+    modelRoutes: legacyRoutes
+  }
+  const fallbackOpenAI: EndpointRoutingConfig = {
+    defaults: sanitizeDefaults(undefined),
+    modelRoutes: {}
+  }
+
+  for (const endpoint of KNOWN_ENDPOINTS) {
+    const fallback = endpoint === 'anthropic' ? fallbackAnthropic : fallbackOpenAI
+    endpointRouting[endpoint] = resolveEndpointRouting(
+      (sourceRouting as Record<string, unknown>)[endpoint],
+      fallback
+    )
+  }
+
+  data.endpointRouting = endpointRouting
+  data.defaults = { ...endpointRouting.anthropic!.defaults }
+  data.modelRoutes = { ...endpointRouting.anthropic!.modelRoutes }
+
   return data as GatewayConfig
 }
 
@@ -98,8 +169,9 @@ export function getConfig(): GatewayConfig {
 
 export function updateConfig(next: GatewayConfig): void {
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true })
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(next, null, 2), 'utf-8')
-  cachedConfig = next
+  const normalized = parseConfig(JSON.stringify(next))
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(normalized, null, 2), 'utf-8')
+  cachedConfig = normalized
   emitter.emitTyped('change', cachedConfig)
 }
 

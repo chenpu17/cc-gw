@@ -4,6 +4,7 @@ import { runQuery } from '../storage/index.js'
 interface LogEntry {
   timestamp: number
   sessionId?: string
+  endpoint: string
   provider: string
   model: string
   clientModel?: string
@@ -58,13 +59,14 @@ export function decompressPayload(value: unknown): string | null {
 export async function recordLog(entry: LogEntry): Promise<number> {
   const result = await runQuery(
     `INSERT INTO request_logs (
-      timestamp, session_id, provider, model, client_model, stream,
+      timestamp, session_id, endpoint, provider, model, client_model, stream,
       latency_ms, status_code, input_tokens, output_tokens, cached_tokens, error,
       api_key_id, api_key_name, api_key_value
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.timestamp,
       entry.sessionId ?? null,
+      entry.endpoint,
       entry.provider,
       entry.model,
       entry.clientModel ?? null,
@@ -171,22 +173,23 @@ export async function upsertLogPayload(
   )
 }
 
-export async function updateMetrics(date: string, delta: {
+export async function updateMetrics(date: string, endpoint: string, delta: {
   requests: number
   inputTokens: number
   outputTokens: number
   latencyMs: number
 }): Promise<void> {
   await runQuery(
-    `INSERT INTO daily_metrics (date, request_count, total_input_tokens, total_output_tokens, total_latency_ms)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(date) DO UPDATE SET
+    `INSERT INTO daily_metrics (date, endpoint, request_count, total_input_tokens, total_output_tokens, total_latency_ms)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(date, endpoint) DO UPDATE SET
        request_count = daily_metrics.request_count + excluded.request_count,
        total_input_tokens = daily_metrics.total_input_tokens + excluded.total_input_tokens,
        total_output_tokens = daily_metrics.total_output_tokens + excluded.total_output_tokens,
        total_latency_ms = daily_metrics.total_latency_ms + excluded.total_latency_ms`,
     [
       date,
+      endpoint,
       delta.requests,
       delta.inputTokens,
       delta.outputTokens,

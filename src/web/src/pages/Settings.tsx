@@ -24,6 +24,7 @@ interface FormState {
   storePayloads: boolean
   logLevel: LogLevel
   requestLogging: boolean
+  responseLogging: boolean
 }
 
 interface FormErrors {
@@ -59,7 +60,8 @@ export default function SettingsPage() {
     logRetentionDays: '',
     storePayloads: true,
     logLevel: 'info',
-    requestLogging: true
+    requestLogging: true,
+    responseLogging: true
   })
   const [errors, setErrors] = useState<FormErrors>({})
   const [saving, setSaving] = useState(false)
@@ -87,7 +89,8 @@ export default function SettingsPage() {
         logRetentionDays: String(configQuery.data.config.logRetentionDays ?? 30),
         storePayloads: configQuery.data.config.storePayloads !== false,
         logLevel: (configQuery.data.config.logLevel as LogLevel) ?? 'info',
-        requestLogging: configQuery.data.config.requestLogging !== false
+        requestLogging: configQuery.data.config.requestLogging !== false,
+        responseLogging: configQuery.data.config.responseLogging ?? configQuery.data.config.requestLogging !== false
       })
     }
   }, [configQuery.data])
@@ -136,7 +139,8 @@ export default function SettingsPage() {
         logRetentionDays: retentionValue,
         storePayloads: form.storePayloads,
         logLevel: form.logLevel,
-        requestLogging: form.requestLogging
+        requestLogging: form.requestLogging,
+        responseLogging: form.responseLogging
       }
       await apiClient.put('/api/config', nextConfig)
       setConfig(nextConfig)
@@ -160,7 +164,8 @@ export default function SettingsPage() {
       logRetentionDays: String(config.logRetentionDays ?? 30),
       storePayloads: config.storePayloads !== false,
       logLevel: (config.logLevel as LogLevel) ?? 'info',
-      requestLogging: config.requestLogging !== false
+      requestLogging: config.requestLogging !== false,
+      responseLogging: config.responseLogging ?? config.requestLogging !== false
     })
     setErrors({})
   }
@@ -359,6 +364,25 @@ export default function SettingsPage() {
                   </span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {t('settings.fields.requestLoggingHint')}
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+                <input
+                  type="checkbox"
+                  checked={form.responseLogging}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, responseLogging: event.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600"
+                />
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {t('settings.fields.responseLogging')}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('settings.fields.responseLoggingHint')}
                   </span>
                 </div>
               </label>

@@ -53,6 +53,7 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 - **请求日志**：多条件筛选（时间、Provider、模型、状态），查看压缩日志详情，支持分页导出与清理。
 - **模型管理**：维护 Provider 列表、预置模型、路由策略；一键测试连通性（发送诊断 PROMPT）。
 - **系统设置**：端口、日志保留策略、是否存储请求 payload、日志级别与访问日志开关、日志清理工具。
+- **使用指南**：提供图文步骤、常见问题与排查提示，帮助团队成员快速熟悉配置流程。
 
 UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供键盘可达性（Skip Link、焦点管理）。
 
@@ -70,6 +71,13 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
    claude "help me review this file"
    ```
 3. cc-gw 会根据 `modelRoutes`/默认策略将 Claude 请求路由到已配置的目标模型（如 Kimi、火山 DeepSeek、OpenAI 或自建模型）。
+
+### 使用场景 / Usage Scenarios
+
+1. **双端点适配 / Dual Endpoint Support**：通过 `/anthropic` 与 `/openai` 端点，分别兼容 Claude Code 与 Codex 客户端。无需重启 cc-gw，即可在 Web UI 中为两个端点配置独立的默认模型与路由策略。
+2. **日志追踪 / Request Auditing**：在“请求日志”页按端点、Provider、API Key 等维度筛选记录，可直接查看和复制完整的请求/响应 payload，辅助排查联调问题。
+3. **模型切换 / Cross-Provider Routing**：利用“模型管理”页的路由映射，将 Claude Code 请求透明地转发到 GLM、Kimi K2、DeepSeek 等任意 OpenAI 兼容模型，实现一套 IDE 客户端、多家大模型的快速切换。
+4. **操作指引 / Built-in Guidance**：左侧“Help”导航提供分步配置、日常运维建议及 FAQ，可作为新人上手或问题排查的快速参考。
 
 ## 配置说明
 
@@ -114,7 +122,8 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
   "logRetentionDays": 30,
   "storePayloads": true,
   "logLevel": "info",
-  "requestLogging": true
+  "requestLogging": true,
+  "responseLogging": true
 }
 ```
 
@@ -125,7 +134,8 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 - `modelRoutes`：将 Claude 发起的模型名映射到上游模型；未命中时使用 `defaults`。
 - `storePayloads`：是否在 SQLite 中压缩保存原始请求/响应（Brotli），关闭后仅保留元信息。
 - `logLevel`：控制 Fastify/Pino 控制台日志级别（`fatal`/`error`/`warn`/`info`/`debug`/`trace`）。
-- `requestLogging`：是否输出每个 HTTP 请求的访问日志，关闭后终端更加安静。
+- `requestLogging`：是否输出每个 HTTP 请求的进入日志。
+- `responseLogging`：是否输出每个 HTTP 请求完成的日志，可独立于 `requestLogging` 控制。
 - 推荐通过 Web UI 的“模型管理 / 系统设置”在线编辑并热加载，无需手工修改文件。
 
 #### Anthropic Provider 额外说明
@@ -219,6 +229,7 @@ claude "help me review this file"
 - `storePayloads` toggles compressed body retention; disable to keep only metadata.
 - `logLevel` adjusts Fastify/Pino verbosity (`fatal` → `trace`).
 - `requestLogging` controls whether per-request access logs are emitted to the console.
+- `responseLogging` toggles completion logs separately so you can keep the console quieter while preserving metrics.
 - Web UI allows editing without restarting; CLI restart will pick up bundle changes after rebuilds.
 
 ### Observability & Storage
@@ -249,6 +260,7 @@ claude "help me review this file"
 - Always rebuild `@cc-gw/server` and `@cc-gw/web` before restarts to ensure the daemon picks up new code.
 - If cache statistics remain zero, verify whether the upstream provider exposes `cached_tokens` or equivalent details.
 - Back up `~/.cc-gw/` (config, logs, SQLite DB) for migrations or disaster recovery.
+- Use the **Help** page in the Web UI to review setup steps, troubleshooting tips, and FAQs whenever a teammate needs a refresher.
 
 ---
 

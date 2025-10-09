@@ -24,6 +24,7 @@ function toIsoOrNull(value: number | null | undefined): string | null {
 export interface ApiKeyListItem {
   id: number
   name: string
+  description: string | null
   maskedKey: string | null
   isWildcard: boolean
   enabled: boolean
@@ -38,6 +39,7 @@ export interface CreateApiKeyResult {
   id: number
   key: string
   name: string
+  description: string | null
   createdAt: string
 }
 
@@ -105,6 +107,7 @@ export async function listApiKeys(): Promise<ApiKeyListItem[]> {
   const rows = await getAll<{
     id: number
     name: string
+    description: string | null
     key_prefix: string | null
     key_suffix: string | null
     is_wildcard: number
@@ -114,11 +117,12 @@ export async function listApiKeys(): Promise<ApiKeyListItem[]> {
     request_count: number
     total_input_tokens: number
     total_output_tokens: number
-  }>('SELECT id, name, key_prefix, key_suffix, is_wildcard, enabled, created_at, last_used_at, request_count, total_input_tokens, total_output_tokens FROM api_keys ORDER BY is_wildcard DESC, created_at DESC')
+  }>('SELECT id, name, description, key_prefix, key_suffix, is_wildcard, enabled, created_at, last_used_at, request_count, total_input_tokens, total_output_tokens FROM api_keys ORDER BY is_wildcard DESC, created_at DESC')
 
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    description: row.description ?? null,
     maskedKey: row.is_wildcard ? null : maskKey(row.key_prefix, row.key_suffix),
     isWildcard: Boolean(row.is_wildcard),
     enabled: Boolean(row.enabled),
@@ -130,7 +134,7 @@ export async function listApiKeys(): Promise<ApiKeyListItem[]> {
   }))
 }
 
-export async function createApiKey(name: string, context?: { operator?: string; ipAddress?: string }): Promise<CreateApiKeyResult> {
+export async function createApiKey(name: string, description?: string, context?: { operator?: string; ipAddress?: string }): Promise<CreateApiKeyResult> {
   const trimmed = name.trim()
   if (!trimmed) {
     throw new Error('Name is required')
@@ -140,15 +144,20 @@ export async function createApiKey(name: string, context?: { operator?: string; 
     throw new Error('Name too long (max 100 characters)')
   }
 
+  const trimmedDescription = typeof description === 'string' ? description.trim() : ''
+  if (trimmedDescription.length > 500) {
+    throw new Error('Description too long (max 500 characters)')
+  }
+
   await ensureApiKeysMetadataLoaded()
   const { key, prefix, suffix } = generateKey()
   const hashed = hashKey(key)
   const encrypted = encryptSecret(key)
   const now = Date.now()
 
-  const columns = ['name', 'key_hash', 'key_ciphertext', 'key_prefix', 'key_suffix', 'is_wildcard', 'enabled', 'created_at']
-  const placeholders = ['?', '?', '?', '?', '?', '?', '?', '?']
-  const values: Array<string | number | null> = [trimmed, hashed, encrypted, prefix, suffix, 0, 1, now]
+  const columns = ['name', 'description', 'key_hash', 'key_ciphertext', 'key_prefix', 'key_suffix', 'is_wildcard', 'enabled', 'created_at']
+  const placeholders = ['?', '?', '?', '?', '?', '?', '?', '?', '?']
+  const values: Array<string | number | null> = [trimmed, trimmedDescription || null, hashed, encrypted, prefix, suffix, 0, 1, now]
 
   if (apiKeysHasUpdatedAt) {
     columns.push('updated_at')
@@ -173,6 +182,7 @@ export async function createApiKey(name: string, context?: { operator?: string; 
     id: result.lastID,
     key,
     name: trimmed,
+    description: trimmedDescription || null,
     createdAt: new Date(now).toISOString()
   }
 }

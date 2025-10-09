@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { createPortal } from 'react-dom'
 import { useToast } from '@/providers/ToastProvider'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import type { ApiError } from '@/services/api'
@@ -60,6 +61,7 @@ export default function LogsPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
   const [providerFilter, setProviderFilter] = useState<string>('all')
+  const [endpointFilter, setEndpointFilter] = useState<'all' | 'anthropic' | 'openai'>('all')
   const [modelFilter, setModelFilter] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [fromDate, setFromDate] = useState<DateInput>('')
@@ -72,7 +74,7 @@ export default function LogsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [providerFilter, modelFilter, statusFilter, fromDate, toDate, pageSize, selectedApiKeys])
+  }, [providerFilter, endpointFilter, modelFilter, statusFilter, fromDate, toDate, pageSize, selectedApiKeys])
 
   const queryParams = useMemo(() => {
     const params: Record<string, unknown> = {
@@ -81,6 +83,9 @@ export default function LogsPage() {
     }
     if (providerFilter !== 'all') {
       params.provider = providerFilter
+    }
+    if (endpointFilter !== 'all') {
+      params.endpoint = endpointFilter
     }
     if (modelFilter.trim().length > 0) {
       params.model = modelFilter.trim()
@@ -100,7 +105,7 @@ export default function LogsPage() {
       params.apiKeys = selectedApiKeys.join(',')
     }
     return params
-  }, [providerFilter, modelFilter, statusFilter, fromDate, toDate, page, pageSize, selectedApiKeys])
+  }, [providerFilter, endpointFilter, modelFilter, statusFilter, fromDate, toDate, page, pageSize, selectedApiKeys])
 
   const logsQuery = useApiQuery<LogListResponse, ApiError>(
     ['logs', queryParams],
@@ -179,6 +184,7 @@ export default function LogsPage() {
   const handleResetFilters = () => {
     setProviderFilter('all')
     setModelFilter('')
+    setEndpointFilter('all')
     setStatusFilter('all')
     setFromDate('')
     setToDate('')
@@ -226,12 +232,27 @@ export default function LogsPage() {
               onChange={(event) => setProviderFilter(event.target.value)}
               className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
             >
-              <option value="all">{t('logs.filters.statusAll')}</option>
+              <option value="all">{t('logs.filters.providerAll')}</option>
               {providerOptions.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.label ?? provider.id}
                 </option>
               ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col text-sm">
+            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {t('logs.filters.endpoint')}
+            </label>
+            <select
+              value={endpointFilter}
+              onChange={(event) => setEndpointFilter(event.target.value as 'all' | 'anthropic' | 'openai')}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
+            >
+              <option value="all">{t('logs.filters.endpointAll')}</option>
+              <option value="anthropic">{t('logs.filters.endpointAnthropic')}</option>
+              <option value="openai">{t('logs.filters.endpointOpenAI')}</option>
             </select>
           </div>
 
@@ -314,6 +335,7 @@ export default function LogsPage() {
             <thead className="bg-slate-100 dark:bg-slate-800/50">
               <tr>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.time')}</th>
+                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.endpoint')}</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.provider')}</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.requestedModel')}</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.routedModel')}</th>
@@ -333,7 +355,7 @@ export default function LogsPage() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {logsQuery.isPending ? (
                 <tr>
-                  <td colSpan={15} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">
                     {t('logs.table.loading')}
                   </td>
                 </tr>
@@ -424,6 +446,7 @@ function LogRow({
 }) {
   const { t } = useTranslation()
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
+  const endpointLabel = record.endpoint || '-'
   const isError = Boolean(record.error)
   const requestedModel = record.client_model ?? t('logs.table.requestedModelFallback')
   const apiKeyMeta = record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
@@ -446,6 +469,7 @@ function LogRow({
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
       <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(record.timestamp)}</td>
+      <td className="px-4 py-2">{endpointLabel}</td>
       <td className="px-4 py-2">{providerLabel}</td>
       <td className="px-4 py-2">{requestedModel}</td>
       <td className="px-4 py-2">{record.model}</td>
@@ -578,8 +602,11 @@ function LogDetailsDrawer({
   const record = logDetailQuery.data
   const providerLabel = record ? providerLabelMap.get(record.provider) ?? record.provider : ''
   const apiKeyMeta = record && record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
+  if (typeof document === 'undefined') {
+    return null
+  }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-slate-900/60" onClick={onClose} aria-hidden="true" />
       <aside
@@ -662,7 +689,9 @@ function LogDetailsDrawer({
                     <dd className="font-medium">{record.session_id ?? '-'}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.provider')}</dt>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.endpoint')}</dt>
+                    <dd className="font-medium">{record.endpoint || '-'}</dd>
+                    <dt className="mt-2 text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.provider')}</dt>
                     <dd className="font-medium">{providerLabel}</dd>
                   </div>
                   <div>
@@ -820,7 +849,7 @@ function LogDetailsDrawer({
         </div>
       </aside>
     </div>
-  )
+  , document.body)
 }
 
 function ApiKeyFilter({

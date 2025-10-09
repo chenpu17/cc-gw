@@ -90,6 +90,48 @@ async function columnExists(db: sqlite3.Database, table: string, column: string)
   return rows.some((row) => row.name === column)
 }
 
+async function migrateDailyMetricsTable(db: sqlite3.Database): Promise<void> {
+  const columns = await all<{ name: string; pk: number }>(db, 'PRAGMA table_info(daily_metrics)')
+  if (columns.length === 0) return
+
+  const hasEndpointColumn = columns.some((column) => column.name === 'endpoint')
+  const primaryKeyColumns = columns.filter((column) => column.pk > 0)
+  const hasCompositePrimaryKey = primaryKeyColumns.length > 1
+
+  if (!hasEndpointColumn || !hasCompositePrimaryKey) {
+    const endpointSelector = hasEndpointColumn ? "COALESCE(endpoint, 'anthropic')" : "'anthropic'"
+    await exec(
+      db,
+      `ALTER TABLE daily_metrics RENAME TO daily_metrics_old;
+       CREATE TABLE daily_metrics (
+         date TEXT NOT NULL,
+         endpoint TEXT NOT NULL DEFAULT 'anthropic',
+         request_count INTEGER DEFAULT 0,
+         total_input_tokens INTEGER DEFAULT 0,
+         total_output_tokens INTEGER DEFAULT 0,
+         total_latency_ms INTEGER DEFAULT 0,
+         PRIMARY KEY (date, endpoint)
+       );
+       INSERT INTO daily_metrics (date, endpoint, request_count, total_input_tokens, total_output_tokens, total_latency_ms)
+         SELECT date,
+                ${endpointSelector},
+                request_count,
+                total_input_tokens,
+                total_output_tokens,
+                total_latency_ms
+           FROM daily_metrics_old;
+       DROP TABLE daily_metrics_old;`
+    )
+  } else {
+    await run(db, "UPDATE daily_metrics SET endpoint = 'anthropic' WHERE endpoint IS NULL OR endpoint = ''")
+  }
+
+  await run(
+    db,
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_metrics_date_endpoint ON daily_metrics(date, endpoint)'
+  )
+}
+
 async function maybeAddColumn(db: sqlite3.Database, table: string, column: string, definition: string): Promise<void> {
   const exists = await columnExists(db, table, column)
   if (!exists) {
@@ -104,6 +146,7 @@ async function ensureSchema(db: sqlite3.Database): Promise<void> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       timestamp INTEGER NOT NULL,
       session_id TEXT,
+      endpoint TEXT NOT NULL DEFAULT 'anthropic',
       provider TEXT NOT NULL,
       model TEXT NOT NULL,
       client_model TEXT,
@@ -129,16 +172,19 @@ async function ensureSchema(db: sqlite3.Database): Promise<void> {
     );
 
     CREATE TABLE IF NOT EXISTS daily_metrics (
-      date TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      endpoint TEXT NOT NULL DEFAULT 'anthropic',
       request_count INTEGER DEFAULT 0,
       total_input_tokens INTEGER DEFAULT 0,
       total_output_tokens INTEGER DEFAULT 0,
-      total_latency_ms INTEGER DEFAULT 0
+      total_latency_ms INTEGER DEFAULT 0,
+      PRIMARY KEY (date, endpoint)
     );
 
     CREATE TABLE IF NOT EXISTS api_keys (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
+      description TEXT,
       key_hash TEXT NOT NULL UNIQUE,
       key_ciphertext TEXT,
       key_prefix TEXT,
@@ -171,6 +217,7 @@ async function ensureSchema(db: sqlite3.Database): Promise<void> {
   await maybeAddColumn(db, 'request_logs', 'ttft_ms', 'INTEGER')
   await maybeAddColumn(db, 'request_logs', 'tpot_ms', 'REAL')
   await maybeAddColumn(db, 'request_logs', 'stream', 'INTEGER')
+  await maybeAddColumn(db, 'request_logs', 'endpoint', "TEXT DEFAULT 'anthropic'")
   await maybeAddColumn(db, 'request_logs', 'api_key_id', 'INTEGER')
   await maybeAddColumn(db, 'request_logs', 'api_key_name', 'TEXT')
   await maybeAddColumn(db, 'request_logs', 'api_key_value', 'TEXT')
@@ -184,9 +231,12 @@ async function ensureSchema(db: sqlite3.Database): Promise<void> {
   await maybeAddColumn(db, 'api_keys', 'key_suffix', 'TEXT')
   await maybeAddColumn(db, 'api_keys', 'updated_at', 'INTEGER')
   await maybeAddColumn(db, 'api_keys', 'last_used_at', 'INTEGER')
+  await maybeAddColumn(db, 'api_keys', 'description', 'TEXT')
   await maybeAddColumn(db, 'api_keys', 'request_count', 'INTEGER DEFAULT 0')
   await maybeAddColumn(db, 'api_keys', 'total_input_tokens', 'INTEGER DEFAULT 0')
   await maybeAddColumn(db, 'api_keys', 'total_output_tokens', 'INTEGER DEFAULT 0')
+
+  await migrateDailyMetricsTable(db)
 
   await run(db, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash) WHERE key_hash IS NOT NULL')
   await run(db, "UPDATE api_keys SET key_hash = '*' WHERE is_wildcard = 1 AND (key_hash IS NULL OR key_hash = '')")
@@ -197,8 +247,8 @@ async function ensureSchema(db: sqlite3.Database): Promise<void> {
     const now = Date.now()
     await run(
       db,
-      'INSERT INTO api_keys (name, key_hash, is_wildcard, enabled, created_at, updated_at) VALUES (?, ?, 1, 1, ?, ?)',
-      ['Any Key', '*', now, now]
+      'INSERT INTO api_keys (name, description, key_hash, is_wildcard, enabled, created_at, updated_at) VALUES (?, ?, ?, 1, 1, ?, ?)',
+      ['Any Key', null, '*', now, now]
     )
   }
 }

@@ -25,6 +25,7 @@ export default function ApiKeysPage() {
   const { pushToast } = useToast()
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
+  const [newKeyDescription, setNewKeyDescription] = useState('')
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<NewApiKeyResponse | null>(null)
   const [isDeleting, setIsDeleting] = useState<number | null>(null)
   const [rangeDays, setRangeDays] = useState<number>(7)
@@ -56,11 +57,13 @@ export default function ApiKeysPage() {
 
     try {
       const response = await apiClient.post<NewApiKeyResponse>('/api/keys', {
-        name: newKeyName.trim()
+        name: newKeyName.trim(),
+        description: newKeyDescription.trim() || undefined
       })
       setNewlyCreatedKey(response.data)
       setIsCreateDialogOpen(false)
       setNewKeyName('')
+      setNewKeyDescription('')
       keysQuery.refetch()
       overviewQuery.refetch()
       usageQuery.refetch()
@@ -293,6 +296,16 @@ export default function ApiKeysPage() {
                       </code>
                     </div>
 
+                    {key.isWildcard ? (
+                      <p className="mt-2 text-sm text-purple-700 dark:text-purple-200">
+                        {t('apiKeys.wildcardHint')}
+                      </p>
+                    ) : key.description ? (
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-400">
+                        {key.description}
+                      </p>
+                    ) : null}
+
                     <div className="mt-3 grid gap-4 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">
                       <div>
                         <span className="font-medium">{t('apiKeys.created')}:</span> {formatDate(key.createdAt)}
@@ -351,11 +364,21 @@ export default function ApiKeysPage() {
               className="w-full px-3 py-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 mb-4"
               onKeyPress={(e) => e.key === 'Enter' && handleCreateKey()}
             />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              {t('apiKeys.descriptionLabel')}
+            </label>
+            <textarea
+              value={newKeyDescription}
+              onChange={(e) => setNewKeyDescription(e.target.value)}
+              placeholder={t('apiKeys.keyDescriptionPlaceholder')}
+              className="w-full px-3 py-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 mb-4 min-h-[96px]"
+            />
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => {
                   setIsCreateDialogOpen(false)
                   setNewKeyName('')
+                  setNewKeyDescription('')
                 }}
                 className="px-4 py-2 border dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
               >
@@ -385,6 +408,11 @@ export default function ApiKeysPage() {
             <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded mb-4">
               <code className="text-sm break-all">{newlyCreatedKey.key}</code>
             </div>
+            {newlyCreatedKey.description ? (
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 whitespace-pre-wrap">
+                {newlyCreatedKey.description}
+              </p>
+            ) : null}
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => handleCopyKey(newlyCreatedKey.key)}
