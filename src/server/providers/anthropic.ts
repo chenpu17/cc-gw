@@ -14,23 +14,21 @@ export function createAnthropicConnector(config: ProviderConfig): ProviderConnec
   return {
     id: config.id,
     async send(request: ProviderRequest): Promise<ProviderResponse> {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
+      const headers = normalizeHeaders({
+        'content-type': 'application/json',
         'anthropic-version': DEFAULT_VERSION,
         ...config.extraHeaders,
         ...request.headers
-      }
+      })
 
-      delete headers.Authorization
       delete headers.authorization
+      delete headers['x-api-key']
 
       if (config.apiKey) {
         const mode = config.authMode === 'authToken' ? 'authToken' : 'apiKey'
         if (mode === 'authToken') {
-          delete headers['x-api-key']
-          headers['Authorization'] = `Bearer ${config.apiKey}`
+          headers.authorization = `Bearer ${config.apiKey}`
         } else {
-          delete headers['Authorization']
           headers['x-api-key'] = config.apiKey
         }
       }
@@ -49,6 +47,26 @@ export function createAnthropicConnector(config: ProviderConfig): ProviderConnec
 
       if (shouldLogEndpoint) {
         console.info(`[cc-gw] provider=${config.id} endpoint=${finalUrl}`)
+        if (process.env.CC_GW_DEBUG_HEADERS === '1') {
+          const safeHeaders: Record<string, string> = {}
+          for (const [key, value] of Object.entries(headers)) {
+            if (key.toLowerCase().includes('authorization')) {
+              safeHeaders[key] = '<redacted>'
+            } else {
+              safeHeaders[key] = value
+            }
+          }
+          console.info(`[cc-gw] provider=${config.id} headers`, safeHeaders)
+          try {
+            console.info(`[cc-gw] provider=${config.id} payload`, JSON.stringify(payload).slice(0, 500))
+          } catch {
+            console.info(`[cc-gw] provider=${config.id} payload`, '[unserializable payload]')
+          }
+        }
+      }
+
+      if (headers['content-length']) {
+        delete headers['content-length']
       }
 
       const response = await fetch(finalUrl, {
@@ -68,6 +86,25 @@ export function createAnthropicConnector(config: ProviderConfig): ProviderConnec
       }
     }
   }
+}
+
+function normalizeHeaders(
+  source: Record<string, string | string[] | undefined>
+): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(source)) {
+    if (value == null) continue
+    const normalizedKey = key.toLowerCase()
+    if (Array.isArray(value)) {
+      const candidate = value.find((item) => item != null)
+      if (candidate != null) {
+        result[normalizedKey] = String(candidate)
+      }
+    } else {
+      result[normalizedKey] = String(value)
+    }
+  }
+  return result
 }
 
 function resolveAnthropicEndpoint(baseUrl: string): string {
