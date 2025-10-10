@@ -11,7 +11,7 @@ import { registerOpenAiRoutes } from './routes/openai.js'
 import { registerAdminRoutes } from './routes/admin.js'
 import { startMaintenanceTimers } from './tasks/maintenance.js'
 
-const DEFAULT_PORT = 3456
+const DEFAULT_PORT = 4100
 const DEFAULT_HOST = '127.0.0.1'
 
 let cachedConfig = loadConfig()

@@ -11,7 +11,7 @@ import { green, yellow } from 'colorette'
 
 const program = new Command()
 
-const DEFAULT_PORT = 3456
+const DEFAULT_PORT = 4100
 const HOME_DIR = path.join(os.homedir(), '.cc-gw')
 const PID_FILE = path.join(HOME_DIR, 'cc-gw.pid')
 const LOG_DIR = path.join(HOME_DIR, 'logs')
