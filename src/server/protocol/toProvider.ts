@@ -149,6 +149,7 @@ export interface AnthropicRequestBody {
     input_schema: Record<string, unknown>
   }>
   tool_choice?: any
+  metadata?: Record<string, unknown>
 }
 
 function buildAnthropicContentFromText(text: string | undefined): AnthropicContentBlock[] {
@@ -220,6 +221,13 @@ export function buildAnthropicBody(payload: NormalizedPayload, options: Provider
   }
   if (typeof options.temperature === 'number') {
     body.temperature = options.temperature
+  }
+
+  if (payload.original && typeof payload.original === 'object') {
+    const original = payload.original as Record<string, unknown>
+    if (original.metadata && typeof original.metadata === 'object') {
+      body.metadata = original.metadata as Record<string, unknown>
+    }
   }
 
   const tools = options.overrideTools ?? payload.tools
