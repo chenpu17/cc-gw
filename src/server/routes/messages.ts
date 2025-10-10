@@ -194,16 +194,6 @@ function buildClaudeResponse(openAI: any, model: string) {
 }
 
 export async function registerMessagesRoute(app: FastifyInstance): Promise<void> {
-  app.addHook('onRequest', (request, _reply, done) => {
-    const url = request.raw.url
-    if (typeof url === 'string' && url.startsWith('/anthropic/v1/v1/')) {
-      const normalized = url.replace('/anthropic/v1/v1/', '/anthropic/v1/')
-      request.raw.url = normalized
-      ;(request as any).url = normalized
-    }
-    done()
-  })
-
   const handler = async (request: any, reply: any) => {
     const payload = request.body
     if (!payload || typeof payload !== 'object') {
