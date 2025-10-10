@@ -487,7 +487,8 @@ const resources = {
               '在“系统设置”中确认监听地址、端口以及日志策略，并视需要开启或关闭请求/响应日志。',
               '前往“模型管理 → 模型提供商”添加上游 Provider，填写 Base URL、API Key、默认模型等信息。',
               '使用“测试连接”按钮验证 Provider 是否可用；如果失败，请检查网络连通性与密钥权限。',
-              '在“模型管理 → 路由配置”中为 /anthropic 与 /openai 端点指定目标模型，保存后立即生效。'
+              '在“模型管理 → 路由配置”中为 /anthropic 与 /openai 端点指定目标模型，保存后立即生效。',
+              '在 IDE 中配置接入：Claude Code 指向 http://127.0.0.1:4100/anthropic/v1，Codex 指向 http://127.0.0.1:4100/openai/v1，并使用 cc-gw 生成的 API Key。'
             ]
           },
           usage: {
@@ -1117,7 +1118,8 @@ const resources = {
               'Review “Settings” to confirm the listening host/port and decide whether to emit request or response access logs.',
               'Open “Model Management → Providers” to add upstream providers, including base URL, API key, and default model.',
               'Click “Test connection” to ensure the provider is reachable. If it fails, double-check network access and API key permissions.',
-              'Configure “Model Management → Routing” for both /anthropic and /openai endpoints, then save to apply immediately.'
+              'Configure “Model Management → Routing” for both /anthropic and /openai endpoints, then save to apply immediately.',
+              'Point your IDEs to the gateway: use http://127.0.0.1:4100/anthropic/v1 for Claude Code and http://127.0.0.1:4100/openai/v1 for Codex, authenticating with a cc-gw API key.'
             ]
           },
           usage: {

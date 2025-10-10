@@ -67,10 +67,17 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 1. 启动 cc-gw 并确认配置中 `host` 为 `127.0.0.1`，`port` 与 CLI 启动一致。
 2. 在安装了 Claude Code 的终端设置环境变量：
    ```bash
-   export ANTHROPIC_BASE_URL=http://127.0.0.1:4100
+   export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic/v1
    claude "help me review this file"
    ```
-3. cc-gw 会根据 `modelRoutes`/默认策略将 Claude 请求路由到已配置的目标模型（如 Kimi、火山 DeepSeek、OpenAI 或自建模型）。
+3. 如果使用 VS Code 插件（Claude Code），在“自定义 API”中也填写 `http://127.0.0.1:4100/anthropic/v1`，并粘贴由 cc-gw Web UI 或 CLI 创建的 API Key。
+4. cc-gw 会根据 `modelRoutes`/默认策略将 Claude 请求路由到已配置的目标模型（如 Kimi、火山 DeepSeek、OpenAI 或自建模型）。
+
+### 连接 Codex（原 Claude Code for Repo）
+1. 在 Web UI 的“模型管理 → 路由配置”中为 `/openai` 端点选择目标模型，默认会映射至配置中的 `defaults.completion`。
+2. 在 Codex 或其他需要 OpenAI 风格接口的客户端中，将 Base URL 设置为 `http://127.0.0.1:4100/openai/v1`；若需手动指定路径，请调用 `POST /openai/v1/responses`。
+3. 将 API Key 设置为 cc-gw 生成的密钥（支持 Bearer Header 或 `x-api-key` Header）。
+4. 触发一次 `hello` 或最小请求检查 Streaming 是否正常；若遇到 `Unsupported parameter: thinking` 等提示，说明 cc-gw 已自动剥离该字段并兼容上游。
 
 ### 使用场景 / Usage Scenarios
 
@@ -214,12 +221,23 @@ pnpm --filter @cc-gw/web build
 pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 ```
 
-Connect Claude Code by pointing `ANTHROPIC_BASE_URL` to your local gateway:
+Connect Claude Code by pointing `ANTHROPIC_BASE_URL` to the Anthropic endpoint exposed by cc-gw:
 
 ```bash
-export ANTHROPIC_BASE_URL=http://127.0.0.1:4100
+export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic/v1
 claude "help me review this file"
 ```
+
+Using the Claude Code VS Code extension? Open the extension settings, enable the custom API mode, set the Base URL to the same `http://127.0.0.1:4100/anthropic/v1`, and paste an API key generated from the cc-gw Web UI or CLI.
+
+Connect Codex (or any OpenAI-compatible IDE integration) by targeting the OpenAI endpoint exposed by cc-gw:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
+export OPENAI_API_KEY="<your cc-gw api key>"
+```
+
+If the client expects a full path, call `POST /openai/v1/responses`. The gateway strips unsupported fields (such as `thinking`) before forwarding to the upstream provider, so health checks like `hello` should stream back correctly.
 
 ### Configuration Snapshot
 
