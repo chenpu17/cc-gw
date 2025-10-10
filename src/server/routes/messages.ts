@@ -966,4 +966,5 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
   app.post('/v1/messages', handler)
   app.post('/anthropic/v1/messages', handler)
+  app.post('/anthropic/v1/v1/messages', handler)
 }
