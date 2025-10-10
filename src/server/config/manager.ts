@@ -106,6 +106,15 @@ function parseConfig(raw: string): GatewayConfig {
   if (!Array.isArray(data.providers)) {
     data.providers = []
   }
+  data.providers = data.providers.map((provider: any) => {
+    if (!provider || typeof provider !== 'object') return provider
+    if (provider.type === 'anthropic') {
+      provider.authMode = provider.authMode === 'authToken' ? 'authToken' : 'apiKey'
+    } else if ('authMode' in provider) {
+      delete provider.authMode
+    }
+    return provider
+  })
   const legacyDefaults = sanitizeDefaults(data.defaults)
   if (typeof data.logRetentionDays !== 'number') {
     data.logRetentionDays = 30

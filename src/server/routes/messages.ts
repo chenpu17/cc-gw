@@ -252,14 +252,19 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
     const rawUrl = typeof request.raw?.url === 'string' ? request.raw.url : request.url ?? ''
     let querySuffix: string | null = null
-    if (typeof rawUrl === 'string' && rawUrl.includes('?')) {
-      querySuffix = rawUrl.slice(rawUrl.indexOf('?'))
-    } else if (typeof (request as any).querystring === 'string' && (request as any).querystring.length > 0) {
-      querySuffix = `?${(request as any).querystring}`
+    if (typeof rawUrl === 'string') {
+      const questionIndex = rawUrl.indexOf('?')
+      if (questionIndex !== -1) {
+        querySuffix = rawUrl.slice(questionIndex + 1)
+      }
+    }
+    if (!querySuffix && typeof (request as any).querystring === 'string') {
+      querySuffix = (request as any).querystring || null
     }
 
-    if (querySuffix) {
-      console.info(`[cc-gw] inbound url ${rawUrl} query ${querySuffix}`)
+    if (querySuffix !== null) {
+      const displaySuffix = querySuffix.length > 0 ? `?${querySuffix}` : '?'
+      console.info(`[cc-gw] inbound url ${rawUrl} query ${displaySuffix}`)
     }
 
     const normalized = normalizeClaudePayload(payload)

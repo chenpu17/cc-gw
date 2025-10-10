@@ -23,6 +23,7 @@ interface FormState {
   type: ProviderConfig['type']
   defaultModel: string
   models: FormModel[]
+  authMode: 'apiKey' | 'authToken'
 }
 
 interface FormErrors {
@@ -98,7 +99,8 @@ function buildInitialState(provider?: ProviderConfig): FormState {
       apiKey: '',
       type: 'custom',
       defaultModel: '',
-      models: [emptyModel]
+      models: [emptyModel],
+      authMode: 'apiKey'
     }
   }
 
@@ -112,7 +114,8 @@ function buildInitialState(provider?: ProviderConfig): FormState {
     models: (provider.models ?? []).map((model) => ({
       ...model,
       _key: createKey()
-    }))
+    })),
+    authMode: provider.authMode === 'authToken' ? 'authToken' : 'apiKey'
   }
 }
 
@@ -202,7 +205,8 @@ export function ProviderDrawer({
 
       const next: FormState = {
         ...prev,
-        type: value
+        type: value,
+        authMode: value === 'anthropic' ? (prev.authMode ?? 'apiKey') : 'apiKey'
       }
 
       if (preset?.baseUrl && shouldReplaceBaseUrl) {
@@ -262,6 +266,13 @@ export function ProviderDrawer({
     setForm((prev) => ({
       ...prev,
       models: [...prev.models, createEmptyModel()]
+    }))
+  }
+
+  const handleAuthModeChange = (value: 'apiKey' | 'authToken') => {
+    setForm((prev) => ({
+      ...prev,
+      authMode: value
     }))
   }
 
@@ -329,6 +340,7 @@ export function ProviderDrawer({
     }))
 
     const extraHeaders = provider?.extraHeaders && Object.keys(provider.extraHeaders).length > 0 ? provider.extraHeaders : undefined
+    const authMode = form.type === 'anthropic' ? form.authMode : undefined
 
     return {
       id: form.id.trim(),
@@ -338,7 +350,8 @@ export function ProviderDrawer({
       type: form.type ?? 'custom',
       defaultModel: form.defaultModel || undefined,
       models: trimmedModels,
-      extraHeaders
+      extraHeaders,
+      authMode
     }
   }
 
@@ -474,6 +487,36 @@ export function ProviderDrawer({
                 className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
               />
             </label>
+            {form.type === 'anthropic' ? (
+              <fieldset className="grid gap-2 rounded-lg border border-slate-200 p-3 text-xs dark:border-slate-700">
+                <legend className="px-1 text-slate-500 dark:text-slate-400">
+                  {t('providers.drawer.fields.authMode')}
+                </legend>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {t('providers.drawer.fields.authModeHint')}
+                </p>
+                <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800">
+                  <input
+                    type="radio"
+                    name="anthropic-auth-mode"
+                    value="apiKey"
+                    checked={form.authMode === 'apiKey'}
+                    onChange={() => handleAuthModeChange('apiKey')}
+                  />
+                  <span>{t('providers.drawer.fields.authModeApiKey')}</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800">
+                  <input
+                    type="radio"
+                    name="anthropic-auth-mode"
+                    value="authToken"
+                    checked={form.authMode === 'authToken'}
+                    onChange={() => handleAuthModeChange('authToken')}
+                  />
+                  <span>{t('providers.drawer.fields.authModeAuthToken')}</span>
+                </label>
+              </fieldset>
+            ) : null}
           </section>
 
           <section className="mt-6 space-y-3" aria-labelledby="provider-model-fields">

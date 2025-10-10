@@ -39,3 +39,4 @@ docs_old/
 scripts/*
 !scripts/.gitkeep
 !scripts/build-and-start.sh
+!scripts/forward-proxy.mjs

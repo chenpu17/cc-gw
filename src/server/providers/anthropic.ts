@@ -1,6 +1,7 @@
 import { fetch } from 'undici'
 import type { ProviderConfig } from '../config/types.js'
 import type { ProviderConnector, ProviderRequest, ProviderResponse } from './types.js'
+import { appendQuery } from './utils.js'
 
 const DEFAULT_VERSION = '2023-06-01'
 
@@ -21,9 +22,15 @@ export function createAnthropicConnector(config: ProviderConfig): ProviderConnec
       }
 
       delete headers.Authorization
+      delete (headers as any).authorization
 
       if (config.apiKey) {
-        headers['x-api-key'] = config.apiKey
+        const mode = config.authMode === 'authToken' ? 'authToken' : 'apiKey'
+        if (mode === 'authToken') {
+          headers['Authorization'] = `Bearer ${config.apiKey}`
+        } else {
+          headers['x-api-key'] = config.apiKey
+        }
       }
 
       if (!headers['anthropic-version']) {
@@ -34,10 +41,6 @@ export function createAnthropicConnector(config: ProviderConfig): ProviderConnec
         ...request.body,
         model: request.model,
         stream: request.stream ?? false
-      }
-
-      if (shouldLogEndpoint) {
-        console.info(`[cc-gw] provider=${config.id} endpoint=${endpoint}`)
       }
 
       const finalUrl = appendQuery(endpoint, request.query)
@@ -85,31 +88,4 @@ function resolveAnthropicEndpoint(baseUrl: string): string {
   }
 
   return `${normalized}/v1/messages`
-}
-
-function appendQuery(url: string, query: string | Record<string, unknown> | null | undefined): string {
-  if (!query) return url
-
-  if (typeof query === 'string') {
-    if (query.length === 0) return url
-    return url.includes('?') ? `${url}&${query}` : `${url}?${query}`
-  }
-
-  const searchParams = new URLSearchParams()
-  for (const [key, value] of Object.entries(query)) {
-    if (value == null) continue
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        if (item == null) continue
-        searchParams.append(key, String(item))
-      }
-    } else {
-      searchParams.append(key, String(value))
-    }
-  }
-
-  const queryString = searchParams.toString()
-  if (!queryString) return url
-
-  return url.includes('?') ? `${url}&${queryString}` : `${url}?${queryString}`
 }

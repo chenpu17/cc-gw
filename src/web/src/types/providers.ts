@@ -8,6 +8,7 @@ export interface ProviderConfig {
   label: string
   baseUrl: string
   apiKey?: string
+  authMode?: 'apiKey' | 'authToken'
   defaultModel?: string
   models?: ProviderModelConfig[]
   extraHeaders?: Record<string, string>

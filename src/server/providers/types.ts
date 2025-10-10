@@ -5,6 +5,7 @@ export interface ProviderRequest {
   body: any
   stream?: boolean
   headers?: Record<string, string>
+  query?: string | Record<string, unknown>
 }
 
 export interface ProviderResponse {

@@ -2,6 +2,7 @@ import { fetch } from 'undici'
 import { ReadableStream } from 'node:stream/web'
 import type { ProviderConfig } from '../config/types.js'
 import type { ProviderConnector, ProviderRequest, ProviderResponse } from './types.js'
+import { appendQuery } from './utils.js'
 
 export interface OpenAIConnectorOptions {
   /**
@@ -85,11 +86,13 @@ export function createOpenAIConnector(
 
       const payload = options?.mutateBody ? options.mutateBody(body) : body
 
+      const finalUrl = appendQuery(url, request.query)
+
       if (shouldLogEndpoint) {
-        console.info(`[cc-gw] provider=${config.id} endpoint=${url}`)
+        console.info(`[cc-gw] provider=${config.id} endpoint=${finalUrl}`)
       }
 
-      const res = await fetch(url, {
+      const res = await fetch(finalUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)

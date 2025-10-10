@@ -141,6 +141,7 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 - `modelRoutes`：将 Claude 发起的模型名映射到上游模型；未命中时使用 `defaults`。
 - `storePayloads`：是否在 SQLite 中压缩保存原始请求/响应（Brotli），关闭后仅保留元信息。
 - `logLevel`：控制 Fastify/Pino 控制台日志级别（`fatal`/`error`/`warn`/`info`/`debug`/`trace`）。
+- `providers[].authMode`：仅在 `type: "anthropic"` 时生效，可选 `apiKey`（默认，发送 `x-api-key`）或 `authToken`（发送 `Authorization: Bearer`）。配置 Claude Code 使用 `ANTHROPIC_AUTH_TOKEN` 时，请选择 `authToken` 并在 `apiKey` 输入框填入该值。
 - `requestLogging`：是否输出每个 HTTP 请求的进入日志。
 - `responseLogging`：是否输出每个 HTTP 请求完成的日志，可独立于 `requestLogging` 控制。
 - 推荐通过 Web UI 的“模型管理 / 系统设置”在线编辑并热加载，无需手工修改文件。
