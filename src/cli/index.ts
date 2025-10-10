@@ -18,6 +18,17 @@ const LOG_DIR = path.join(HOME_DIR, 'logs')
 const LOG_FILE = path.join(LOG_DIR, 'cc-gw.log')
 const CONFIG_FILE = path.join(HOME_DIR, 'config.json')
 
+async function readConfiguredPort(): Promise<number | null> {
+  try {
+    const raw = await fsp.readFile(CONFIG_FILE, 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed.port === 'number' && Number.isFinite(parsed.port)) {
+      return parsed.port
+    }
+  } catch {}
+  return null
+}
+
 function resolveServerEntry(): string {
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = path.dirname(__filename)
@@ -186,7 +197,15 @@ async function handleStart(options: { daemon?: boolean; port?: string; foregroun
     console.log(green(`cc-gw 已以守护进程方式启动 (pid: ${child.pid})`))
   }
 
-  const effectivePort = options.port ? Number.parseInt(options.port, 10) || DEFAULT_PORT : DEFAULT_PORT
+  let effectivePort: number
+  if (options.port) {
+    const parsed = Number.parseInt(options.port, 10)
+    effectivePort = Number.isFinite(parsed) ? parsed : DEFAULT_PORT
+  } else {
+    const configured = await readConfiguredPort()
+    effectivePort = configured ?? DEFAULT_PORT
+  }
+
   if (configCreated) {
     console.log(green(`已在 ${CONFIG_FILE} 生成默认配置`))
     console.log(yellow(`首次启动：待服务就绪后，请在浏览器访问 http://127.0.0.1:${effectivePort}/ui 进行配置。`))
