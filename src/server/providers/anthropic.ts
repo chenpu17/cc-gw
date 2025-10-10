@@ -6,6 +6,8 @@ const DEFAULT_VERSION = '2023-06-01'
 
 export function createAnthropicConnector(config: ProviderConfig): ProviderConnector {
   const baseUrl = config.baseUrl.replace(/\/$/, '')
+  const endpoint = `${baseUrl}/messages`
+  const shouldLogEndpoint = process.env.CC_GW_DEBUG_ENDPOINTS === '1'
 
   return {
     id: config.id,
@@ -33,11 +35,19 @@ export function createAnthropicConnector(config: ProviderConfig): ProviderConnec
         stream: request.stream ?? false
       }
 
-      const response = await fetch(`${baseUrl}/messages`, {
+      if (shouldLogEndpoint) {
+        console.info(`[cc-gw] provider=${config.id} endpoint=${endpoint}`)
+      }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)
       })
+
+      if (shouldLogEndpoint) {
+        console.info(`[cc-gw] provider=${config.id} status=${response.status}`)
+      }
 
       return {
         status: response.status,

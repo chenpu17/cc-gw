@@ -80,13 +80,19 @@ export async function createServer(): Promise<FastifyInstance> {
 
   if (responseLogEnabled) {
     app.addHook('onResponse', (request, reply, done) => {
+      let elapsedTime: number | undefined
+      if (typeof (reply as any).elapsedTime === 'number') {
+        elapsedTime = (reply as any).elapsedTime
+      } else if (typeof reply.getResponseTime === 'function') {
+        elapsedTime = reply.getResponseTime()
+      }
       app.log.info(
         {
           reqId: request.id,
           res: {
             statusCode: reply.statusCode
           },
-          responseTime: typeof reply.getResponseTime === 'function' ? reply.getResponseTime() : undefined
+          responseTime: elapsedTime
         },
         'request completed'
       )
