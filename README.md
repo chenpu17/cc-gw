@@ -70,7 +70,7 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
    export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
    claude "help me review this file"
    ```
-3. 如果使用 VS Code 插件（Claude Code），在“自定义 API”中同样填写 `http://127.0.0.1:4100/anthropic`，插件会自动追加 `/v1/messages`，最后粘贴 cc-gw Web UI 或 CLI 创建的 API Key。
+3. 如果使用 VS Code 插件（Claude Code），在“自定义 API”中同样填写 `http://127.0.0.1:4100/anthropic`，插件会自动追加 `/v1/messages` 与 `?beta=true`，最后粘贴 cc-gw Web UI 或 CLI 创建的 API Key。
 4. cc-gw 会根据 `modelRoutes`/默认策略将 Claude 请求路由到已配置的目标模型（如 Kimi、火山 DeepSeek、OpenAI 或自建模型）。
 
 ### 连接 Codex（原 Claude Code for Repo）
@@ -228,7 +228,7 @@ export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
 claude "help me review this file"
 ```
 
-Using the Claude Code VS Code extension? Open the extension settings, enable the custom API mode, set the Base URL to the same `http://127.0.0.1:4100/anthropic`, and paste an API key generated from the cc-gw Web UI or CLI—the extension’s `/v1/messages` suffix is handled automatically.
+Using the Claude Code VS Code extension? Open the extension settings, enable the custom API mode, set the Base URL to the same `http://127.0.0.1:4100/anthropic`, and paste an API key generated from the cc-gw Web UI or CLI—the extension appends `/v1/messages?beta=true` automatically and cc-gw now forwards the query string upstream.
 
 Connect Codex (or any OpenAI-compatible IDE integration) by targeting the OpenAI endpoint exposed by cc-gw:
 

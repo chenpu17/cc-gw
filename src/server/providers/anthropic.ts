@@ -40,7 +40,13 @@ export function createAnthropicConnector(config: ProviderConfig): ProviderConnec
         console.info(`[cc-gw] provider=${config.id} endpoint=${endpoint}`)
       }
 
-      const response = await fetch(endpoint, {
+      const finalUrl = appendQuery(endpoint, request.query)
+
+      if (shouldLogEndpoint) {
+        console.info(`[cc-gw] provider=${config.id} endpoint=${finalUrl}`)
+      }
+
+      const response = await fetch(finalUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)
@@ -79,4 +85,31 @@ function resolveAnthropicEndpoint(baseUrl: string): string {
   }
 
   return `${normalized}/v1/messages`
+}
+
+function appendQuery(url: string, query: string | Record<string, unknown> | null | undefined): string {
+  if (!query) return url
+
+  if (typeof query === 'string') {
+    if (query.length === 0) return url
+    return url.includes('?') ? `${url}&${query}` : `${url}?${query}`
+  }
+
+  const searchParams = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value == null) continue
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item == null) continue
+        searchParams.append(key, String(item))
+      }
+    } else {
+      searchParams.append(key, String(value))
+    }
+  }
+
+  const queryString = searchParams.toString()
+  if (!queryString) return url
+
+  return url.includes('?') ? `${url}&${queryString}` : `${url}?${queryString}`
 }
