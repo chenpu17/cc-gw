@@ -6,7 +6,7 @@ const DEFAULT_VERSION = '2023-06-01'
 
 export function createAnthropicConnector(config: ProviderConfig): ProviderConnector {
   const baseUrl = config.baseUrl.replace(/\/$/, '')
-  const endpoint = `${baseUrl}/messages`
+  const endpoint = resolveAnthropicEndpoint(baseUrl)
   const shouldLogEndpoint =
     process.env.CC_GW_DEBUG_ENDPOINTS === '1' || process.env.CC_GW_DEBUG_OPENAI === '1'
 
@@ -57,4 +57,26 @@ export function createAnthropicConnector(config: ProviderConfig): ProviderConnec
       }
     }
   }
+}
+
+function resolveAnthropicEndpoint(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/$/, '')
+
+  if (normalized.endsWith('/messages') || normalized.match(/\/v\d+\/messages$/)) {
+    return normalized
+  }
+
+  if (normalized.match(/\/v\d+$/)) {
+    return `${normalized}/messages`
+  }
+
+  if (normalized.endsWith('/anthropic')) {
+    return `${normalized}/v1/messages`
+  }
+
+  if (normalized.endsWith('/anthropic/v1')) {
+    return `${normalized}/messages`
+  }
+
+  return `${normalized}/v1/messages`
 }

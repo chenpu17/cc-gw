@@ -67,10 +67,10 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 1. 启动 cc-gw 并确认配置中 `host` 为 `127.0.0.1`，`port` 与 CLI 启动一致。
 2. 在安装了 Claude Code 的终端设置环境变量：
    ```bash
-   export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic/v1
+   export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
    claude "help me review this file"
    ```
-3. 如果使用 VS Code 插件（Claude Code），在“自定义 API”中同样填写 `http://127.0.0.1:4100/anthropic/v1`，插件在内部追加 `/v1/messages`，cc-gw 已对双重 `/v1` 做兼容，最后粘贴 cc-gw Web UI 或 CLI 创建的 API Key。
+3. 如果使用 VS Code 插件（Claude Code），在“自定义 API”中同样填写 `http://127.0.0.1:4100/anthropic`，插件会自动追加 `/v1/messages`，最后粘贴 cc-gw Web UI 或 CLI 创建的 API Key。
 4. cc-gw 会根据 `modelRoutes`/默认策略将 Claude 请求路由到已配置的目标模型（如 Kimi、火山 DeepSeek、OpenAI 或自建模型）。
 
 ### 连接 Codex（原 Claude Code for Repo）
@@ -221,14 +221,14 @@ pnpm --filter @cc-gw/web build
 pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 ```
 
-Connect Claude Code by pointing `ANTHROPIC_BASE_URL` to the Anthropic endpoint on cc-gw. The CLI and editor clients append `/v1/messages` automatically, and cc-gw now tolerates the duplicated segment:
+Connect Claude Code by pointing `ANTHROPIC_BASE_URL` to the Anthropic namespace on cc-gw. Both the CLI and editor clients append `/v1/messages` automatically:
 
 ```bash
-export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic/v1
+export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
 claude "help me review this file"
 ```
 
-Using the Claude Code VS Code extension? Open the extension settings, enable the custom API mode, set the Base URL to the same `http://127.0.0.1:4100/anthropic/v1`, and paste an API key generated from the cc-gw Web UI or CLI—the extension’s `/v1/messages` suffix is fully supported.
+Using the Claude Code VS Code extension? Open the extension settings, enable the custom API mode, set the Base URL to the same `http://127.0.0.1:4100/anthropic`, and paste an API key generated from the cc-gw Web UI or CLI—the extension’s `/v1/messages` suffix is handled automatically.
 
 Connect Codex (or any OpenAI-compatible IDE integration) by targeting the OpenAI endpoint exposed by cc-gw:
 
