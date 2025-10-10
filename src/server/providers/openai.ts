@@ -61,7 +61,8 @@ export function createOpenAIConnector(
   options?: OpenAIConnectorOptions
 ): ProviderConnector {
   const url = resolveEndpoint(config, options)
-  const shouldLogEndpoint = process.env.CC_GW_DEBUG_ENDPOINTS === '1'
+  const shouldLogEndpoint =
+    process.env.CC_GW_DEBUG_ENDPOINTS === '1' || process.env.CC_GW_DEBUG_OPENAI === '1'
 
   return {
     id: config.id,

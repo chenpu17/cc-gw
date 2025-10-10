@@ -7,7 +7,8 @@ const DEFAULT_VERSION = '2023-06-01'
 export function createAnthropicConnector(config: ProviderConfig): ProviderConnector {
   const baseUrl = config.baseUrl.replace(/\/$/, '')
   const endpoint = `${baseUrl}/messages`
-  const shouldLogEndpoint = process.env.CC_GW_DEBUG_ENDPOINTS === '1'
+  const shouldLogEndpoint =
+    process.env.CC_GW_DEBUG_ENDPOINTS === '1' || process.env.CC_GW_DEBUG_OPENAI === '1'
 
   return {
     id: config.id,
