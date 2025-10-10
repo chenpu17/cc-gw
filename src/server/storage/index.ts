@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import sqlite3 from 'sqlite3'
+import Database, { type Database as BetterSqliteDatabase, type RunResult } from 'better-sqlite3'
 
 const HOME_OVERRIDE = process.env.CC_GW_HOME
 export const HOME_DIR = path.resolve(HOME_OVERRIDE ?? path.join(os.homedir(), '.cc-gw'))
@@ -10,87 +10,50 @@ export const DB_PATH = path.join(DATA_DIR, 'gateway.db')
 
 type StatementParams = any[] | Record<string, unknown>
 
-sqlite3.verbose()
+let dbPromise: Promise<BetterSqliteDatabase> | null = null
+let dbInstance: BetterSqliteDatabase | null = null
 
-let dbPromise: Promise<sqlite3.Database> | null = null
-let dbInstance: sqlite3.Database | null = null
-
-function exec(db: sqlite3.Database, sql: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    db.exec(sql, (error) => {
-      if (error) {
-        reject(error)
-        return
-      }
-      resolve()
-    })
-  })
+function exec(db: BetterSqliteDatabase, sql: string): Promise<void> {
+  db.exec(sql)
+  return Promise.resolve()
 }
 
 function run(
-  db: sqlite3.Database,
+  db: BetterSqliteDatabase,
   sql: string,
   params: StatementParams = []
 ): Promise<{ lastID: number; changes: number }> {
-  return new Promise((resolve, reject) => {
-    const handler = function (this: sqlite3.RunResult, error: Error | null) {
-      if (error) {
-        reject(error)
-        return
-      }
-      resolve({ lastID: this.lastID, changes: this.changes })
-    }
+  const statement = db.prepare(sql)
+  const result: RunResult =
+    Array.isArray(params) ? statement.run(...params) : statement.run(params as Record<string, unknown>)
 
-    if (Array.isArray(params)) {
-      db.run(sql, params, handler)
-    } else {
-      db.run(sql, params, handler)
-    }
-  })
+  // better-sqlite3 returns bigint for lastInsertRowid when rowid exceeds 2^53-1.
+  const lastID = typeof result.lastInsertRowid === 'bigint' ? Number(result.lastInsertRowid) : result.lastInsertRowid
+  return Promise.resolve({ lastID, changes: result.changes })
 }
 
-function all<T = any>(db: sqlite3.Database, sql: string, params: StatementParams = []): Promise<T[]> {
-  return new Promise((resolve, reject) => {
-    const callback = (error: Error | null, rows: T[]) => {
-      if (error) {
-        reject(error)
-        return
-      }
-      resolve(rows)
-    }
-
-    if (Array.isArray(params)) {
-      db.all(sql, params, callback)
-    } else {
-      db.all(sql, params, callback)
-    }
-  })
+function all<T = any>(db: BetterSqliteDatabase, sql: string, params: StatementParams = []): Promise<T[]> {
+  const statement = db.prepare(sql)
+  const rows = Array.isArray(params) ? statement.all(...params) : statement.all(params as Record<string, unknown>)
+  return Promise.resolve(rows as T[])
 }
 
-function get<T = any>(db: sqlite3.Database, sql: string, params: StatementParams = []): Promise<T | undefined> {
-  return new Promise((resolve, reject) => {
-    const callback = (error: Error | null, row: T | undefined) => {
-      if (error) {
-        reject(error)
-        return
-      }
-      resolve(row)
-    }
-
-    if (Array.isArray(params)) {
-      db.get(sql, params, callback)
-    } else {
-      db.get(sql, params, callback)
-    }
-  })
+function get<T = any>(
+  db: BetterSqliteDatabase,
+  sql: string,
+  params: StatementParams = []
+): Promise<T | undefined> {
+  const statement = db.prepare(sql)
+  const row = Array.isArray(params) ? statement.get(...params) : statement.get(params as Record<string, unknown>)
+  return Promise.resolve(row as T | undefined)
 }
 
-async function columnExists(db: sqlite3.Database, table: string, column: string): Promise<boolean> {
+async function columnExists(db: BetterSqliteDatabase, table: string, column: string): Promise<boolean> {
   const rows = await all<{ name: string }>(db, `PRAGMA table_info(${table})`)
   return rows.some((row) => row.name === column)
 }
 
-async function migrateDailyMetricsTable(db: sqlite3.Database): Promise<void> {
+async function migrateDailyMetricsTable(db: BetterSqliteDatabase): Promise<void> {
   const columns = await all<{ name: string; pk: number }>(db, 'PRAGMA table_info(daily_metrics)')
   if (columns.length === 0) return
 
@@ -132,14 +95,14 @@ async function migrateDailyMetricsTable(db: sqlite3.Database): Promise<void> {
   )
 }
 
-async function maybeAddColumn(db: sqlite3.Database, table: string, column: string, definition: string): Promise<void> {
+async function maybeAddColumn(db: BetterSqliteDatabase, table: string, column: string, definition: string): Promise<void> {
   const exists = await columnExists(db, table, column)
   if (!exists) {
     await run(db, `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
   }
 }
 
-async function ensureSchema(db: sqlite3.Database): Promise<void> {
+async function ensureSchema(db: BetterSqliteDatabase): Promise<void> {
   await exec(
     db,
     `CREATE TABLE IF NOT EXISTS request_logs (
@@ -253,30 +216,25 @@ async function ensureSchema(db: sqlite3.Database): Promise<void> {
   }
 }
 
-export async function getDb(): Promise<sqlite3.Database> {
+export async function getDb(): Promise<BetterSqliteDatabase> {
   if (dbInstance) {
     return dbInstance
   }
 
   if (!dbPromise) {
     fs.mkdirSync(DATA_DIR, { recursive: true })
-    dbPromise = new Promise((resolve, reject) => {
-      const instance = new sqlite3.Database(DB_PATH, (error) => {
-        if (error) {
-          reject(error)
-          return
-        }
-
-        ensureSchema(instance)
-          .then(() => {
-            dbInstance = instance
-            resolve(instance)
-          })
-          .catch((schemaError) => {
-            instance.close(() => reject(schemaError))
-          })
-      })
-    })
+    dbPromise = (async () => {
+      const instance = new Database(DB_PATH)
+      instance.pragma('journal_mode = WAL')
+      try {
+        await ensureSchema(instance)
+        dbInstance = instance
+        return instance
+      } catch (error) {
+        instance.close()
+        throw error
+      }
+    })()
   }
 
   return dbPromise
@@ -292,15 +250,7 @@ export async function closeDb(): Promise<void> {
   dbInstance = null
   dbPromise = null
 
-  await new Promise<void>((resolve, reject) => {
-    toClose.close((error) => {
-      if (error) {
-        reject(error)
-        return
-      }
-      resolve()
-    })
-  })
+  toClose.close()
 }
 
 export async function runQuery(sql: string, params: StatementParams = []): Promise<{ lastID: number; changes: number }> {

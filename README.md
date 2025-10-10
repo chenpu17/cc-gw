@@ -28,7 +28,7 @@ cc-gw start --daemon --port 4100
 
 首启会在 `~/.cc-gw/config.json` 生成配置模板，推荐直接通过 Web UI (`http://127.0.0.1:4100/ui`) 完成所有后续配置与调整。`cc-gw status`、`cc-gw stop`、`cc-gw restart` 可用于日常运维。
 
-> ⚠️ **Linux 安装提示**：如果未命中 sqlite3 的预编译二进制，需要系统具备 `build-essential`、`python3`、`python3-gyp` 等编译依赖。可执行 `sudo apt install build-essential python3 python3-gyp` 后，再运行 `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source`。
+> ⚠️ **Linux 安装提示**：本项目依赖 `better-sqlite3`；该库已为 Node 20/22/24 在 glibc/musl（x64/arm64/arm）提供预编译二进制，通常无需额外工具。如果你的环境未命中预编译（例如更早版本的 Node 或稀有架构），请先安装 `build-essential python3 make g++`，再运行 `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source`。
 
 ### 从源码构建（开发者）
 
@@ -174,7 +174,7 @@ pnpm --filter @cc-gw/cli exec tsx index.ts status
 
 ## 数据与日志
 
-- 数据库：`~/.cc-gw/data/gateway.db`（`sqlite3`）。
+- 数据库：`~/.cc-gw/data/gateway.db`（`better-sqlite3` 管理的嵌入式 SQLite）。
   - `request_logs`：请求摘要、路由结果、耗时、TTFT/TPOT。
   - `request_payloads`：压缩的请求/响应正文（Brotli）。
   - `daily_metrics`：按日聚合的调用次数与 Token 统计。
@@ -198,7 +198,7 @@ cc-gw is a local gateway tailored for Claude Code and similar Anthropic-compatib
 | ------- | ------- |
 | Protocol adaptation | Converts Claude-style payloads into OpenAI-, Anthropic-, Kimi-, and DeepSeek-compatible requests while preserving tool calls and reasoning blocks. |
 | Model routing | Maps incoming model IDs to configured upstream providers with fallbacks for long-context and background tasks. |
-| Observability | Persists request logs, token usage (including cache hits), TTFT, TPOT, and daily aggregates in SQLite with Brotli-compressed payloads. |
+| Observability | Persists request logs, token usage (including cache hits), TTFT, TPOT, and daily aggregates via better-sqlite3 with Brotli-compressed payloads. |
 | Web console | React + Vite UI with dashboards, filters, provider CRUD, bilingual copy, and responsive layout. |
 | CLI daemon | `cc-gw` command wraps start/stop/restart/status, manages PID/log files, and scaffolds a default config on first launch. |
 
@@ -211,7 +211,7 @@ cc-gw start --daemon --port 4100
 
 The first launch writes `~/.cc-gw/config.json`. Manage everything through the Web UI at `http://127.0.0.1:4100/ui`. Use `cc-gw status`, `cc-gw stop`, and `cc-gw restart` to control the daemon.
 
-> ⚠️ **Linux build note**: `sqlite3` may fall back to building from source. Install toolchain packages such as `build-essential`, `python3`, `python3-gyp`, then rerun `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source` if needed.
+> ⚠️ **Linux build note**: We now depend on `better-sqlite3`. Prebuilt binaries ship for Node 20/22/24 on glibc & musl (x64/arm64/arm). If you’re targeting an unsupported combo, install `build-essential python3 make g++` first, then rerun `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source`.
 
 ### From Source (contributors)
 

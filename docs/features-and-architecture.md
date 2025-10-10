@@ -20,7 +20,7 @@
 1. **CLI (`src/cli`)**：守护进程封装、首次启动配置模板、运行状态查询。
 2. **Server (`src/server`)**：Fastify 负责 `/v1/messages`、管理 API、静态资源托管，内部包含协议层、路由器、Provider 注册表、日志模块。
 3. **Web UI (`src/web`)**：React + TanStack Router + Tailwind + i18next，提供仪表盘、日志、模型管理、系统设置。
-4. **存储 Storage**：`sqlite3` 单文件数据库，表结构包括 `request_logs`、`request_payloads`、`daily_metrics`。
+4. **存储 Storage**：基于 `better-sqlite3` 的单文件 SQLite 数据库，表结构包括 `request_logs`、`request_payloads`、`daily_metrics`。
 5. **配置 Configuration**：`~/.cc-gw/config.json` 描述端口、Provider、模型路由、日志保留策略；支持环境变量覆盖 UI 根目录与调试模式。
 
 > **Flow**: Client ⇒ `/v1/messages` ⇒ normalize ⇒ resolve route ⇒ provider connector ⇒ stream/non-stream response ⇒ log & metrics ⇒ return to client.
