@@ -392,7 +392,32 @@ const resources = {
         },
         toast: {
           routesSaved: '模型路由已更新。',
-          routesSaveFailure: '保存模型路由失败：{{message}}'
+          routesSaveFailure: '保存模型路由失败：{{message}}',
+          presetSaved: '已保存模板 “{{name}}”。',
+          presetSaveFailure: '保存模板失败：{{message}}',
+          presetApplySuccess: '已应用模板 “{{name}}”。',
+          presetApplyFailure: '应用模板失败：{{message}}',
+          presetDeleteSuccess: '模板 “{{name}}” 已删除。',
+          presetDeleteFailure: '删除模板失败：{{message}}'
+        },
+        presets: {
+          title: '路由模板',
+          description: '保存当前 Anthropic 路由映射，便于在不同 Provider 方案之间快速切换。',
+          namePlaceholder: '输入模板名称，例如 fox',
+          save: '保存模板',
+          saving: '保存中...',
+          empty: '尚未保存任何模板。',
+          apply: '应用',
+          applying: '应用中...',
+          delete: '删除',
+          deleting: '删除中...'
+        },
+        validation: {
+          presetName: '请输入模板名称。',
+          presetDuplicate: '模板 {{name}} 已存在，请使用其他名称。'
+        },
+        confirm: {
+          deletePreset: '确定要删除模板 “{{name}}” 吗？'
         }
       },
       settings: {
@@ -1027,7 +1052,32 @@ const resources = {
         },
         toast: {
           routesSaved: 'Model routes updated successfully.',
-          routesSaveFailure: 'Failed to save model routes: {{message}}'
+          routesSaveFailure: 'Failed to save model routes: {{message}}',
+          presetSaved: 'Preset “{{name}}” saved.',
+          presetSaveFailure: 'Failed to save preset: {{message}}',
+          presetApplySuccess: 'Applied preset “{{name}}”.',
+          presetApplyFailure: 'Failed to apply preset: {{message}}',
+          presetDeleteSuccess: 'Preset “{{name}}” deleted.',
+          presetDeleteFailure: 'Failed to delete preset: {{message}}'
+        },
+        presets: {
+          title: 'Routing presets',
+          description: 'Capture the current Anthropic routing map and switch providers with one click.',
+          namePlaceholder: 'Preset name, e.g. fox',
+          save: 'Save preset',
+          saving: 'Saving...',
+          empty: 'No presets saved yet.',
+          apply: 'Apply',
+          applying: 'Applying...',
+          delete: 'Delete',
+          deleting: 'Deleting...'
+        },
+        validation: {
+          presetName: 'Enter a preset name.',
+          presetDuplicate: 'Preset {{name}} already exists.'
+        },
+        confirm: {
+          deletePreset: 'Delete preset “{{name}}”?' 
         }
       },
       settings: {

@@ -29,6 +29,12 @@ export interface EndpointRoutingConfig {
   modelRoutes: Record<string, string>
 }
 
+export interface RoutingPreset {
+  name: string
+  modelRoutes: Record<string, string>
+  createdAt: number
+}
+
 export interface GatewayConfig {
   port: number
   host?: string
@@ -37,6 +43,7 @@ export interface GatewayConfig {
   logRetentionDays?: number
   modelRoutes?: Record<string, string>
   endpointRouting?: Partial<Record<GatewayEndpoint, EndpointRoutingConfig>>
+  routingPresets?: Partial<Record<GatewayEndpoint, RoutingPreset[]>>
   storePayloads?: boolean
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
   requestLogging?: boolean

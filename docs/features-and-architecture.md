@@ -8,7 +8,7 @@
 | 功能 Feature | 描述 Description |
 |--------------|------------------|
 | 协议转换 Protocol adaptation | 标准化 Claude payload，构建 OpenAI、Anthropic、Kimi K2 兼容请求，并保持工具调用/思考模式；Anthropic 分支支持原样透传 payload/headers。 |
-| 模型路由 Model routing | 依据 `modelRoutes` 与默认策略在 Provider/模型之间切换，支持长上下文与推理模型。 |
+| 模型路由 Model routing | 依据 `modelRoutes` 与默认策略在 Provider/模型之间切换，支持长上下文与推理模型，并可为 Anthropic 端点保存/应用路由模板实现一键切换。 |
 | Provider 适配 Provider adapters | 内置 OpenAI-compatible、Anthropic Messages、Kimi 连接器，统一鉴权、超时与错误映射；Anthropic 适配器自动拼接 `/v1/messages` 并处理 `x-api-key`。 |
 | 日志与指标 Logging & metrics | SQLite 记录请求明细、每日 token 统计、缓存命中（含 `cache_read_input_tokens` / `cache_creation_input_tokens`）；Web UI 支持筛选/导出/清理。 |
 | Web 控制台 Web console | React + Vite 仪表盘、日志、模型管理、设置页面，支持中英双语与暗黑模式。 |
@@ -43,8 +43,8 @@
 - English: lifecycle hooks persist logs (tokens plus TTFT/TPOT) into SQLite before rolling up daily aggregates; the streaming tail now inspects Anthropic cache fields before the Web UI surfaces them.
 
 ### Web UI
-- 中文：包含 Dashboard（统计，含模型级别的 TTFT/TPOT 指标）、Logs（筛选、分页、抽屉详情）、Model Management（Provider CRUD、连通性测试、路由映射）、Settings（端口、日志策略、日志级别/访问日志开关、配置路径）。
-- English: responsive layout with mobile navigation, bilingual copy via i18next, and accessibility helpers (skip links, focus trapping); settings now expose log level and request logging toggles alongside port/log retention controls.
+- 中文：包含 Dashboard（统计，含模型级别的 TTFT/TPOT 指标）、Logs（筛选、分页、抽屉详情）、Model Management（Provider CRUD、连通性测试、路由映射，可保存/应用 Anthropic 路由模板一键切换 Provider 方案）、Settings（端口、日志策略、日志级别/访问日志开关、配置路径）。
+- English: responsive layout with mobile navigation, bilingual copy via i18next, and accessibility helpers (skip links, focus trapping); model management now exposes routing presets for Anthropic endpoints alongside provider CRUD, while settings include log level and request logging toggles with port/log retention controls.
 
 ### CLI
 - 中文：`start/stop/restart/status` 命令支持守护与前台模式；首次启动生成配置模板，并提示访问 Web UI。
@@ -62,7 +62,7 @@
   - `request_logs`：请求基础信息与 token 统计
   - `request_payloads`：原始请求/响应 JSON（用于排查）
   - `daily_metrics`：每日请求数、输入/输出/缓存 token、累计耗时
-- 配置重点：`providers`（含 `type/baseUrl/apiKey/models`）、`modelRoutes`、`defaults`、`logRetentionDays`、`logLevel`、`requestLogging`
+- 配置重点：`providers`（含 `type/baseUrl/apiKey/models`）、`modelRoutes`、`defaults`、`routingPresets`（可选的路由模板集合）、`logRetentionDays`、`logLevel`、`requestLogging`
 - 环境变量：`CC_GW_UI_ROOT`（自定义静态资源）、`CC_GW_DEBUG_ENDPOINTS`（打印下游 URL）
 
 ## 运行与运维 Deployment Notes

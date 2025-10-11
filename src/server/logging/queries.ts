@@ -48,18 +48,18 @@ export async function queryLogs(options: LogListOptions = {}): Promise<LogListRe
   const params: Record<string, unknown> = {}
 
   if (options.provider) {
-    conditions.push('provider = $provider')
-    params.$provider = options.provider
+    conditions.push('provider = @provider')
+    params.provider = options.provider
   }
 
   if (options.endpoint) {
-    conditions.push('endpoint = $endpoint')
-    params.$endpoint = options.endpoint
+    conditions.push('endpoint = @endpoint')
+    params.endpoint = options.endpoint
   }
 
   if (options.model) {
-    conditions.push('model = $model')
-    params.$model = options.model
+    conditions.push('model = @model')
+    params.model = options.model
   }
 
   if (options.status === 'success') {
@@ -69,20 +69,20 @@ export async function queryLogs(options: LogListOptions = {}): Promise<LogListRe
   }
 
   if (typeof options.from === 'number') {
-    conditions.push('timestamp >= $from')
-    params.$from = options.from
+    conditions.push('timestamp >= @from')
+    params.from = options.from
   }
 
   if (typeof options.to === 'number') {
-    conditions.push('timestamp <= $to')
-    params.$to = options.to
+    conditions.push('timestamp <= @to')
+    params.to = options.to
   }
 
   if (options.apiKeyIds && options.apiKeyIds.length > 0) {
     const placeholders: string[] = []
     options.apiKeyIds.forEach((id, index) => {
-      const key = `$apiKey${index}`
-      placeholders.push(key)
+      const key = `apiKey${index}`
+      placeholders.push(`@${key}`)
       params[key] = id
     })
     conditions.push(`(api_key_id IN (${placeholders.join(', ')}))`)
@@ -102,8 +102,8 @@ export async function queryLogs(options: LogListOptions = {}): Promise<LogListRe
        FROM request_logs
        ${whereClause}
        ORDER BY timestamp DESC
-       LIMIT $limit OFFSET $offset`,
-    { ...params, $limit: limit, $offset: offset }
+       LIMIT @limit OFFSET @offset`,
+    { ...params, limit, offset }
   )
 
   return {

@@ -7,7 +7,8 @@ import type {
   EndpointRoutingConfig,
   GatewayConfig,
   GatewayEndpoint,
-  ModelRouteMap
+  ModelRouteMap,
+  RoutingPreset
 } from './types.js'
 
 const LOG_LEVELS = new Set<NonNullable<GatewayConfig['logLevel']>>([
@@ -158,6 +159,48 @@ function parseConfig(raw: string): GatewayConfig {
   data.endpointRouting = endpointRouting
   data.defaults = { ...endpointRouting.anthropic!.defaults }
   data.modelRoutes = { ...endpointRouting.anthropic!.modelRoutes }
+
+  const rawPresets = data.routingPresets
+  const routingPresets: Partial<Record<GatewayEndpoint, RoutingPreset[]>> = {}
+  if (rawPresets && typeof rawPresets === 'object') {
+    for (const endpoint of KNOWN_ENDPOINTS) {
+      const source = (rawPresets as Record<string, unknown>)[endpoint]
+      if (!Array.isArray(source)) continue
+
+      const seen = new Set<string>()
+      const presets: RoutingPreset[] = []
+      for (const item of source) {
+        if (!item || typeof item !== 'object') continue
+        const rawName = (item as Record<string, unknown>).name
+        if (typeof rawName !== 'string') continue
+        const name = rawName.trim()
+        if (!name) continue
+
+        const modelRoutes: Record<string, string> = {}
+        const rawRoutes = (item as Record<string, any>).modelRoutes
+        if (rawRoutes && typeof rawRoutes === 'object') {
+          for (const [sourceModel, target] of Object.entries(rawRoutes as Record<string, unknown>)) {
+            if (typeof target === 'string' && target.trim()) {
+              modelRoutes[sourceModel] = target
+            }
+          }
+        }
+
+        const createdAtValue = Number((item as Record<string, unknown>).createdAt)
+        const createdAt = Number.isFinite(createdAtValue) ? createdAtValue : Date.now()
+        const key = name.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        presets.push({ name, modelRoutes, createdAt })
+      }
+      if (presets.length > 0) {
+        presets.sort((a, b) => a.name.localeCompare(b.name))
+        routingPresets[endpoint] = presets
+      }
+    }
+  }
+
+  data.routingPresets = routingPresets
 
   return data as GatewayConfig
 }

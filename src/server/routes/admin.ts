@@ -85,6 +85,173 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     return { success: true }
   })
 
+  const parseEndpoint = (value: string): GatewayEndpoint | null => {
+    if (value === 'anthropic' || value === 'openai') {
+      return value
+    }
+    return null
+  }
+
+  const cloneRoutes = (routes: Record<string, string> | undefined): Record<string, string> => {
+    const normalized: Record<string, string> = {}
+    if (!routes) return normalized
+    for (const [source, target] of Object.entries(routes)) {
+      if (typeof target === 'string' && target.trim()) {
+        normalized[source] = target
+      }
+    }
+    return normalized
+  }
+
+  app.post('/api/routing-presets/:endpoint', async (request, reply) => {
+    const endpoint = parseEndpoint(String((request.params as Record<string, string>).endpoint))
+    if (!endpoint) {
+      reply.code(400)
+      return { error: 'Unsupported endpoint' }
+    }
+
+    const rawName = (request.body as Record<string, unknown> | undefined)?.name
+    if (typeof rawName !== 'string') {
+      reply.code(400)
+      return { error: 'Preset name is required' }
+    }
+    const name = rawName.trim()
+    if (!name) {
+      reply.code(400)
+      return { error: 'Preset name cannot be empty' }
+    }
+
+    const config = getConfig()
+    const routingConfig = config.endpointRouting?.[endpoint]
+    const baseRoutes = endpoint === 'anthropic'
+      ? routingConfig?.modelRoutes ?? config.modelRoutes ?? {}
+      : routingConfig?.modelRoutes ?? {}
+
+    const currentPresets = config.routingPresets?.[endpoint] ?? []
+    const duplicate = currentPresets.some((preset) => preset.name.toLowerCase() === name.toLowerCase())
+    if (duplicate) {
+      reply.code(409)
+      return { error: 'Preset name already exists' }
+    }
+
+    const nextPresets = [...currentPresets, {
+      name,
+      modelRoutes: cloneRoutes(baseRoutes),
+      createdAt: Date.now()
+    }]
+    nextPresets.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+
+    const nextConfig: GatewayConfig = {
+      ...config,
+      routingPresets: {
+        ...config.routingPresets,
+        [endpoint]: nextPresets
+      }
+    }
+
+    updateConfig(nextConfig)
+    const updated = getConfig()
+    return {
+      success: true,
+      presets: updated.routingPresets?.[endpoint] ?? []
+    }
+  })
+
+  app.post('/api/routing-presets/:endpoint/apply', async (request, reply) => {
+    const endpoint = parseEndpoint(String((request.params as Record<string, string>).endpoint))
+    if (!endpoint) {
+      reply.code(400)
+      return { error: 'Unsupported endpoint' }
+    }
+
+    const rawName = (request.body as Record<string, unknown> | undefined)?.name
+    if (typeof rawName !== 'string') {
+      reply.code(400)
+      return { error: 'Preset name is required' }
+    }
+    const name = rawName.trim()
+    if (!name) {
+      reply.code(400)
+      return { error: 'Preset name cannot be empty' }
+    }
+
+    const config = getConfig()
+    const presets = config.routingPresets?.[endpoint] ?? []
+    const preset = presets.find((item) => item.name.toLowerCase() === name.toLowerCase())
+    if (!preset) {
+      reply.code(404)
+      return { error: 'Preset not found' }
+    }
+
+    const routing = config.endpointRouting ?? {
+      anthropic: {
+        defaults: config.defaults,
+        modelRoutes: config.modelRoutes ?? {}
+      }
+    }
+
+    const nextRouting: NonNullable<GatewayConfig['endpointRouting']> = {
+      ...routing,
+      [endpoint]: {
+        defaults: routing[endpoint]?.defaults ?? config.defaults,
+        modelRoutes: cloneRoutes(preset.modelRoutes)
+      }
+    }
+
+    const nextConfig: GatewayConfig = {
+      ...config,
+      endpointRouting: nextRouting,
+      modelRoutes: endpoint === 'anthropic' ? cloneRoutes(preset.modelRoutes) : config.modelRoutes,
+      routingPresets: config.routingPresets
+    }
+
+    updateConfig(nextConfig)
+    const updated = getConfig()
+    return {
+      success: true,
+      routes: updated.endpointRouting?.[endpoint]?.modelRoutes ?? {},
+      config: updated
+    }
+  })
+
+  app.delete('/api/routing-presets/:endpoint/:name', async (request, reply) => {
+    const endpoint = parseEndpoint(String((request.params as Record<string, string>).endpoint))
+    if (!endpoint) {
+      reply.code(400)
+      return { error: 'Unsupported endpoint' }
+    }
+
+    const rawName = (request.params as Record<string, string>).name
+    const name = typeof rawName === 'string' ? decodeURIComponent(rawName).trim() : ''
+    if (!name) {
+      reply.code(400)
+      return { error: 'Preset name is required' }
+    }
+
+    const config = getConfig()
+    const presets = config.routingPresets?.[endpoint] ?? []
+    const filtered = presets.filter((item) => item.name.toLowerCase() !== name.toLowerCase())
+    if (filtered.length === presets.length) {
+      reply.code(404)
+      return { error: 'Preset not found' }
+    }
+
+    const nextConfig: GatewayConfig = {
+      ...config,
+      routingPresets: {
+        ...config.routingPresets,
+        [endpoint]: filtered
+      }
+    }
+
+    updateConfig(nextConfig)
+    const updated = getConfig()
+    return {
+      success: true,
+      presets: updated.routingPresets?.[endpoint] ?? []
+    }
+  })
+
   app.post('/api/providers/:id/test', async (request, reply) => {
     const id = String((request.params as Record<string, string>).id)
     const config = getConfig()

@@ -51,7 +51,7 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 
 - **Dashboard**：展示请求量、Token 使用、缓存命中、各模型 TTFT（Time To First Token）/TPOT（Total Processing Time）、SQLite 数据库占用。
 - **请求日志**：多条件筛选（时间、Provider、模型、状态），查看压缩日志详情，支持分页导出与清理。
-- **模型管理**：维护 Provider 列表、预置模型、路由策略；一键测试连通性（发送诊断 PROMPT）。
+- **模型管理**：维护 Provider 列表、预置模型、路由策略；一键测试连通性（发送诊断 PROMPT），支持保存并应用 Anthropic 路由模板，实现不同 Provider 方案的“一键切换”。
 - **系统设置**：端口、日志保留策略、是否存储请求 payload、日志级别与访问日志开关、日志清理工具。
 - **使用指南**：提供图文步骤、常见问题与排查提示，帮助团队成员快速熟悉配置流程。
 
@@ -83,7 +83,7 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 
 1. **双端点适配 / Dual Endpoint Support**：通过 `/anthropic` 与 `/openai` 端点，分别兼容 Claude Code 与 Codex 客户端。无需重启 cc-gw，即可在 Web UI 中为两个端点配置独立的默认模型与路由策略。
 2. **日志追踪 / Request Auditing**：在“请求日志”页按端点、Provider、API Key 等维度筛选记录，可直接查看和复制完整的请求/响应 payload，辅助排查联调问题。
-3. **模型切换 / Cross-Provider Routing**：利用“模型管理”页的路由映射，将 Claude Code 请求透明地转发到 GLM、Kimi K2、DeepSeek 等任意 OpenAI 兼容模型，实现一套 IDE 客户端、多家大模型的快速切换。
+3. **模型切换 / Cross-Provider Routing**：利用“模型管理”页的路由映射，将 Claude Code 请求透明地转发到 GLM、Kimi K2、DeepSeek 等任意 OpenAI 兼容模型，实现一套 IDE 客户端、多家大模型的快速切换；对 Anthropic 端点可保存当前映射为模板（例如“fox”“glm”），后续一键切换整套路由。
 4. **操作指引 / Built-in Guidance**：左侧“Help”导航提供分步配置、日常运维建议及 FAQ，可作为新人上手或问题排查的快速参考。
 
 ## 配置说明
@@ -139,6 +139,7 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 - `providers`：定义上游服务；`type` 支持 `openai | anthropic | kimi | deepseek | custom`。
 - 模型标识使用 `providerId:modelId` 形式供路由引用。
 - `modelRoutes`：将 Claude 发起的模型名映射到上游模型；未命中时使用 `defaults`。
+- `routingPresets`：可选字段，保存多个 `anthropic`（或其他端点）路由模板，供 Web UI “一键切换”；每个模板仅包含 `name` 与 `modelRoutes`。
 - `storePayloads`：是否在 SQLite 中压缩保存原始请求/响应（Brotli），关闭后仅保留元信息。
 - `logLevel`：控制 Fastify/Pino 控制台日志级别（`fatal`/`error`/`warn`/`info`/`debug`/`trace`）。
 - `providers[].authMode`：仅在 `type: "anthropic"` 时生效，可选 `apiKey`（默认，发送 `x-api-key`）或 `authToken`（发送 `Authorization: Bearer`）。配置 Claude Code 使用 `ANTHROPIC_AUTH_TOKEN` 时，请选择 `authToken` 并在 `apiKey` 输入框填入该值。
@@ -197,7 +198,7 @@ cc-gw is a local gateway tailored for Claude Code and similar Anthropic-compatib
 | Feature | Details |
 | ------- | ------- |
 | Protocol adaptation | Converts Claude-style payloads into OpenAI-, Anthropic-, Kimi-, and DeepSeek-compatible requests while preserving tool calls and reasoning blocks. |
-| Model routing | Maps incoming model IDs to configured upstream providers with fallbacks for long-context and background tasks. |
+| Model routing | Maps incoming model IDs to configured upstream providers with fallbacks for long-context/background tasks, plus Anthropic routing presets for one-click provider swaps. |
 | Observability | Persists request logs, token usage (including cache hits), TTFT, TPOT, and daily aggregates via better-sqlite3 with Brotli-compressed payloads. |
 | Web console | React + Vite UI with dashboards, filters, provider CRUD, bilingual copy, and responsive layout. |
 | CLI daemon | `cc-gw` command wraps start/stop/restart/status, manages PID/log files, and scaffolds a default config on first launch. |
