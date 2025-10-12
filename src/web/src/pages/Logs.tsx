@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
+import { FileText } from 'lucide-react'
 import { useToast } from '@/providers/ToastProvider'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import type { ApiError } from '@/services/api'
 import type { LogDetail, LogListResponse, LogRecord } from '@/types/logs'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import { Loader } from '@/components/Loader'
+import { PageHeader } from '@/components/PageHeader'
+import { PageSection } from '@/components/PageSection'
+import { FormField, Select, Input, Button, StatusBadge } from '@/components'
+import { cn } from '@/utils/cn'
+import { mutedTextClass, subtleButtonClass, surfaceCardClass, paginationContainerClass, paginationSelectClass, statusBadgeClass } from '@/styles/theme'
 
 interface ProviderSummary {
   id: string
@@ -202,166 +208,147 @@ export default function LogsPage() {
   }, [])
 
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">{t('logs.title')}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{t('logs.description')}</p>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400" aria-live="polite">
-            <span>{t('logs.summary.total', { value: total.toLocaleString() })}</span>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        icon={<FileText className="h-6 w-6" aria-hidden="true" />}
+        title={t('logs.title')}
+        description={t('logs.description')}
+        actions={
+          <div className="flex items-center gap-3 text-sm" aria-live="polite">
+            <span className={cn(mutedTextClass, 'font-medium')}>
+              {t('logs.summary.total', { value: total.toLocaleString() })}
+            </span>
             <button
               type="button"
-              className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
               onClick={() => logsQuery.refetch()}
               disabled={logsQuery.isFetching}
+              className={cn(
+                subtleButtonClass,
+                'h-10 rounded-full px-4',
+                logsQuery.isFetching ? 'cursor-wait opacity-70' : ''
+              )}
             >
               {logsQuery.isFetching ? t('common.actions.refreshing') : t('logs.actions.manualRefresh')}
             </button>
           </div>
-        </div>
+        }
+      />
 
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {t('logs.filters.provider')}
-            </label>
-            <select
-              value={providerFilter}
-              onChange={(event) => setProviderFilter(event.target.value)}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
-            >
-              <option value="all">{t('logs.filters.providerAll')}</option>
-              {providerOptions.map((provider) => (
-                <option key={provider.id} value={provider.id}>
-                  {provider.label ?? provider.id}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {t('logs.filters.endpoint')}
-            </label>
-            <select
-              value={endpointFilter}
-              onChange={(event) => setEndpointFilter(event.target.value as 'all' | 'anthropic' | 'openai')}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
-            >
-              <option value="all">{t('logs.filters.endpointAll')}</option>
-              <option value="anthropic">{t('logs.filters.endpointAnthropic')}</option>
-              <option value="openai">{t('logs.filters.endpointOpenAI')}</option>
-            </select>
-          </div>
-
-          <ApiKeyFilter
-            apiKeys={apiKeys}
-            selected={selectedApiKeys}
-            disabled={apiKeysQuery.isLoading}
-            onChange={setSelectedApiKeys}
+      <PageSection
+        title={t('logs.filtersTitle')}
+        description={t('logs.filtersDescription')}
+        actions={
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className={cn(subtleButtonClass, 'h-9 rounded-full px-4')}
+          >
+            {t('common.actions.reset')}
+          </button>
+        }
+        contentClassName="grid w-full gap-4 md:grid-cols-2 xl:grid-cols-4"
+      >
+        <FormField label={t('logs.filters.provider')}>
+          <Select
+            value={providerFilter}
+            onChange={(event) => setProviderFilter(event.target.value)}
+            options={[
+              { value: 'all', label: t('logs.filters.providerAll') },
+              ...providerOptions.map((provider) => ({
+                value: provider.id,
+                label: provider.label ?? provider.id
+              }))
+            ]}
           />
+        </FormField>
 
-          <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {t('logs.filters.modelId')}
-            </label>
-            <input
-              value={modelFilter}
-              onChange={(event) => setModelFilter(event.target.value)}
-              placeholder={t('logs.filters.modelPlaceholder')}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
-            />
-          </div>
+        <FormField label={t('logs.filters.endpoint')}>
+          <Select
+            value={endpointFilter}
+            onChange={(event) => setEndpointFilter(event.target.value as 'all' | 'anthropic' | 'openai')}
+            options={[
+              { value: 'all', label: t('logs.filters.endpointAll') },
+              { value: 'anthropic', label: t('logs.filters.endpointAnthropic') },
+              { value: 'openai', label: t('logs.filters.endpointOpenAI') }
+            ]}
+          />
+        </FormField>
 
-          <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {t('logs.filters.status')}
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
-            >
-              {statusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+        <ApiKeyFilter
+          className="md:col-span-2"
+          apiKeys={apiKeys}
+          selected={selectedApiKeys}
+          disabled={apiKeysQuery.isLoading}
+          onChange={setSelectedApiKeys}
+        />
 
-          <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {t('logs.filters.startDate')}
-            </label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
-            />
-          </div>
+        <FormField label={t('logs.filters.modelId')}>
+          <Input
+            value={modelFilter}
+            onChange={(event) => setModelFilter(event.target.value)}
+            placeholder={t('logs.filters.modelPlaceholder')}
+          />
+        </FormField>
 
-          <div className="flex flex-col text-sm">
-            <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {t('logs.filters.endDate')}
-            </label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(event) => setToDate(event.target.value)}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
-            />
-          </div>
+        <FormField label={t('logs.filters.status')}>
+          <Select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+            options={statusOptions}
+          />
+        </FormField>
 
-          <div className="ml-auto flex items-center gap-2 text-sm">
-            <button
-              type="button"
-              onClick={handleResetFilters}
-              className="rounded-md border border-slate-200 px-3 py-2 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-            >
-              {t('common.actions.reset')}
-            </button>
-          </div>
-        </div>
-      </header>
+        <FormField label={t('logs.filters.startDate')}>
+          <Input
+            type="date"
+            value={fromDate}
+            onChange={(event) => setFromDate(event.target.value)}
+          />
+        </FormField>
 
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <FormField label={t('logs.filters.endDate')}>
+          <Input
+            type="date"
+            value={toDate}
+            onChange={(event) => setToDate(event.target.value)}
+          />
+        </FormField>
+      </PageSection>
+
+      <PageSection className="p-0" contentClassName="gap-0">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+          <table className="min-w-full divide-y divide-slate-200/70 text-sm dark:divide-slate-700/60">
             <caption className="sr-only">{t('logs.title')}</caption>
-            <thead className="bg-slate-100 dark:bg-slate-800/50">
+            <thead className="bg-slate-100/70 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
               <tr>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.time')}</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.endpoint')}</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.provider')}</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.requestedModel')}</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.routedModel')}</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.apiKey')}</th>
-                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.inputTokens')}</th>
-                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.cachedTokens')}</th>
-                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.outputTokens')}</th>
-                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.stream')}</th>
-                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.latency')}</th>
-                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.ttft')}</th>
-                <th className="px-4 py-2 text-right font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.tpot')}</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.status')}</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.error')}</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{t('logs.table.columns.actions')}</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.time')}</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.endpoint')}</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.provider')}</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.requestedModel')}</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.routedModel')}</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.apiKey')}</th>
+                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.inputTokens')}</th>
+                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.cachedTokens')}</th>
+                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.outputTokens')}</th>
+                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.stream')}</th>
+                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.latency')}</th>
+                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.ttft')}</th>
+                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.tpot')}</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.status')}</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.error')}</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.actions')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+            <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
               {logsQuery.isPending ? (
                 <tr>
-                  <td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={16} className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-500">
                     {t('logs.table.loading')}
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={16} className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-500">
                     {t('logs.table.empty')}
                   </td>
                 </tr>
@@ -379,48 +366,47 @@ export default function LogsPage() {
             </tbody>
           </table>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm dark:border-slate-800">
+        <div className={paginationContainerClass}>
           <div className="flex items-center gap-2">
-            <span>{t('logs.table.pagination.perPage')}</span>
+            <span className={mutedTextClass}>{t('logs.table.pagination.perPage')}</span>
             <select
               value={pageSize}
               onChange={(event) => setPageSize(Number(event.target.value))}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+              className={paginationSelectClass}
             >
               {PAGE_SIZE_OPTIONS.map((size) => (
                 <option key={size} value={size}>
-                  {size}
+                  {size} {t('logs.table.pagination.unit')}
                 </option>
               ))}
             </select>
-            <span>{t('logs.table.pagination.unit')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
               onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
               disabled={page <= 1}
-              className="rounded-md border border-slate-200 px-3 py-1 transition enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:enabled:hover:bg-slate-800"
+              size="sm"
+              className="rounded-full"
             >
               {t('logs.table.pagination.previous')}
-            </button>
-            <span>
+            </Button>
+            <span className={cn(mutedTextClass, 'font-medium')}>
               {t('logs.table.pagination.pageLabel', {
                 page: totalPages === 0 ? 0 : page,
                 total: totalPages
               })}
             </span>
-            <button
-              type="button"
+            <Button
               onClick={() => setPage((prev) => (totalPages === 0 ? prev : Math.min(prev + 1, totalPages)))}
               disabled={totalPages === 0 || page >= totalPages}
-              className="rounded-md border border-slate-200 px-3 py-1 transition enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:enabled:hover:bg-slate-800"
+              size="sm"
+              className="rounded-full"
             >
               {t('logs.table.pagination.next')}
-            </button>
+            </Button>
           </div>
         </div>
-      </section>
+      </PageSection>
 
       <LogDetailsDrawer
         open={isDetailOpen}
@@ -448,6 +434,7 @@ function LogRow({
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
   const endpointLabel = record.endpoint || '-'
   const isError = Boolean(record.error)
+  const statusCode = record.status_code
   const requestedModel = record.client_model ?? t('logs.table.requestedModelFallback')
   const apiKeyMeta = record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
   const apiKeyLabel = (() => {
@@ -467,57 +454,61 @@ function LogRow({
   })()
 
   return (
-    <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
-      <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(record.timestamp)}</td>
-      <td className="px-4 py-2">{endpointLabel}</td>
-      <td className="px-4 py-2">{providerLabel}</td>
-      <td className="px-4 py-2">{requestedModel}</td>
-      <td className="px-4 py-2">{record.model}</td>
-      <td className="px-4 py-2">
-        <span className="block truncate" title={apiKeyLabel}>
+    <tr className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+      <td className={cn(mutedTextClass, 'px-5 py-3 text-xs font-medium')}>
+        {formatDateTime(record.timestamp)}
+      </td>
+      <td className="px-5 py-3 text-sm text-slate-700 dark:text-slate-100">{endpointLabel}</td>
+      <td className="px-5 py-3 text-sm text-slate-700 dark:text-slate-100">{providerLabel}</td>
+      <td className="px-5 py-3 text-sm text-slate-600 dark:text-slate-200">{requestedModel}</td>
+      <td className="px-5 py-3 text-sm text-slate-700 dark:text-slate-100">{record.model}</td>
+      <td className="px-5 py-3">
+        <span className={cn(mutedTextClass, 'block truncate text-sm')} title={apiKeyLabel}>
           {apiKeyLabel}
         </span>
       </td>
-      <td className="px-4 py-2 text-right">{formatNumber(record.input_tokens)}</td>
-      <td className="px-4 py-2 text-right">{formatNumber(record.cached_tokens)}</td>
-      <td className="px-4 py-2 text-right">{formatNumber(record.output_tokens)}</td>
-      <td className="px-4 py-2 text-right">{formatStreamLabel(record.stream)}</td>
-      <td className="px-4 py-2 text-right">{formatLatency(record.latency_ms, t('common.units.ms'))}</td>
-      <td className="px-4 py-2 text-right">{formatLatency(record.ttft_ms, t('common.units.ms'))}</td>
-      <td className="px-4 py-2 text-right">{formatLatency(record.tpot_ms, t('common.units.msPerToken'))}</td>
-      <td className="px-4 py-2">
-        <StatusBadge success={!isError} statusCode={record.status_code} />
+      <td className="px-5 py-3 text-right text-sm font-medium text-slate-700 dark:text-slate-100">
+        {formatNumber(record.input_tokens)}
       </td>
-      <td className="max-w-xs px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+      <td className="px-5 py-3 text-right text-sm font-medium text-slate-700 dark:text-slate-100">
+        {formatNumber(record.cached_tokens)}
+      </td>
+      <td className="px-5 py-3 text-right text-sm font-medium text-slate-700 dark:text-slate-100">
+        {formatNumber(record.output_tokens)}
+      </td>
+      <td className="px-5 py-3 text-right text-sm text-slate-600 dark:text-slate-200">
+        {formatStreamLabel(record.stream)}
+      </td>
+      <td className="px-5 py-3 text-right text-sm text-slate-700 dark:text-slate-100">
+        {formatLatency(record.latency_ms, t('common.units.ms'))}
+      </td>
+      <td className="px-5 py-3 text-right text-sm text-slate-700 dark:text-slate-100">
+        {formatLatency(record.ttft_ms, t('common.units.ms'))}
+      </td>
+      <td className="px-5 py-3 text-right text-sm text-slate-700 dark:text-slate-100">
+        {formatLatency(record.tpot_ms, t('common.units.msPerToken'))}
+      </td>
+      <td className="px-5 py-3">
+        <StatusBadge variant={isError ? 'error' : 'success'}>
+          {statusCode ?? (isError ? 500 : 200)}
+          <span>{isError ? t('common.status.error') : t('common.status.success')}</span>
+        </StatusBadge>
+      </td>
+      <td className="max-w-xs px-5 py-3 text-xs text-slate-500 dark:text-slate-400">
         <span className="block truncate" title={record.error ?? ''}>
           {record.error ? record.error : '-'}
         </span>
       </td>
-      <td className="px-4 py-2">
-        <button
-          type="button"
+      <td className="px-5 py-3">
+        <Button
           onClick={() => onSelect(record.id)}
-          aria-haspopup="dialog"
-          className="rounded-md border border-slate-200 px-3 py-1 text-sm transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+          size="sm"
+          className="rounded-full"
         >
           {t('logs.actions.detail')}
-        </button>
+        </Button>
       </td>
     </tr>
-  )
-}
-
-function StatusBadge({ success, statusCode }: { success: boolean; statusCode: number | null }) {
-  const { t } = useTranslation()
-  const baseClass = 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium'
-  const style = success
-    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
-    : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
-  return (
-    <span className={`${baseClass} ${style}`}>
-      {success ? t('common.status.success') : t('common.status.error')}
-      {statusCode ? ` · ${statusCode}` : ''}
-    </span>
   )
 }
 
@@ -677,7 +668,10 @@ function LogDetailsDrawer({
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {t('logs.detail.summary.stream', { value: formatStreamLabel(record.stream) })}
                   </span>
-                  <StatusBadge success={!record.error} statusCode={record.status_code} />
+                  <StatusBadge variant={record.error ? 'error' : 'success'}>
+                    {(record.status_code ?? (record.error ? 500 : 200)).toString()}
+                    <span>{record.error ? t('common.status.error') : t('common.status.success')}</span>
+                  </StatusBadge>
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
                   <div>
@@ -856,12 +850,14 @@ function ApiKeyFilter({
   apiKeys,
   selected,
   onChange,
-  disabled
+  disabled,
+  className
 }: {
   apiKeys: ApiKeySummary[]
   selected: number[]
   onChange: (next: number[]) => void
   disabled?: boolean
+  className?: string
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -909,8 +905,8 @@ function ApiKeyFilter({
   }
 
   return (
-    <div className="relative flex flex-col text-sm" ref={containerRef}>
-      <label className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+    <div className={cn('relative flex flex-col gap-2', className)} ref={containerRef}>
+      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {t('logs.filters.apiKey')}
       </label>
       <button
@@ -918,9 +914,11 @@ function ApiKeyFilter({
         onClick={() => setOpen((prev) => !prev)}
         disabled={disabled || apiKeys.length === 0}
         title={t('logs.filters.apiKeyHint')}
-        className={`flex w-48 items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:ring-blue-400/40 ${
-          selected.length > 0 ? 'border-blue-500 dark:border-blue-500' : 'border-slate-200'
-        }`}
+        className={cn(
+          'flex h-10 w-full items-center justify-between rounded-xl border border-slate-200/70 bg-white/90 px-3 text-sm font-medium text-slate-600 shadow-sm shadow-slate-200/60 transition focus:outline-none focus:ring-2 focus:ring-blue-400/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700/60 dark:bg-slate-900/80 dark:text-slate-200',
+          selected.length > 0 ? 'border-blue-400 text-blue-700 dark:border-blue-400 dark:text-blue-200' : '',
+          open ? 'ring-2 ring-blue-400/30' : ''
+        )}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -933,7 +931,7 @@ function ApiKeyFilter({
           )}
         </span>
         <svg
-          className={`h-4 w-4 text-slate-500 transition-transform dark:text-slate-300 ${open ? 'rotate-180' : ''}`}
+          className={cn('h-4 w-4 text-slate-400 transition-transform dark:text-slate-300', open ? 'rotate-180' : '')}
           viewBox="0 0 20 20"
           fill="currentColor"
           aria-hidden="true"
@@ -946,8 +944,8 @@ function ApiKeyFilter({
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-2 w-56 rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-300">
+        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-2xl border border-slate-200/70 bg-white/95 p-2 shadow-lg shadow-slate-200/70 backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/90">
+          <div className="flex items-center justify-between rounded-xl border border-slate-200/60 bg-slate-50/70 px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300">
             <span>{summaryText}</span>
             <button
               type="button"
@@ -958,18 +956,21 @@ function ApiKeyFilter({
               {t('common.actions.reset')}
             </button>
           </div>
-          <div className="max-h-56 overflow-y-auto px-2 py-2">
+          <div className="max-h-56 overflow-y-auto px-1 py-2">
             {apiKeys.map((key) => {
               const label = key.isWildcard ? t('apiKeys.wildcard') : key.name
               const checked = selected.includes(key.id)
               return (
                 <label
                   key={key.id}
-                  className={`flex items-center gap-2 rounded px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${checked ? 'bg-slate-100 dark:bg-slate-800/70' : ''}`}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800',
+                    checked ? 'bg-blue-50/70 text-blue-600 dark:bg-blue-900/30 dark:text-blue-200' : 'text-slate-600 dark:text-slate-200'
+                  )}
                 >
                   <input
                     type="checkbox"
-                    className="h-4 w-4"
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 dark:border-slate-600"
                     checked={checked}
                     onChange={() => handleToggle(key.id)}
                   />

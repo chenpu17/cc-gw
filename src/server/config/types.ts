@@ -46,6 +46,8 @@ export interface GatewayConfig {
   modelRoutes?: ModelRouteMap
   endpointRouting?: Partial<Record<GatewayEndpoint, EndpointRoutingConfig>>
   routingPresets?: Partial<Record<GatewayEndpoint, RoutingPreset[]>>
+  storeRequestPayloads?: boolean
+  storeResponsePayloads?: boolean
   storePayloads?: boolean
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
   requestLogging?: boolean

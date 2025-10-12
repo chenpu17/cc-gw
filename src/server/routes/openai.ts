@@ -160,7 +160,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
       connector = getConnector(target.providerId)
     }
     const requestStart = Date.now()
-    const storePayloads = getConfig().storePayloads !== false
+    const configSnapshot = getConfig()
+    const storeRequestPayloads = configSnapshot.storeRequestPayloads !== false
+    const storeResponsePayloads = configSnapshot.storeResponsePayloads !== false
 
     const logId = await recordLog({
       timestamp: requestStart,
@@ -175,7 +177,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
       apiKeyValue: encryptedApiKeyValue
     })
 
-    if (storePayloads) {
+    if (storeRequestPayloads) {
       await upsertLogPayload(logId, {
         prompt: (() => {
           try {
@@ -239,7 +241,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         const bodyText = upstream.body ? await new Response(upstream.body).text() : ''
         const errorText = bodyText || 'Upstream provider error'
         debugLog('upstream error', upstream.status, errorText.slice(0, 200))
-        if (storePayloads) {
+        if (storeResponsePayloads) {
           await upsertLogPayload(logId, { response: bodyText || null })
         }
         await commitUsage(0, 0)
@@ -249,7 +251,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
 
       if (!normalized.stream) {
         const rawBody = upstream.body ? await new Response(upstream.body).text() : ''
-        if (storePayloads) {
+        if (storeResponsePayloads) {
           await upsertLogPayload(logId, { response: rawBody })
         }
         let parsed: any = null
@@ -325,7 +327,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
       let usageCached: number | null = null
       let firstTokenAt: number | null = null
       let chunkCount = 0
-      const capturedResponseChunks: string[] | null = storePayloads ? [] : null
+      const capturedResponseChunks: string[] | null = storeResponsePayloads ? [] : null
 
       const replyClosed = () => {
         debugLog('client connection closed before completion')

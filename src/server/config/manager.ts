@@ -120,8 +120,21 @@ function parseConfig(raw: string): GatewayConfig {
   if (typeof data.logRetentionDays !== 'number') {
     data.logRetentionDays = 30
   }
-  if (typeof data.storePayloads !== 'boolean') {
-    data.storePayloads = true
+  const legacyStorePayloads = typeof data.storePayloads === 'boolean' ? data.storePayloads : undefined
+  const hasRequestFlag = typeof data.storeRequestPayloads === 'boolean'
+  const hasResponseFlag = typeof data.storeResponsePayloads === 'boolean'
+
+  const resolvedStoreRequest = hasRequestFlag
+    ? data.storeRequestPayloads!
+    : legacyStorePayloads ?? true
+  const resolvedStoreResponse = hasResponseFlag
+    ? data.storeResponsePayloads!
+    : legacyStorePayloads ?? true
+
+  data.storeRequestPayloads = resolvedStoreRequest
+  data.storeResponsePayloads = resolvedStoreResponse
+  if ('storePayloads' in data) {
+    delete (data as any).storePayloads
   }
   const legacyRoutes = sanitizeModelRoutes(data.modelRoutes as Record<string, unknown> | undefined)
   if (typeof data.logLevel !== 'string' || !LOG_LEVELS.has(data.logLevel as any)) {

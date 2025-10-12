@@ -332,7 +332,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
     const connector = getConnector(target.providerId)
     const requestStart = Date.now()
-    const storePayloads = getConfig().storePayloads !== false
+    const configSnapshot = getConfig()
+    const storeRequestPayloads = configSnapshot.storeRequestPayloads !== false
+    const storeResponsePayloads = configSnapshot.storeResponsePayloads !== false
 
     const logId = await recordLog({
       timestamp: requestStart,
@@ -349,7 +351,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
     incrementActiveRequests()
 
-    if (storePayloads) {
+    if (storeRequestPayloads) {
       await upsertLogPayload(logId, {
         prompt: (() => {
           try {
@@ -412,7 +414,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         console.warn(
           `[cc-gw][provider:${target.providerId}] upstream error status=${upstream.status} body=${bodyText || '<empty>'}`
         )
-        if (storePayloads) {
+        if (storeResponsePayloads) {
           await upsertLogPayload(logId, { response: bodyText || null })
         }
         await commitUsage(0, 0)
@@ -458,7 +460,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             outputTokens,
             latencyMs
           })
-          if (storePayloads) {
+          if (storeResponsePayloads) {
             await upsertLogPayload(logId, {
               response: (() => {
                 try {
@@ -508,7 +510,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           outputTokens,
           latencyMs
         })
-        if (storePayloads) {
+        if (storeResponsePayloads) {
           await upsertLogPayload(logId, {
             response: (() => {
               try {
@@ -641,7 +643,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           outputTokens: usageCompletion,
           latencyMs: totalLatencyMs
         })
-        if (storePayloads) {
+        if (storeResponsePayloads) {
           await upsertLogPayload(logId, {
             response: (() => {
               try {
@@ -766,7 +768,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
               outputTokens: finalCompletionTokens,
               latencyMs: totalLatencyMs
             })
-            if (storePayloads) {
+            if (storeResponsePayloads) {
               await upsertLogPayload(logId, {
                 response: (() => {
                   try {
@@ -932,7 +934,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           outputTokens: fallbackCompletion,
           latencyMs: totalLatencyMs
         })
-        if (storePayloads) {
+        if (storeResponsePayloads) {
           await upsertLogPayload(logId, {
             response: (() => {
               try {

@@ -141,7 +141,8 @@ function writeConfig(tempHome: string, gatewayPort: number, stubPort: number): v
     },
     logRetentionDays: 30,
     modelRoutes: {},
-    storePayloads: true,
+    storeRequestPayloads: true,
+    storeResponsePayloads: true,
     logLevel: 'error',
     requestLogging: false
   }

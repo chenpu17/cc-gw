@@ -127,7 +127,8 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
     "claude-opus-4-1-20250805": "anthropic:claude-3-5-sonnet-latest"
   },
   "logRetentionDays": 30,
-  "storePayloads": true,
+  "storeRequestPayloads": true,
+  "storeResponsePayloads": true,
   "logLevel": "info",
   "requestLogging": true,
   "responseLogging": true
@@ -140,7 +141,7 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 - 模型标识使用 `providerId:modelId` 形式供路由引用。
 - `modelRoutes`：将 Claude 发起的模型名映射到上游模型；未命中时使用 `defaults`。
 - `routingPresets`：可选字段，保存多个 `anthropic`（或其他端点）路由模板，供 Web UI “一键切换”；每个模板仅包含 `name` 与 `modelRoutes`。
-- `storePayloads`：是否在 SQLite 中压缩保存原始请求/响应（Brotli），关闭后仅保留元信息。
+- `storeRequestPayloads` / `storeResponsePayloads`：是否分别在 SQLite 中压缩保存请求原文与响应内容；关闭可减少敏感数据落盘。
 - `logLevel`：控制 Fastify/Pino 控制台日志级别（`fatal`/`error`/`warn`/`info`/`debug`/`trace`）。
 - `providers[].authMode`：仅在 `type: "anthropic"` 时生效，可选 `apiKey`（默认，发送 `x-api-key`）或 `authToken`（发送 `Authorization: Bearer`）。配置 Claude Code 使用 `ANTHROPIC_AUTH_TOKEN` 时，请选择 `authToken` 并在 `apiKey` 输入框填入该值。
 - `requestLogging`：是否输出每个 HTTP 请求的进入日志。
@@ -199,7 +200,7 @@ cc-gw is a local gateway tailored for Claude Code and similar Anthropic-compatib
 | ------- | ------- |
 | Protocol adaptation | Converts Claude-style payloads into OpenAI-, Anthropic-, Kimi-, and DeepSeek-compatible requests while preserving tool calls and reasoning blocks. |
 | Model routing | Maps incoming model IDs to configured upstream providers with fallbacks for long-context/background tasks, plus Anthropic routing presets for one-click provider swaps. |
-| Observability | Persists request logs, token usage (including cache hits), TTFT, TPOT, and daily aggregates via better-sqlite3 with Brotli-compressed payloads. |
+| Observability | Persists request logs, token usage (including cache hits), TTFT, TPOT, and daily aggregates via better-sqlite3 with Brotli-compressed payloads; request/response bodies can be stored independently. |
 | Web console | React + Vite UI with dashboards, filters, provider CRUD, bilingual copy, and responsive layout. |
 | CLI daemon | `cc-gw` command wraps start/stop/restart/status, manages PID/log files, and scaffolds a default config on first launch. |
 
@@ -246,7 +247,7 @@ If the client expects a full path, call `POST /openai/v1/responses`. The gateway
 - Providers include `type`, `baseUrl`, `apiKey`, and `models` descriptions.
 - When `type` is `anthropic`, cc-gw forwards the original Claude payload and all headers to `<baseUrl>/v1/messages`, so tool calls/metadata remain intact.
 - Model routes use `providerId:modelId` syntax to remap Claude requests.
-- `storePayloads` toggles compressed body retention; disable to keep only metadata.
+- `storeRequestPayloads` / `storeResponsePayloads` control whether prompts and completions are persisted; disable either switch to avoid storing sensitive data.
 - `logLevel` adjusts Fastify/Pino verbosity (`fatal` → `trace`).
 - `requestLogging` controls whether per-request access logs are emitted to the console.
 - `responseLogging` toggles completion logs separately so you can keep the console quieter while preserving metrics.

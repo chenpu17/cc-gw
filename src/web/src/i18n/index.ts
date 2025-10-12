@@ -144,22 +144,24 @@ const resources = {
       },
       logs: {
         title: '请求日志',
-        description: '查看近期请求，支持筛选 Provider、模型、成功状态及时间范围。',
-        summary: {
-          total: '记录总数：{{value}}'
-        },
-        filters: {
-          provider: 'Provider',
-          providerAll: '全部 Provider',
-          endpoint: '请求端点',
+      description: '查看近期请求，支持筛选 Provider、模型、成功状态及时间范围。',
+      filtersTitle: '筛选条件',
+      filtersDescription: '组合多种条件精准定位请求记录。',
+      summary: {
+        total: '记录总数：{{value}}'
+      },
+      filters: {
+        provider: 'Provider',
+        providerAll: '全部 Provider',
+        endpoint: '请求端点',
           endpointAll: '全部端点',
           endpointAnthropic: 'anthropic',
           endpointOpenAI: 'openai',
-          apiKey: 'API Key',
-          apiKeyHint: '可多选，不选择时将展示全部密钥。',
-          modelId: '模型 ID',
-          modelPlaceholder: '如 deepseek-chat',
-          status: '状态',
+        apiKey: 'API Key',
+        apiKeyHint: '可多选，不选择时将展示全部密钥。',
+        modelId: '模型 ID',
+        modelPlaceholder: '如 deepseek-chat',
+        status: '状态',
           statusAll: '全部',
           statusSuccess: '成功',
           statusError: '失败',
@@ -448,8 +450,10 @@ const resources = {
           hostPlaceholder: '默认 0.0.0.0',
           retention: '日志保留天数',
           defaults: '默认模型配置',
-          storePayloads: '保存请求/响应内容',
-          storePayloadsHint: '关闭后仅记录元数据，可减少磁盘占用。',
+          storeRequestPayloads: '保存请求内容',
+          storeRequestPayloadsHint: '开启后会在日志数据库中保留完整请求原文，便于排查；如含敏感信息可关闭。',
+          storeResponsePayloads: '保存响应内容',
+          storeResponsePayloadsHint: '开启后会记录模型返回的数据（含流式片段）；关闭可降低磁盘与隐私风险。',
           logLevel: '日志级别',
           logLevelOption: {
             fatal: '致命 (fatal)',
@@ -460,9 +464,9 @@ const resources = {
             trace: '跟踪 (trace)'
           },
           requestLogging: '输出访问日志',
-          requestLoggingHint: '关闭后将不再在终端打印每个请求的访问日志。',
+          requestLoggingHint: '控制是否在终端打印“incoming request …”日志，方便观察访问来源。',
           responseLogging: '输出响应日志',
-          responseLoggingHint: '关闭后将不再输出请求完成时的日志。'
+          responseLoggingHint: '控制是否输出“request completed …”日志（含状态码与耗时），关闭后终端更安静。'
         },
         validation: {
           port: '请输入 1-65535 之间的端口号',
@@ -558,15 +562,20 @@ const resources = {
         description: '查看 cc-gw 的版本信息、构建元数据与运行状态。',
         app: {
           title: '应用信息',
+          subtitle: '版本与构建元数据一目了然。',
           labels: {
             name: '名称',
             version: '版本',
             buildTime: '构建时间',
             node: 'Node 版本'
+          },
+          hint: {
+            buildTime: '构建时间以 UTC 表示，便于排查部署版本。'
           }
         },
         status: {
           title: '运行状态',
+          subtitle: '来自当前网关实例的实时指标。',
           loading: '正在获取运行状态...',
           empty: '未能获取状态信息。',
           labels: {
@@ -574,12 +583,16 @@ const resources = {
             port: '监听端口',
             providers: '已配置 Provider',
             active: '活动请求'
+          },
+          hint: {
+            active: '活动请求数每分钟刷新一次，可快速判断当前负载。'
           }
         },
         support: {
           title: '使用提示',
           subtitle: '运行维护说明',
           description: '通过 Web UI 管理 Provider、模型路由与日志，高级配置可直接编辑 ~/.cc-gw/config.json。',
+          tip: '高级配置建议结合 CLI 使用，可将 ~/.cc-gw/config.json 纳入版本管理或自动化脚本。',
           actions: {
             checkUpdates: '检查更新'
           }
@@ -805,6 +818,8 @@ const resources = {
       logs: {
         title: 'Request Logs',
         description: 'Inspect recent traffic with provider/model/status filters and date range.',
+        filtersTitle: 'Filters',
+        filtersDescription: 'Combine conditions to zero in on the requests you care about.',
         summary: {
           total: 'Total records: {{value}}'
         },
@@ -1108,8 +1123,10 @@ const resources = {
           hostPlaceholder: 'Defaults to 0.0.0.0',
           retention: 'Log retention days',
           defaults: 'Default models',
-          storePayloads: 'Store request & response bodies',
-          storePayloadsHint: 'Disable to keep only metadata and save disk space.',
+          storeRequestPayloads: 'Store request bodies',
+          storeRequestPayloadsHint: 'Keep the full prompt for debugging; disable if payloads are sensitive.',
+          storeResponsePayloads: 'Store response bodies',
+          storeResponsePayloadsHint: 'Persist the full model output (including streaming chunks). Disable to reduce disk usage.',
           logLevel: 'Log level',
           logLevelOption: {
             fatal: 'Fatal',
@@ -1120,9 +1137,9 @@ const resources = {
             trace: 'Trace'
           },
           requestLogging: 'Emit request logs',
-          requestLoggingHint: 'Disable to stop printing each HTTP request in the console.',
+          requestLoggingHint: 'Controls the “incoming request …” lines printed to the console. Helpful for tracing traffic.',
           responseLogging: 'Emit response logs',
-          responseLoggingHint: 'Disable to stop printing completion logs for each HTTP request.'
+          responseLoggingHint: 'Controls the “request completed …” entries (status + latency). Disable for quieter output.'
         },
         validation: {
           port: 'Enter a port between 1 and 65535',
@@ -1288,15 +1305,20 @@ const resources = {
         description: 'Review cc-gw version details, build metadata, and current runtime status.',
         app: {
           title: 'Application',
+          subtitle: 'Gateway build metadata at a glance.',
           labels: {
             name: 'Name',
             version: 'Version',
             buildTime: 'Build time',
             node: 'Node version'
+          },
+          hint: {
+            buildTime: 'Timestamps are recorded in UTC so you can trace deployments easily.'
           }
         },
         status: {
           title: 'Runtime status',
+          subtitle: 'Live metrics reported by the running gateway.',
           loading: 'Fetching status...',
           empty: 'Unable to retrieve status information.',
           labels: {
@@ -1304,12 +1326,16 @@ const resources = {
             port: 'Listen port',
             providers: 'Providers configured',
             active: 'Active requests'
+          },
+          hint: {
+            active: 'Active request totals refresh roughly every minute.'
           }
         },
         support: {
           title: 'Operational notes',
           subtitle: 'Maintenance guidance',
           description: 'Manage providers, routing, and logs in the Web UI; advanced settings live in ~/.cc-gw/config.json.',
+          tip: 'Consider keeping ~/.cc-gw/config.json under version control or managing it via automation scripts.',
           actions: {
             checkUpdates: 'Check for updates'
           }

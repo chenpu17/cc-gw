@@ -85,6 +85,8 @@ async function ensureConfigTemplate(port?: string): Promise<boolean> {
       port: selectedPort,
       providers: [],
       defaults: { ...baseDefaults },
+      storeRequestPayloads: true,
+      storeResponsePayloads: true,
       endpointRouting: {
         anthropic: {
           defaults: { ...baseDefaults },
@@ -97,7 +99,6 @@ async function ensureConfigTemplate(port?: string): Promise<boolean> {
       },
       logRetentionDays: 30,
       modelRoutes: {},
-      storePayloads: true,
       logLevel: 'info',
       requestLogging: true,
       responseLogging: true

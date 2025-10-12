@@ -26,7 +26,8 @@ vi.mock('../../src/server/config/manager.ts', () => {
         modelRoutes: {}
       }
     },
-    storePayloads: true,
+    storeRequestPayloads: true,
+    storeResponsePayloads: true,
     logLevel: 'info',
     requestLogging: true,
     responseLogging: true

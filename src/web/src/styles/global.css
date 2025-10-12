@@ -4,6 +4,29 @@
 
 :root {
   color-scheme: light dark;
+  /* Enhanced color palette */
+  --color-primary-50: 239 246 255;
+  --color-primary-100: 219 234 254;
+  --color-primary-200: 191 219 254;
+  --color-primary-300: 147 197 253;
+  --color-primary-400: 96 165 250;
+  --color-primary-500: 59 130 246;
+  --color-primary-600: 37 99 235;
+  --color-primary-700: 29 78 216;
+  --color-primary-800: 30 64 175;
+  --color-primary-900: 30 58 138;
+  --color-primary-950: 23 37 84;
+
+  /* Glass effect variables */
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-shadow: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+  --glass-bg: rgba(15, 23, 42, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: rgba(0, 0, 0, 0.3);
 }
 
 html,
@@ -13,5 +36,126 @@ body,
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50;
+  @apply min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-50;
+  background-image:
+    radial-gradient(circle at 25% 15%, rgba(59, 130, 246, 0.08), transparent 50%),
+    radial-gradient(circle at 75% 10%, rgba(139, 92, 246, 0.06), transparent 45%),
+    radial-gradient(circle at 50% 80%, rgba(236, 72, 153, 0.04), transparent 35%);
+  background-attachment: fixed;
+  background-size: 100% 100%, 80% 80%, 60% 60%;
+  background-color: #f8fafc;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px, 32px 32px;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background-image:
+      radial-gradient(circle at 25% 15%, rgba(59, 130, 246, 0.12), transparent 50%),
+      radial-gradient(circle at 75% 10%, rgba(139, 92, 246, 0.10), transparent 45%),
+      radial-gradient(circle at 50% 80%, rgba(236, 72, 153, 0.06), transparent 35%);
+    background-color: #020617;
+  }
+
+  body::before {
+    background-image:
+      radial-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.02) 1px, transparent 1px);
+    opacity: 0.4;
+  }
+}
+
+
+input[type='text'],
+input[type='number'],
+input[type='search'],
+input[type='email'],
+input[type='url'],
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'],
+input[type='password'],
+select,
+textarea {
+  @apply rounded-2xl border border-slate-200/50 bg-white/90 px-4 py-3 text-sm text-slate-800 shadow-sm shadow-slate-200/30 transition-all duration-200 focus:border-blue-400/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20 focus:shadow-md focus:shadow-blue-200/40 dark:border-slate-700/50 dark:bg-slate-900/90 dark:text-slate-200 dark:shadow-lg dark:shadow-slate-900/30 dark:focus:border-blue-400/70 dark:focus:ring-blue-400/20;
+}
+
+/* Enhanced scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-100/50 dark:bg-slate-800/50;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300/70 dark:bg-slate-600/70;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400/80 dark:bg-slate-500/80;
+}
+
+/* Focus styles for better accessibility */
+*:focus-visible {
+  @apply outline-none ring-2 ring-blue-500/50 ring-offset-2 ring-offset-white dark:ring-offset-slate-950;
+}
+
+/* Loading spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Gradient text */
+.gradient-text {
+  @apply bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400;
+}
+
+/* Glass morphism utility */
+.glass {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px var(--glass-shadow);
+}
+
+/* Enhanced hover animations */
+.hover-lift {
+  @apply transition-all duration-300 ease-out;
+}
+
+.hover-lift:hover {
+  @apply -translate-y-1 shadow-xl;
+}
+
+/* Smooth transitions for theme switching */
+* {
+  @apply transition-colors duration-200;
+}
+
+/* Custom selection colors */
+::selection {
+  @apply bg-blue-500/20 text-blue-900 dark:text-blue-100;
 }

@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Settings as SettingsIcon, Copy } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import { Loader } from '@/components/Loader'
+import { PageHeader } from '@/components/PageHeader'
+import { PageSection } from '@/components/PageSection'
+import { cn } from '@/utils/cn'
+import { dangerButtonClass, mutedTextClass, primaryButtonClass, subtleButtonClass } from '@/styles/theme'
 import { apiClient, type ApiError } from '@/services/api'
 import type { ConfigInfoResponse, GatewayConfig } from '@/types/providers'
 
@@ -21,7 +26,8 @@ interface FormState {
   port: string
   host: string
   logRetentionDays: string
-  storePayloads: boolean
+  storeRequestPayloads: boolean
+  storeResponsePayloads: boolean
   logLevel: LogLevel
   requestLogging: boolean
   responseLogging: boolean
@@ -58,7 +64,8 @@ export default function SettingsPage() {
     port: '',
     host: '',
     logRetentionDays: '',
-    storePayloads: true,
+    storeRequestPayloads: true,
+    storeResponsePayloads: true,
     logLevel: 'info',
     requestLogging: true,
     responseLogging: true
@@ -83,11 +90,15 @@ export default function SettingsPage() {
     if (configQuery.data) {
       setConfig(configQuery.data.config)
       setConfigPath(configQuery.data.path)
+      const legacyStore = configQuery.data.config.storePayloads
+      const deriveStoreFlag = (value?: boolean) =>
+        typeof value === 'boolean' ? value : typeof legacyStore === 'boolean' ? legacyStore : true
       setForm({
         port: String(configQuery.data.config.port ?? ''),
         host: configQuery.data.config.host ?? '',
         logRetentionDays: String(configQuery.data.config.logRetentionDays ?? 30),
-        storePayloads: configQuery.data.config.storePayloads !== false,
+        storeRequestPayloads: deriveStoreFlag(configQuery.data.config.storeRequestPayloads),
+        storeResponsePayloads: deriveStoreFlag(configQuery.data.config.storeResponsePayloads),
         logLevel: (configQuery.data.config.logLevel as LogLevel) ?? 'info',
         requestLogging: configQuery.data.config.requestLogging !== false,
         responseLogging: configQuery.data.config.responseLogging ?? configQuery.data.config.requestLogging !== false
@@ -137,7 +148,8 @@ export default function SettingsPage() {
         port: portValue,
         host: form.host.trim() || undefined,
         logRetentionDays: retentionValue,
-        storePayloads: form.storePayloads,
+        storeRequestPayloads: form.storeRequestPayloads,
+        storeResponsePayloads: form.storeResponsePayloads,
         logLevel: form.logLevel,
         requestLogging: form.requestLogging,
         responseLogging: form.responseLogging
@@ -162,7 +174,18 @@ export default function SettingsPage() {
       port: String(config.port ?? ''),
       host: config.host ?? '',
       logRetentionDays: String(config.logRetentionDays ?? 30),
-      storePayloads: config.storePayloads !== false,
+      storeRequestPayloads:
+        typeof config.storeRequestPayloads === 'boolean'
+          ? config.storeRequestPayloads
+          : typeof config.storePayloads === 'boolean'
+          ? config.storePayloads
+          : true,
+      storeResponsePayloads:
+        typeof config.storeResponsePayloads === 'boolean'
+          ? config.storeResponsePayloads
+          : typeof config.storePayloads === 'boolean'
+          ? config.storePayloads
+          : true,
       logLevel: (config.logLevel as LogLevel) ?? 'info',
       requestLogging: config.requestLogging !== false,
       responseLogging: config.responseLogging ?? config.requestLogging !== false
@@ -235,209 +258,240 @@ export default function SettingsPage() {
   const isLoading = configQuery.isPending || (!config && configQuery.isFetching)
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">{t('settings.title')}</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{t('settings.description')}</p>
-      </header>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        icon={<SettingsIcon className="h-6 w-6" aria-hidden="true" />}
+        title={t('settings.title')}
+        description={t('settings.description')}
+        actions=
+          {config ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleReset}
+                className={cn(subtleButtonClass, 'h-10 rounded-full px-4')}
+                disabled={saving}
+              >
+                {t('common.actions.reset')}
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className={cn(primaryButtonClass, 'h-10 rounded-full px-4')}
+                disabled={saving}
+              >
+                {saving ? t('common.actions.saving') : t('common.actions.save')}
+              </button>
+            </div>
+          ) : null}
+      />
 
       {isLoading ? (
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <PageSection className="flex min-h-[220px] items-center justify-center">
           <Loader />
-        </section>
+        </PageSection>
       ) : !config ? (
-        <section className="flex min-h-[200px] items-center justify-center rounded-lg border border-slate-200 bg-white p-6 text-sm text-red-500 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          {t('settings.toast.missingConfig')}
-        </section>
+        <PageSection>
+          <p className="text-sm font-medium text-red-500 dark:text-red-300">{t('settings.toast.missingConfig')}</p>
+        </PageSection>
       ) : (
         <>
-          <section className="space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">{t('settings.sections.basics')}</h2>
-              <div className="flex gap-2 text-sm">
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-                  disabled={saving}
-                >
-                  {t('common.actions.reset')}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  className="rounded-md bg-blue-600 px-3 py-1 text-white transition hover:bg-blue-700 disabled:opacity-60"
-                  disabled={saving}
-                >
-                  {saving ? t('common.actions.saving') : t('common.actions.save')}
-                </button>
-              </div>
+          <PageSection title={t('settings.sections.basics')} contentClassName="grid w-full gap-5 md:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('settings.fields.port')}
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={65535}
+                value={form.port}
+                onChange={(event) => handleInputChange('port')(event.target.value)}
+                className="h-10"
+                aria-invalid={Boolean(errors.port)}
+              />
+              {errors.port ? (
+                <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.port}</span>
+              ) : null}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm">
-                <span className="text-xs text-slate-500 dark:text-slate-400">{t('settings.fields.port')}</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={form.port}
-                  onChange={(event) => handleInputChange('port')(event.target.value)}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                  aria-invalid={Boolean(errors.port)}
-                />
-                {errors.port ? <span className="text-xs text-red-500">{errors.port}</span> : null}
-              </label>
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('settings.fields.host')}
+              </span>
+              <input
+                value={form.host}
+                onChange={(event) => handleInputChange('host')(event.target.value)}
+                placeholder={t('settings.fields.hostPlaceholder')}
+                className="h-10"
+              />
+            </div>
 
-              <label className="flex flex-col gap-2 text-sm">
-                <span className="text-xs text-slate-500 dark:text-slate-400">{t('settings.fields.host')}</span>
-                <input
-                  value={form.host}
-                  onChange={(event) => handleInputChange('host')(event.target.value)}
-                  placeholder={t('settings.fields.hostPlaceholder')}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                />
-              </label>
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('settings.fields.retention')}
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={form.logRetentionDays}
+                onChange={(event) => handleInputChange('logRetentionDays')(event.target.value)}
+                className="h-10"
+                aria-invalid={Boolean(errors.logRetentionDays)}
+              />
+              {errors.logRetentionDays ? (
+                <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.logRetentionDays}</span>
+              ) : null}
+            </div>
 
-              <label className="flex flex-col gap-2 text-sm">
-                <span className="text-xs text-slate-500 dark:text-slate-400">{t('settings.fields.retention')}</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={form.logRetentionDays}
-                  onChange={(event) => handleInputChange('logRetentionDays')(event.target.value)}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                  aria-invalid={Boolean(errors.logRetentionDays)}
-                />
-                {errors.logRetentionDays ? <span className="text-xs text-red-500">{errors.logRetentionDays}</span> : null}
-              </label>
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('settings.fields.logLevel')}
+              </span>
+              <select
+                value={form.logLevel}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, logLevel: event.target.value as LogLevel }))
+                }
+                className="h-10"
+              >
+                {LOG_LEVEL_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(`settings.fields.logLevelOption.${option.labelKey}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <label className="flex flex-col gap-2 text-sm">
-                <span className="text-xs text-slate-500 dark:text-slate-400">{t('settings.fields.logLevel')}</span>
-                <select
-                  value={form.logLevel}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, logLevel: event.target.value as LogLevel }))
-                  }
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
-                >
-                  {LOG_LEVEL_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {t(`settings.fields.logLevelOption.${option.labelKey}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+            <div className="md:col-span-2 grid gap-4 sm:grid-cols-2">
+              <label className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/60 transition hover:border-slate-300 dark:border-slate-700/60 dark:bg-slate-900/70 dark:hover:border-slate-500/60">
                 <input
                   type="checkbox"
-                  checked={form.storePayloads}
+                  checked={form.storeRequestPayloads}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, storePayloads: event.target.checked }))
+                    setForm((prev) => ({ ...prev, storeRequestPayloads: event.target.checked }))
                   }
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 dark:border-slate-600"
                 />
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium text-slate-700 dark:text-slate-200">
-                    {t('settings.fields.storePayloads')}
+                <div className="space-y-1">
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-100">
+                    {t('settings.fields.storeRequestPayloads')}
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {t('settings.fields.storePayloadsHint')}
-                  </span>
+                  <p className={cn(mutedTextClass, 'text-xs')}>{t('settings.fields.storeRequestPayloadsHint')}</p>
                 </div>
               </label>
 
-              <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+              <label className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/60 transition hover:border-slate-300 dark:border-slate-700/60 dark:bg-slate-900/70 dark:hover:border-slate-500/60">
+                <input
+                  type="checkbox"
+                  checked={form.storeResponsePayloads}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, storeResponsePayloads: event.target.checked }))
+                  }
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 dark:border-slate-600"
+                />
+                <div className="space-y-1">
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-100">
+                    {t('settings.fields.storeResponsePayloads')}
+                  </span>
+                  <p className={cn(mutedTextClass, 'text-xs')}>{t('settings.fields.storeResponsePayloadsHint')}</p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/60 transition hover:border-slate-300 dark:border-slate-700/60 dark:bg-slate-900/70 dark:hover:border-slate-500/60">
                 <input
                   type="checkbox"
                   checked={form.requestLogging}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, requestLogging: event.target.checked }))
                   }
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 dark:border-slate-600"
                 />
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                <div className="space-y-1">
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-100">
                     {t('settings.fields.requestLogging')}
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {t('settings.fields.requestLoggingHint')}
-                  </span>
+                  <p className={cn(mutedTextClass, 'text-xs')}>{t('settings.fields.requestLoggingHint')}</p>
                 </div>
               </label>
 
-              <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+              <label className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/60 transition hover:border-slate-300 dark:border-slate-700/60 dark:bg-slate-900/70 dark:hover:border-slate-500/60">
                 <input
                   type="checkbox"
                   checked={form.responseLogging}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, responseLogging: event.target.checked }))
                   }
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 dark:border-slate-600"
                 />
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                <div className="space-y-1">
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-100">
                     {t('settings.fields.responseLogging')}
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {t('settings.fields.responseLoggingHint')}
-                  </span>
+                  <p className={cn(mutedTextClass, 'text-xs')}>{t('settings.fields.responseLoggingHint')}</p>
                 </div>
               </label>
-
-              <div className="flex flex-col gap-2 text-sm">
-                <span className="text-xs text-slate-500 dark:text-slate-400">{t('settings.fields.defaults')}</span>
-                <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
-                  {defaultsSummary ?? t('settings.defaults.none')}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:grid-cols-2">
-            <div className="flex flex-col gap-3">
-              <h2 className="text-lg font-semibold">{t('settings.sections.configFile')}</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.file.description')}</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 break-all rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-200">
-                  {configPath || t('settings.file.unknown')}
-                </code>
-                <button
-                  type="button"
-                  onClick={handleCopyPath}
-                  className="rounded-md border border-slate-200 px-3 py-1 text-sm transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-                >
-                  {t('common.actions.copy')}
-                </button>
-              </div>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <h2 className="text-lg font-semibold">{t('settings.sections.cleanup')}</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.cleanup.description')}</p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleCleanupLogs}
-                  className="w-fit rounded-md border border-red-200 px-4 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
-                  disabled={cleaning}
-                >
-                  {cleaning ? t('common.actions.cleaning') : t('common.actions.cleanup')}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleClearAllLogs}
-                  className="w-fit rounded-md border border-red-200 px-4 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
-                  disabled={clearingAll}
-                >
-                  {clearingAll ? t('settings.cleanup.clearingAll') : t('settings.cleanup.clearAll')}
-                </button>
-              </div>
-              <p className="text-xs text-red-500 dark:text-red-300">{t('settings.cleanup.clearAllWarning')}</p>
+            <div className="md:col-span-2 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 text-sm text-slate-700 shadow-sm shadow-slate-200/60 dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-200">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('settings.fields.defaults')}
+              </span>
+              <p className="mt-2 text-sm">{defaultsSummary ?? t('settings.defaults.none')}</p>
             </div>
-          </section>
+          </PageSection>
+
+          <PageSection
+            title={t('settings.sections.configFile')}
+            description={t('settings.file.description')}
+            actions={
+              <button
+                type="button"
+                onClick={handleCopyPath}
+                className={cn(subtleButtonClass, 'h-10 rounded-full px-4')}
+              >
+                <Copy className="h-4 w-4" aria-hidden="true" />
+                {t('common.actions.copy')}
+              </button>
+            }
+            contentClassName="gap-3"
+          >
+            <code className="block break-all rounded-2xl border border-slate-200/60 bg-slate-100 px-4 py-3 text-xs text-slate-700 dark:border-slate-700/60 dark:bg-slate-900 dark:text-slate-200">
+              {configPath || t('settings.file.unknown')}
+            </code>
+          </PageSection>
+
+          <PageSection
+            title={t('settings.sections.cleanup')}
+            description={t('settings.cleanup.description')}
+            contentClassName="flex flex-col gap-4"
+          >
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleCleanupLogs}
+                className={cn(dangerButtonClass, 'px-5')}
+                disabled={cleaning}
+              >
+                {cleaning ? t('common.actions.cleaning') : t('common.actions.cleanup')}
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllLogs}
+                className={cn(
+                  dangerButtonClass,
+                  'px-5 border-red-500/70 bg-red-600 text-white hover:bg-red-600/90 dark:border-red-500 dark:bg-red-500 dark:text-white'
+                )}
+                disabled={clearingAll}
+              >
+                {clearingAll ? t('settings.cleanup.clearingAll') : t('settings.cleanup.clearAll')}
+              </button>
+            </div>
+            <p className="text-xs font-medium text-red-500 dark:text-red-300">
+              {t('settings.cleanup.clearAllWarning')}
+            </p>
+          </PageSection>
         </>
       )}
     </div>

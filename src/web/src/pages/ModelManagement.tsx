@@ -5,6 +5,7 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import type { GatewayConfig, ProviderConfig, ProviderModelConfig, RoutingPreset } from '@/types/providers'
 import { ProviderDrawer } from './providers/ProviderDrawer'
+import { pageHeaderShellClass, surfaceCardClass, primaryButtonClass, subtleButtonClass, dangerButtonClass, inputClass, selectClass, badgeClass, statusBadgeClass } from '@/styles/theme'
 
 interface ModelRouteEntry {
   id: string
@@ -657,17 +658,19 @@ export default function ModelManagementPage() {
   }
 
   const renderProvidersSection = () => (
-    <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">{t('providers.title')}</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t('providers.description')}</p>
+    <section className={surfaceCardClass}>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">{t('providers.title')}</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{t('providers.description')}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-          <span>{t('providers.count', { count: providerCount })}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className={badgeClass.default}>
+            {t('providers.count', { count: providerCount })}
+          </div>
           <button
             type="button"
-            className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            className={subtleButtonClass}
             onClick={() => configQuery.refetch()}
             disabled={configQuery.isFetching}
           >
@@ -675,14 +678,14 @@ export default function ModelManagementPage() {
           </button>
           <button
             type="button"
-            className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            className={subtleButtonClass}
             onClick={handleOpenQuickAdd}
           >
             {t('providers.quickAddHuawei.button')}
           </button>
           <button
             type="button"
-            className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            className={primaryButtonClass}
             onClick={handleOpenCreate}
           >
             {t('providers.actions.add')}
@@ -691,68 +694,97 @@ export default function ModelManagementPage() {
       </div>
 
       {configQuery.isPending || (!config && configQuery.isFetching) ? (
-        <section className="flex min-h-[200px] items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+        <section className="flex min-h-[200px] items-center justify-center rounded-3xl border border-slate-200/50 bg-gradient-to-br from-white/80 to-white/70 text-sm text-slate-600 dark:border-slate-700/50 dark:from-slate-900/80 dark:to-slate-900/70 dark:text-slate-400 backdrop-blur-lg">
           {t('common.loading')}
         </section>
       ) : providers.length === 0 ? (
-        <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-          {t('providers.emptyState')}
+        <section className="rounded-3xl border border-dashed border-slate-300/60 bg-gradient-to-br from-slate-50/80 to-white/70 p-12 text-center text-sm text-slate-600 dark:border-slate-600/60 dark:from-slate-900/80 dark:to-slate-800/70 dark:text-slate-400 backdrop-blur-lg">
+          <div className="flex flex-col items-center gap-4">
+            <div className="rounded-2xl bg-slate-200/50 p-4 dark:bg-slate-700/50">
+              <svg className="h-8 w-8 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-medium text-slate-700 dark:text-slate-300">{t('providers.emptyState')}</p>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {t('providers.emptyStateSub', { default: '点击上方按钮添加您的第一个提供商' })}
+              </p>
+            </div>
+          </div>
         </section>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {providers.map((provider) => (
             <article
               key={provider.id}
-              className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
+              className="group flex h-full flex-col gap-5 rounded-3xl border border-slate-200/50 bg-gradient-to-br from-white/85 via-white/80 to-white/75 p-6 shadow-lg shadow-slate-200/30 backdrop-blur-md transition-all duration-300 hover:border-slate-200/70 hover:shadow-xl hover:shadow-slate-200/50 hover:-translate-y-1 dark:border-slate-700/50 dark:from-slate-900/85 dark:via-slate-900/80 dark:to-slate-900/75 dark:shadow-2xl dark:shadow-slate-900/40 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/90"
             >
               <div className="flex items-start justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold">{provider.label || provider.id}</h3>
-                    {provider.type ? <TypeBadge type={provider.type} /> : null}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30">
+                      <span className="text-lg font-bold">
+                        {(provider.label || provider.id).charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">{provider.label || provider.id}</h3>
+                        {provider.type ? <TypeBadge type={provider.type} /> : null}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">ID: {provider.id}</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">ID：{provider.id}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Base URL：<span className="break-all text-slate-600 dark:text-slate-300">{provider.baseUrl}</span>
-                  </p>
+                  <div className="mt-3 space-y-1">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+                      Base URL:
+                    </p>
+                    <p className="text-xs font-mono text-slate-700 dark:text-slate-300 bg-slate-100/50 dark:bg-slate-800/50 rounded-lg px-2 py-1 break-all">
+                      {provider.baseUrl}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <div className="flex flex-col gap-2">
                   {provider.defaultModel ? (
-                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                    <div className={statusBadgeClass.success}>
                       {t('providers.card.defaultModel', {
                         model: defaultLabels.get(provider.id) ?? provider.defaultModel
                       })}
-                    </span>
+                    </div>
                   ) : (
-                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    <div className={statusBadgeClass.info}>
                       {t('providers.card.noDefault')}
-                    </span>
+                    </div>
                   )}
                 </div>
               </div>
 
               <div className="flex flex-col gap-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('providers.card.modelsTitle')}</h4>
+                <h4 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">{t('providers.card.modelsTitle')}</h4>
                 {provider.models && provider.models.length > 0 ? (
-                  <ul className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {provider.models.map((model) => (
-                      <li
+                      <div
                         key={model.id}
-                        className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-800/60"
+                        className="flex items-center gap-2 rounded-xl border border-slate-200/60 bg-gradient-to-r from-slate-50/80 to-slate-100/70 px-3 py-1.5 text-xs dark:border-slate-700/60 dark:from-slate-800/60 dark:to-slate-700/50 backdrop-blur-sm transition-all duration-200 hover:border-slate-300/70 hover:bg-slate-100/80 dark:hover:border-slate-600/70 dark:hover:bg-slate-700/60"
                       >
+                        <div className="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
                         <span className="font-medium text-slate-700 dark:text-slate-200">{resolveModelLabel(model)}</span>
-                      </li>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 ) : (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{t('providers.card.noModels')}</p>
+                  <div className="rounded-xl border border-dashed border-slate-300/50 bg-slate-50/50 px-4 py-3 text-xs text-slate-500 dark:border-slate-600/50 dark:bg-slate-800/30 dark:text-slate-400">
+                    {t('providers.card.noModels')}
+                  </div>
                 )}
               </div>
 
-              <footer className="mt-auto flex flex-wrap gap-2">
+              <footer className="mt-auto flex flex-wrap gap-3 pt-2 border-t border-slate-200/30 dark:border-slate-700/30">
                 <button
                   type="button"
-                  className="rounded-md border border-slate-200 px-3 py-1 text-sm transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                  className={subtleButtonClass}
                   onClick={() => handleOpenEdit(provider)}
                 >
                   {t('providers.actions.edit')}
@@ -761,13 +793,16 @@ export default function ModelManagementPage() {
                   type="button"
                   onClick={() => handleTestConnection(provider)}
                   disabled={testingProviderId === provider.id}
-                  className="rounded-md border border-slate-200 px-3 py-1 text-sm transition enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:enabled:hover:bg-slate-800"
+                  className={testingProviderId === provider.id ?
+                    `${subtleButtonClass} opacity-60 cursor-not-allowed` :
+                    subtleButtonClass
+                  }
                 >
                   {testingProviderId === provider.id ? t('common.actions.testingConnection') : t('providers.actions.test')}
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-red-200 px-3 py-1 text-sm text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
+                  className={dangerButtonClass}
                   onClick={() => handleDelete(provider)}
                 >
                   {t('providers.actions.delete')}
@@ -781,65 +816,86 @@ export default function ModelManagementPage() {
   )
 
   const renderAnthropicPresets = () => (
-    <div className="space-y-3 rounded-md border border-dashed border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/40">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+    <div className="rounded-2xl border border-dashed border-slate-300/60 bg-gradient-to-br from-slate-50/80 to-white/70 p-6 dark:border-slate-600/60 dark:from-slate-800/60 dark:to-slate-900/70 backdrop-blur-sm">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-2">
+          <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
             {t('modelManagement.presets.title')}
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             {t('modelManagement.presets.description')}
           </p>
         </div>
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <input
             type="text"
             value={presetName}
             onChange={(event) => handlePresetNameChange(event.target.value)}
             placeholder={t('modelManagement.presets.namePlaceholder')}
-            className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 md:w-56"
+            className={inputClass}
             disabled={savingPreset}
           />
           <button
             type="button"
             onClick={handleSavePreset}
-            className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+            className={primaryButtonClass}
             disabled={savingPreset}
           >
             {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
           </button>
         </div>
       </div>
-      {presetError ? <p className="text-xs text-red-500">{presetError}</p> : null}
+      {presetError ? (
+        <div className="rounded-xl bg-red-50/80 border border-red-200/50 p-3 text-xs text-red-700 dark:bg-red-900/40 dark:border-red-800/50 dark:text-red-300 backdrop-blur-sm">
+          {presetError}
+        </div>
+      ) : null}
       {anthropicPresets.length === 0 ? (
-        <p className="text-xs text-slate-500 dark:text-slate-400">{t('modelManagement.presets.empty')}</p>
+        <div className="rounded-xl border border-slate-200/40 bg-slate-50/60 p-6 text-center text-sm text-slate-600 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-400 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3">
+            <div className="rounded-xl bg-slate-200/50 p-3 dark:bg-slate-700/50">
+              <svg className="h-6 w-6 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <p className="font-medium text-slate-700 dark:text-slate-300">{t('modelManagement.presets.empty')}</p>
+          </div>
+        </div>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {anthropicPresets.map((preset) => {
             const isApplying = applyingPreset === preset.name
             const isDeleting = deletingPreset === preset.name
             return (
               <div
                 key={preset.name}
-                className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/50 bg-gradient-to-r from-white/90 to-white/80 px-4 py-3 text-sm shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-slate-300/70 hover:bg-white/95 hover:shadow-md dark:border-slate-700/50 dark:from-slate-900/90 dark:to-slate-900/80 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/95"
               >
-                <span className="font-medium text-slate-700 dark:text-slate-200">{preset.name}</span>
-                <button
-                  type="button"
-                  onClick={() => handleApplyPreset(preset)}
-                  className="rounded-md bg-blue-500 px-2 py-1 text-xs font-medium text-white transition hover:bg-blue-600 disabled:opacity-60"
-                  disabled={isApplying || isDeleting}
-                >
-                  {isApplying ? t('modelManagement.presets.applying') : t('modelManagement.presets.apply')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeletePreset(preset)}
-                  className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                  disabled={isDeleting || isApplying}
-                >
-                  {isDeleting ? t('modelManagement.presets.deleting') : t('modelManagement.presets.delete')}
-                </button>
+                <span className="truncate font-medium text-slate-700 dark:text-slate-200">{preset.name}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset(preset)}
+                    className={isApplying || isDeleting ?
+                      `${subtleButtonClass} opacity-60 cursor-not-allowed text-xs px-2 py-1` :
+                      `${primaryButtonClass} text-xs px-2 py-1`
+                    }
+                    disabled={isApplying || isDeleting}
+                  >
+                    {isApplying ? t('modelManagement.presets.applying') : t('modelManagement.presets.apply')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePreset(preset)}
+                    className={isDeleting || isApplying ?
+                      `${subtleButtonClass} opacity-60 cursor-not-allowed text-xs px-2 py-1` :
+                      `${dangerButtonClass} text-xs px-2 py-1`
+                    }
+                    disabled={isDeleting || isApplying}
+                  >
+                    {isDeleting ? t('modelManagement.presets.deleting') : t('modelManagement.presets.delete')}
+                  </button>
+                </div>
               </div>
             )
           })}
@@ -858,24 +914,29 @@ export default function ModelManagementPage() {
     const targetListId = `route-target-${endpoint}`
 
     return (
-      <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-lg font-semibold">{t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}</h2>
-            <p className="max-w-3xl text-xs text-slate-500 dark:text-slate-400">{t(`settings.routing.descriptionByEndpoint.${endpoint}`)}</p>
+      <section className={surfaceCardClass}>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+              {t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}
+            </h2>
+            <p className="max-w-3xl text-sm text-slate-600 dark:text-slate-400">
+              {t(`settings.routing.descriptionByEndpoint.${endpoint}`)}
+            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={() => handleAddRoute(endpoint)}
-              className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+              className={subtleButtonClass}
+              disabled={isSaving}
             >
               {t('settings.routing.add')}
             </button>
             <button
               type="button"
               onClick={() => handleResetRoutes(endpoint)}
-              className="rounded-md border border-slate-200 px-3 py-1 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+              className={subtleButtonClass}
               disabled={isSaving}
             >
               {t('common.actions.reset')}
@@ -883,7 +944,7 @@ export default function ModelManagementPage() {
             <button
               type="button"
               onClick={() => handleSaveRoutes(endpoint)}
-              className="rounded-md bg-blue-600 px-3 py-1 text-white transition hover:bg-blue-700 disabled:opacity-60"
+              className={primaryButtonClass}
               disabled={isSaving}
             >
               {isSaving ? t('common.actions.saving') : t('modelManagement.actions.saveRoutes')}
@@ -893,98 +954,132 @@ export default function ModelManagementPage() {
 
         {endpoint === 'anthropic' ? renderAnthropicPresets() : null}
 
-        {error ? <p className="text-xs text-red-500">{error}</p> : null}
+        {error ? (
+          <div className="rounded-xl bg-red-50/80 border border-red-200/50 p-4 text-sm text-red-700 dark:bg-red-900/40 dark:border-red-800/50 dark:text-red-300 backdrop-blur-sm">
+            {error}
+          </div>
+        ) : null}
 
         {entries.length === 0 ? (
-          <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
-            {t('settings.routing.empty')}
-          </p>
+          <div className="rounded-xl border border-dashed border-slate-300/60 bg-gradient-to-br from-slate-50/80 to-white/70 p-12 text-center text-sm text-slate-600 dark:border-slate-600/60 dark:from-slate-800/60 dark:to-slate-900/70 dark:text-slate-400 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4">
+              <div className="rounded-2xl bg-slate-200/50 p-4 dark:bg-slate-700/50">
+                <svg className="h-8 w-8 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-medium text-slate-700 dark:text-slate-300">{t('settings.routing.empty')}</p>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {t('settings.routing.emptySub', { default: '点击上方按钮添加路由规则' })}
+                </p>
+              </div>
+            </div>
+          </div>
         ) : (
-          <div className="grid gap-3">
-            {entries.map((entry) => (
-              <div key={entry.id} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                <label className="flex flex-col gap-2 text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">{t('settings.routing.source')}</span>
-                  <input
-                    type="text"
-                    value={entry.source}
-                    onChange={(event) => handleRouteChange(endpoint, entry.id, 'source', event.target.value)}
-                    className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
-                    placeholder="claude-3.5-sonnet"
-                    list={sourceListId}
-                    disabled={isSaving}
-                  />
-                </label>
-                <label className="flex flex-col gap-2 text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">{t('settings.routing.target')}</span>
-                  {(() => {
-                    const normalizedTarget = entry.target.trim()
-                    const hasMatchingOption = providerModelOptions.some((option) => option.value === normalizedTarget)
-                    const selectValue = hasMatchingOption ? normalizedTarget : '__custom'
-                    return (
-                      <>
-                        <select
-                          value={selectValue}
-                          onChange={(event) => {
-                            const value = event.target.value
-                            if (value === '__custom') {
-                              handleRouteChange(endpoint, entry.id, 'target', normalizedTarget)
-                            } else {
-                              handleRouteChange(endpoint, entry.id, 'target', value)
-                            }
-                          }}
-                          className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
-                          disabled={isSaving}
-                        >
-                          <option value="__custom">{t('settings.routing.customTargetOption')}</option>
-                          {providerModelOptions.map((option) => (
-                            <option key={`${targetListId}-${option.value}`} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        {selectValue === '__custom' && (
-                          <input
-                            type="text"
-                            value={entry.target}
-                            onChange={(event) => handleRouteChange(endpoint, entry.id, 'target', event.target.value)}
-                            className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
-                            placeholder="providerId:modelId"
-                            disabled={isSaving}
-                          />
-                        )}
-                      </>
-                    )
-                  })()}
-                </label>
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    className="rounded-md border border-slate-200 px-3 py-2 text-xs transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-                    onClick={() => handleRemoveRoute(endpoint, entry.id)}
-                    disabled={isSaving}
-                  >
-                    {t('settings.routing.remove')}
-                  </button>
+          <div className="space-y-4">
+            {entries.map((entry, index) => (
+              <div key={entry.id} className="rounded-xl border border-slate-200/50 bg-gradient-to-r from-white/90 to-white/85 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-slate-300/70 hover:bg-white/95 hover:shadow-md dark:border-slate-700/50 dark:from-slate-900/90 dark:to-slate-900/85 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/95">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
+                    <span className="text-sm font-bold">{index + 1}</span>
+                  </div>
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">路由规则</span>
+                </div>
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <div className="space-y-2">
+                    <label className="flex flex-col gap-2">
+                      <span className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">{t('settings.routing.source')}</span>
+                      <input
+                        type="text"
+                        value={entry.source}
+                        onChange={(event) => handleRouteChange(endpoint, entry.id, 'source', event.target.value)}
+                        className={inputClass}
+                        placeholder="claude-3.5-sonnet"
+                        list={sourceListId}
+                        disabled={isSaving}
+                      />
+                    </label>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex flex-col gap-2">
+                      <span className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">{t('settings.routing.target')}</span>
+                      {(() => {
+                        const normalizedTarget = entry.target.trim()
+                        const hasMatchingOption = providerModelOptions.some((option) => option.value === normalizedTarget)
+                        const selectValue = hasMatchingOption ? normalizedTarget : '__custom'
+                        return (
+                          <>
+                            <select
+                              value={selectValue}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                if (value === '__custom') {
+                                  handleRouteChange(endpoint, entry.id, 'target', normalizedTarget)
+                                } else {
+                                  handleRouteChange(endpoint, entry.id, 'target', value)
+                                }
+                              }}
+                              className={selectClass}
+                              disabled={isSaving}
+                            >
+                              <option value="__custom">{t('settings.routing.customTargetOption')}</option>
+                              {providerModelOptions.map((option) => (
+                                <option key={`${targetListId}-${option.value}`} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            {selectValue === '__custom' && (
+                              <input
+                                type="text"
+                                value={entry.target}
+                                onChange={(event) => handleRouteChange(endpoint, entry.id, 'target', event.target.value)}
+                                className={inputClass}
+                                placeholder="providerId:modelId"
+                                disabled={isSaving}
+                              />
+                            )}
+                          </>
+                        )
+                      })()}
+                    </label>
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      className={dangerButtonClass}
+                      onClick={() => handleRemoveRoute(endpoint, entry.id)}
+                      disabled={isSaving}
+                    >
+                      {t('settings.routing.remove')}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          <span>{t('settings.routing.suggested')}</span>
-          {suggestions.map((model) => (
-            <button
-              key={`${endpoint}-${model}`}
-              type="button"
-              onClick={() => handleAddSuggestion(endpoint, model)}
-              className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-              disabled={isSaving}
-            >
-              {model}
-            </button>
-          ))}
+        <div className="rounded-xl border border-slate-200/40 bg-gradient-to-r from-slate-50/80 to-white/70 p-4 dark:border-slate-700/40 dark:from-slate-800/60 dark:to-slate-900/70 backdrop-blur-sm">
+          <div className="flex flex-col gap-3">
+            <span className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">
+              {t('settings.routing.suggested')}
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((model) => (
+                <button
+                  key={`${endpoint}-${model}`}
+                  type="button"
+                  onClick={() => handleAddSuggestion(endpoint, model)}
+                  className={subtleButtonClass}
+                  disabled={isSaving}
+                >
+                  {model}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <datalist id={sourceListId}>
@@ -997,13 +1092,17 @@ export default function ModelManagementPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">{t('modelManagement.title')}</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{t('modelManagement.description')}</p>
-      </header>
+    <div className="flex flex-col gap-8">
+      <div className={pageHeaderShellClass}>
+        <div className="flex flex-col gap-3">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent dark:from-slate-100 dark:to-slate-300">
+            {t('modelManagement.title')}
+          </h1>
+          <p className="text-base text-slate-600 dark:text-slate-400">{t('modelManagement.description')}</p>
+        </div>
+      </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-4">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key
           return (
@@ -1011,14 +1110,14 @@ export default function ModelManagementPage() {
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`flex min-w-[200px] flex-col gap-1 rounded-lg border px-4 py-3 text-left transition ${
+              className={`flex min-w-[240px] flex-col gap-2 rounded-2xl border px-6 py-4 text-left transition-all duration-300 hover-lift ${
                 isActive
-                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-900/30 dark:text-blue-100'
-                  : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'
+                  ? 'border-blue-500/30 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-lg shadow-blue-200/40 ring-1 ring-blue-500/20 dark:border-blue-400/30 dark:from-blue-900/40 dark:to-indigo-900/30 dark:text-blue-100 dark:shadow-xl dark:shadow-blue-500/20 dark:ring-blue-400/20'
+                  : 'border-slate-200/50 bg-white/80 hover:bg-white/90 hover:shadow-md hover:shadow-slate-200/30 dark:border-slate-700/50 dark:bg-slate-900/80 dark:hover:bg-slate-900/90 dark:hover:shadow-lg dark:hover:shadow-slate-900/30'
               }`}
             >
-              <span className="text-sm font-semibold">{tab.label}</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">{tab.description}</span>
+              <span className="text-base font-bold">{tab.label}</span>
+              <span className="text-sm text-slate-600 dark:text-slate-400">{tab.description}</span>
             </button>
           )
         })}
@@ -1083,52 +1182,72 @@ function QuickAddHuaweiDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-slate-900/60" onClick={onClose} aria-hidden="true" />
+    <div className="fixed inset-0 z-50 flex animate-fade-in">
+      <div className="flex-1 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
       <aside
         role="dialog"
         aria-modal="true"
         aria-labelledby="quick-add-huawei"
-        className="flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
+        className="flex h-full w-full max-w-md flex-col border-l border-slate-200/50 bg-gradient-to-b from-white/95 to-white/90 shadow-2xl backdrop-blur-xl animate-slide-up dark:border-slate-800/50 dark:from-slate-950/95 dark:to-slate-950/90"
       >
-        <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-          <div>
-            <h2 id="quick-add-huawei" className="text-lg font-semibold">
+        <header className="flex items-center justify-between border-b border-slate-200/50 px-6 py-5 dark:border-slate-800/50">
+          <div className="flex flex-col gap-2">
+            <h2 id="quick-add-huawei" className="text-xl font-bold text-slate-800 dark:text-slate-100">
               {t('providers.quickAddHuawei.title')}
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               {t('providers.quickAddHuawei.description')}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-slate-200 px-3 py-1 text-sm transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            className={subtleButtonClass}
             disabled={loading}
           >
             {t('common.actions.close')}
           </button>
         </header>
-        <div className="flex flex-1 flex-col gap-4 px-6 py-5 text-sm">
-          <label className="flex flex-col gap-2 text-sm">
-            <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.quickAddHuawei.apiKeyLabel')}</span>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(event) => onApiKeyChange(event.target.value)}
-              placeholder={t('providers.quickAddHuawei.apiKeyPlaceholder')}
-              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40"
-              disabled={loading}
-            />
-          </label>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{t('providers.quickAddHuawei.note')}</p>
-          {error ? <p className="text-xs text-red-500">{error}</p> : null}
+        <div className="flex flex-1 flex-col gap-6 px-6 py-6">
+          <div className="space-y-3">
+            <label className="flex flex-col gap-2">
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">
+                {t('providers.quickAddHuawei.apiKeyLabel')}
+              </span>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(event) => onApiKeyChange(event.target.value)}
+                placeholder={t('providers.quickAddHuawei.apiKeyPlaceholder')}
+                className={inputClass}
+                disabled={loading}
+              />
+            </label>
+            <div className="rounded-xl border border-blue-200/50 bg-blue-50/80 p-4 text-sm text-blue-700 dark:border-blue-800/50 dark:bg-blue-900/40 dark:text-blue-300 backdrop-blur-sm">
+              <div className="flex items-start gap-2">
+                <svg className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm">{t('providers.quickAddHuawei.note')}</p>
+              </div>
+            </div>
+            {error ? (
+              <div className="rounded-xl bg-red-50/80 border border-red-200/50 p-4 text-sm text-red-700 dark:bg-red-900/40 dark:border-red-800/50 dark:text-red-300 backdrop-blur-sm">
+                <div className="flex items-start gap-2">
+                  <svg className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-sm">{error}</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
-        <footer className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4 text-sm dark:border-slate-800">
+        <footer className="flex items-center justify-end gap-3 border-t border-slate-200/50 px-6 py-5 dark:border-slate-800/50">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-slate-200 px-4 py-2 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            className={subtleButtonClass}
             disabled={loading}
           >
             {t('common.actions.cancel')}
@@ -1136,7 +1255,7 @@ function QuickAddHuaweiDialog({
           <button
             type="button"
             onClick={onSubmit}
-            className="rounded-md bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:opacity-60"
+            className={primaryButtonClass}
             disabled={loading}
           >
             {loading ? t('common.actions.saving') : t('providers.quickAddHuawei.submit')}
@@ -1156,17 +1275,18 @@ function resolveModelLabel(model: ProviderModelConfig): string {
 }
 
 function TypeBadge({ type }: { type: NonNullable<ProviderConfig['type']> }) {
-  const map: Record<NonNullable<ProviderConfig['type']>, string> = {
-    openai: 'OpenAI',
-    deepseek: 'DeepSeek',
-    huawei: '华为云',
-    kimi: 'Kimi',
-    anthropic: 'Anthropic',
-    custom: 'Custom'
+  const config: Record<NonNullable<ProviderConfig['type']>, { label: string; color: string }> = {
+    openai: { label: 'OpenAI', color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
+    deepseek: { label: 'DeepSeek', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+    huawei: { label: '华为云', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' },
+    kimi: { label: 'Kimi', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
+    anthropic: { label: 'Anthropic', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' },
+    custom: { label: 'Custom', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' }
   }
+  const { label, color } = config[type] || config.custom
   return (
-    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-      {map[type] ?? type}
+    <span className={`rounded-full ${color} px-2.5 py-1 text-xs font-semibold shadow-sm`}>
+      {label}
     </span>
   )
 }
