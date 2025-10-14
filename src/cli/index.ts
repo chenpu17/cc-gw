@@ -8,6 +8,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { green, yellow } from 'colorette'
+import { createRequire } from 'node:module'
 
 const program = new Command()
 
@@ -17,6 +18,28 @@ const PID_FILE = path.join(HOME_DIR, 'cc-gw.pid')
 const LOG_DIR = path.join(HOME_DIR, 'logs')
 const LOG_FILE = path.join(LOG_DIR, 'cc-gw.log')
 const CONFIG_FILE = path.join(HOME_DIR, 'config.json')
+const require = createRequire(import.meta.url)
+
+function resolvePackageVersion(): string {
+  const __filename = fileURLToPath(import.meta.url)
+  const __dirname = path.dirname(__filename)
+  const candidates = [
+    path.resolve(__dirname, '../../package.json'),
+    path.resolve(__dirname, '../package.json'),
+    path.resolve(__dirname, '../../../package.json')
+  ]
+  for (const candidate of candidates) {
+    try {
+      const pkg = require(candidate)
+      if (pkg && typeof pkg.version === 'string') {
+        return pkg.version
+      }
+    } catch {}
+  }
+  return '0.0.0'
+}
+
+const CLI_VERSION = resolvePackageVersion()
 
 async function readConfiguredPort(): Promise<number | null> {
   try {
@@ -101,7 +124,14 @@ async function ensureConfigTemplate(port?: string): Promise<boolean> {
       modelRoutes: {},
       logLevel: 'info',
       requestLogging: true,
-      responseLogging: true
+      responseLogging: true,
+      bodyLimit: 10 * 1024 * 1024,
+      webAuth: {
+        enabled: false,
+        username: '',
+        passwordHash: '',
+        passwordSalt: ''
+      }
     }
     await fsp.mkdir(path.dirname(CONFIG_FILE), { recursive: true })
     await fsp.writeFile(CONFIG_FILE, JSON.stringify(template, null, 2), 'utf-8')
@@ -280,7 +310,14 @@ async function handleStatus(): Promise<void> {
 program
   .name('cc-gw')
   .description('Claude Code Gateway CLI')
-  .version('0.1.0')
+  .version(CLI_VERSION)
+
+program
+  .command('version')
+  .description('显示当前 cc-gw CLI 版本')
+  .action(() => {
+    console.log(`cc-gw CLI 版本: ${CLI_VERSION}`)
+  })
 
 program
   .command('start')

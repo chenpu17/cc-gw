@@ -9,7 +9,7 @@ import { PageSection } from '@/components/PageSection'
 import { cn } from '@/utils/cn'
 import { dangerButtonClass, mutedTextClass, primaryButtonClass, subtleButtonClass } from '@/styles/theme'
 import { apiClient, type ApiError } from '@/services/api'
-import type { ConfigInfoResponse, GatewayConfig } from '@/types/providers'
+import type { ConfigInfoResponse, GatewayConfig, WebAuthStatusResponse } from '@/types/providers'
 
 type LogLevel = NonNullable<GatewayConfig['logLevel']>
 
@@ -31,11 +31,26 @@ interface FormState {
   logLevel: LogLevel
   requestLogging: boolean
   responseLogging: boolean
+  bodyLimitMb: string
 }
 
 interface FormErrors {
   port?: string
   logRetentionDays?: string
+  bodyLimitMb?: string
+}
+
+interface AuthFormState {
+  enabled: boolean
+  username: string
+  password: string
+  confirmPassword: string
+}
+
+interface AuthFormErrors {
+  username?: string
+  password?: string
+  confirmPassword?: string
 }
 
 interface CleanupResponse {
@@ -57,6 +72,10 @@ export default function SettingsPage() {
     ['config', 'info'],
     { url: '/api/config/info', method: 'GET' }
   )
+  const authQuery = useApiQuery<WebAuthStatusResponse, ApiError>(
+    ['auth', 'web'],
+    { url: '/api/auth/web', method: 'GET' }
+  )
 
   const [config, setConfig] = useState<GatewayConfig | null>(null)
   const [configPath, setConfigPath] = useState<string>('')
@@ -68,12 +87,22 @@ export default function SettingsPage() {
     storeResponsePayloads: true,
     logLevel: 'info',
     requestLogging: true,
-    responseLogging: true
+    responseLogging: true,
+    bodyLimitMb: '10'
   })
   const [errors, setErrors] = useState<FormErrors>({})
   const [saving, setSaving] = useState(false)
   const [cleaning, setCleaning] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
+  const [authSettings, setAuthSettings] = useState<WebAuthStatusResponse | null>(null)
+  const [authForm, setAuthForm] = useState<AuthFormState>({
+    enabled: false,
+    username: '',
+    password: '',
+    confirmPassword: ''
+  })
+  const [authErrors, setAuthErrors] = useState<AuthFormErrors>({})
+  const [savingAuth, setSavingAuth] = useState(false)
 
   const defaultsSummary = useMemo(() => {
     if (!config) return null
@@ -85,6 +114,12 @@ export default function SettingsPage() {
     if (defaults.background) mappings.push(t('settings.defaults.background', { model: defaults.background }))
     return mappings.length > 0 ? mappings.join(' ｜ ') : t('settings.defaults.none')
   }, [config, t])
+
+  const needsPassword = useMemo(() => {
+    if (!authForm.enabled) return false
+    if (!authSettings?.hasPassword) return true
+    return authForm.username.trim() !== (authSettings?.username ?? '')
+  }, [authForm.enabled, authForm.username, authSettings])
 
   useEffect(() => {
     if (configQuery.data) {
@@ -101,10 +136,30 @@ export default function SettingsPage() {
         storeResponsePayloads: deriveStoreFlag(configQuery.data.config.storeResponsePayloads),
         logLevel: (configQuery.data.config.logLevel as LogLevel) ?? 'info',
         requestLogging: configQuery.data.config.requestLogging !== false,
-        responseLogging: configQuery.data.config.responseLogging ?? configQuery.data.config.requestLogging !== false
+        responseLogging: configQuery.data.config.responseLogging ?? configQuery.data.config.requestLogging !== false,
+        bodyLimitMb: (() => {
+          const raw = configQuery.data.config.bodyLimit
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+            return String(Math.max(1, Math.round(raw / (1024 * 1024))))
+          }
+          return '10'
+        })()
       })
     }
   }, [configQuery.data])
+
+  useEffect(() => {
+    if (authQuery.data) {
+      setAuthSettings(authQuery.data)
+      setAuthForm({
+        enabled: authQuery.data.enabled,
+        username: authQuery.data.username ?? '',
+        password: '',
+        confirmPassword: ''
+      })
+      setAuthErrors({})
+    }
+  }, [authQuery.data])
 
   useEffect(() => {
     if (configQuery.isError && configQuery.error) {
@@ -115,7 +170,16 @@ export default function SettingsPage() {
     }
   }, [configQuery.isError, configQuery.error, pushToast, t])
 
-  const handleInputChange = (field: 'port' | 'host' | 'logRetentionDays') => (value: string) => {
+  useEffect(() => {
+    if (authQuery.isError && authQuery.error) {
+      pushToast({
+        title: t('settings.toast.authLoadFailure', { message: authQuery.error.message }),
+        variant: 'error'
+      })
+    }
+  }, [authQuery.isError, authQuery.error, pushToast, t])
+
+  const handleInputChange = (field: 'port' | 'host' | 'logRetentionDays' | 'bodyLimitMb') => (value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -129,7 +193,41 @@ export default function SettingsPage() {
     if (!Number.isFinite(retentionValue) || retentionValue < 1 || retentionValue > 365) {
       nextErrors.logRetentionDays = t('settings.validation.retention')
     }
+    const bodyLimitValue = Number(form.bodyLimitMb)
+    if (!Number.isFinite(bodyLimitValue) || bodyLimitValue < 1 || bodyLimitValue > 2048) {
+      nextErrors.bodyLimitMb = t('settings.validation.bodyLimit')
+    }
     setErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
+
+  const validateAuth = (): boolean => {
+    const nextErrors: AuthFormErrors = {}
+    const usernameValue = authForm.username.trim()
+    const usernameChanged = authSettings ? usernameValue !== (authSettings.username ?? '') : true
+    const needsPassword =
+      authForm.enabled &&
+      (!authSettings?.hasPassword || usernameChanged)
+
+    if (authForm.enabled && !usernameValue) {
+      nextErrors.username = t('settings.auth.validation.username')
+    }
+
+    if (authForm.password && authForm.password.length < 6) {
+      nextErrors.password = t('settings.auth.validation.minLength')
+    }
+
+    if (needsPassword && !authForm.password) {
+      nextErrors.password = t('settings.auth.validation.passwordRequired')
+    }
+
+    if (authForm.password || authForm.confirmPassword) {
+      if (authForm.password !== authForm.confirmPassword) {
+        nextErrors.confirmPassword = t('settings.auth.validation.confirmMismatch')
+      }
+    }
+
+    setAuthErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
 
@@ -143,6 +241,7 @@ export default function SettingsPage() {
     try {
       const portValue = Number(form.port)
       const retentionValue = Number(form.logRetentionDays)
+      const bodyLimitValue = Number(form.bodyLimitMb)
       const nextConfig: GatewayConfig = {
         ...config,
         port: portValue,
@@ -152,10 +251,12 @@ export default function SettingsPage() {
         storeResponsePayloads: form.storeResponsePayloads,
         logLevel: form.logLevel,
         requestLogging: form.requestLogging,
-        responseLogging: form.responseLogging
+        responseLogging: form.responseLogging,
+        bodyLimit: Math.max(1, Math.floor(bodyLimitValue * 1024 * 1024))
       }
-      await apiClient.put('/api/config', nextConfig)
-      setConfig(nextConfig)
+      const { webAuth: _ignored, ...payload } = nextConfig as GatewayConfig & { webAuth?: never }
+      await apiClient.put('/api/config', payload)
+      setConfig({ ...nextConfig, webAuth: config.webAuth })
       pushToast({ title: t('settings.toast.saveSuccess'), variant: 'success' })
       void configQuery.refetch()
     } catch (error) {
@@ -188,9 +289,63 @@ export default function SettingsPage() {
           : true,
       logLevel: (config.logLevel as LogLevel) ?? 'info',
       requestLogging: config.requestLogging !== false,
-      responseLogging: config.responseLogging ?? config.requestLogging !== false
+      responseLogging: config.responseLogging ?? config.requestLogging !== false,
+      bodyLimitMb: (() => {
+        const raw = config.bodyLimit
+        if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+          return String(Math.max(1, Math.round(raw / (1024 * 1024))))
+        }
+        return '10'
+      })()
     })
     setErrors({})
+  }
+
+  const handleAuthSave = async () => {
+    if (!validateAuth()) return
+    setSavingAuth(true)
+    try {
+      const payload: { enabled: boolean; username?: string; password?: string } = {
+        enabled: authForm.enabled,
+        username: authForm.username.trim() || undefined
+      }
+      if (authForm.password) {
+        payload.password = authForm.password
+      }
+      const response = await apiClient.post('/api/auth/web', payload)
+      const updatedAuth = (response.data as { auth?: WebAuthStatusResponse })?.auth
+      if (updatedAuth) {
+        setAuthSettings(updatedAuth)
+        setAuthForm({
+          enabled: updatedAuth.enabled,
+          username: updatedAuth.username ?? '',
+          password: '',
+          confirmPassword: ''
+        })
+        setAuthErrors({})
+      }
+      pushToast({ title: t('settings.auth.toast.success'), variant: 'success' })
+      void authQuery.refetch()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown'
+      pushToast({
+        title: t('settings.auth.toast.failure', { message }),
+        variant: 'error'
+      })
+    } finally {
+      setSavingAuth(false)
+    }
+  }
+
+  const handleAuthReset = () => {
+    if (!authSettings) return
+    setAuthForm({
+      enabled: authSettings.enabled,
+      username: authSettings.username ?? '',
+      password: '',
+      confirmPassword: ''
+    })
+    setAuthErrors({})
   }
 
   const handleCopyPath = async () => {
@@ -347,6 +502,27 @@ export default function SettingsPage() {
 
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('settings.fields.bodyLimit')}
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={2048}
+                value={form.bodyLimitMb}
+                onChange={(event) => handleInputChange('bodyLimitMb')(event.target.value)}
+                className="h-10"
+                aria-invalid={Boolean(errors.bodyLimitMb)}
+              />
+              <p className={cn(mutedTextClass, 'text-[11px] leading-relaxed')}>
+                {t('settings.fields.bodyLimitHint')}
+              </p>
+              {errors.bodyLimitMb ? (
+                <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.bodyLimitMb}</span>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {t('settings.fields.logLevel')}
               </span>
               <select
@@ -441,6 +617,170 @@ export default function SettingsPage() {
               <p className="mt-2 text-sm">{defaultsSummary ?? t('settings.defaults.none')}</p>
             </div>
           </PageSection>
+
+        <PageSection
+          title={t('settings.sections.security')}
+          description={t('settings.auth.description')}
+          contentClassName="space-y-5"
+        >
+          {authQuery.isPending && !authSettings ? (
+            <div className="flex min-h-[120px] items-center justify-center">
+              <Loader />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-blue-200/50 bg-gradient-to-br from-blue-50/70 via-white/90 to-blue-100/60 p-5 shadow-lg shadow-blue-200/40 transition dark:border-blue-500/30 dark:from-slate-900/80 dark:via-slate-900/60 dark:to-slate-900/70 dark:shadow-blue-900/20">
+                <label className="flex cursor-pointer select-none items-start gap-4">
+                  <input
+                    type="checkbox"
+                    checked={authForm.enabled}
+                    onChange={(event) =>
+                      setAuthForm((prev) => ({ ...prev, enabled: event.target.checked }))
+                    }
+                    className="mt-1 h-5 w-5 rounded-full border-blue-300 bg-white text-blue-600 shadow-sm transition focus:ring-2 focus:ring-blue-400/40 accent-blue-600 dark:border-blue-500/40 dark:bg-slate-900 dark:text-blue-300"
+                  />
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      {t('settings.auth.enable')}
+                    </span>
+                    <p className={cn(mutedTextClass, 'text-xs leading-relaxed')}>
+                      {t('settings.auth.enableHint')}
+                    </p>
+                    <div className="flex flex-wrap gap-3 text-[11px] font-medium text-blue-600/80 dark:text-blue-300/80">
+                      <span className="rounded-full bg-blue-100/80 px-3 py-1 shadow-sm shadow-blue-200/40 dark:bg-blue-500/20">
+                        /ui
+                      </span>
+                      <span className="rounded-full bg-blue-100/80 px-3 py-1 shadow-sm shadow-blue-200/40 dark:bg-blue-500/20">
+                        /api/*
+                      </span>
+                      <span className="rounded-full bg-blue-100/80 px-3 py-1 shadow-sm shadow-blue-200/40 dark:bg-blue-500/20">
+                        Cookie Session
+                      </span>
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-2 sm:col-span-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('settings.auth.username')}
+                    </span>
+                    <input
+                      value={authForm.username}
+                      onChange={(event) =>
+                        setAuthForm((prev) => ({ ...prev, username: event.target.value }))
+                      }
+                      placeholder={t('settings.auth.usernamePlaceholder')}
+                      className="h-11 rounded-2xl border border-blue-200/60 bg-blue-50/70 px-4 text-sm font-medium text-blue-900 shadow-sm shadow-blue-200/50 transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40 dark:border-blue-500/40 dark:bg-slate-900/80 dark:text-blue-100 dark:shadow-blue-900/30"
+                    />
+                    {authErrors.username ? (
+                      <span className="text-xs font-medium text-red-500 dark:text-red-300">
+                        {authErrors.username}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('settings.auth.password')}
+                    </span>
+                    <input
+                      type="password"
+                      value={authForm.password}
+                      disabled={!authForm.enabled}
+                      onChange={(event) =>
+                        setAuthForm((prev) => ({ ...prev, password: event.target.value }))
+                      }
+                      placeholder={t('settings.auth.passwordPlaceholder')}
+                      className="h-11 rounded-2xl border border-slate-200/70 bg-white/95 px-4 text-sm shadow-sm shadow-slate-200/40 transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-100 dark:shadow-slate-900/40 dark:disabled:bg-slate-900/40"
+                    />
+                    {authErrors.password ? (
+                      <span className="text-xs font-medium text-red-500 dark:text-red-300">
+                        {authErrors.password}
+                      </span>
+                    ) : (
+                      <span className={cn(mutedTextClass, 'text-xs leading-relaxed')}>
+                        {t(
+                          needsPassword
+                            ? 'settings.auth.passwordHintRequired'
+                            : 'settings.auth.passwordHintOptional'
+                        )}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('settings.auth.confirmPassword')}
+                    </span>
+                    <input
+                      type="password"
+                      value={authForm.confirmPassword}
+                      disabled={!authForm.enabled}
+                      onChange={(event) =>
+                        setAuthForm((prev) => ({ ...prev, confirmPassword: event.target.value }))
+                      }
+                      placeholder={t('settings.auth.confirmPasswordPlaceholder')}
+                      className="h-11 rounded-2xl border border-slate-200/70 bg-white/95 px-4 text-sm shadow-sm shadow-slate-200/40 transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-100 dark:shadow-slate-900/40 dark:disabled:bg-slate-900/40"
+                    />
+                    {authErrors.confirmPassword ? (
+                      <span className="text-xs font-medium text-red-500 dark:text-red-300">
+                        {authErrors.confirmPassword}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <div className="rounded-3xl border border-slate-200/80 bg-white/90 px-5 py-4 text-sm shadow-md shadow-slate-200/50 dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-200 dark:shadow-slate-900/40">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500/90 dark:text-slate-400">
+                      {t('settings.auth.status')}
+                    </div>
+                    <div className="mt-2 text-base font-semibold text-slate-800 dark:text-slate-100">
+                      {authSettings?.enabled
+                        ? t('settings.auth.statusEnabled')
+                        : t('settings.auth.statusDisabled')}
+                    </div>
+                    {authSettings?.username ? (
+                      <div className="mt-3 rounded-2xl bg-blue-50/80 px-3 py-2 text-xs font-medium text-blue-700 shadow-sm shadow-blue-200/40 dark:bg-blue-500/20 dark:text-blue-100">
+                        {t('settings.auth.username')}: {authSettings.username}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="rounded-3xl border border-blue-200/60 bg-blue-50/40 px-5 py-4 text-xs leading-relaxed text-blue-700 shadow-sm shadow-blue-200/40 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-100">
+                    {t(
+                      needsPassword
+                        ? 'settings.auth.passwordHintRequired'
+                        : 'settings.auth.passwordHintOptional'
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleAuthSave}
+                  className={cn(primaryButtonClass, 'h-10 rounded-full px-6')}
+                  disabled={savingAuth}
+                >
+                  {savingAuth ? t('common.actions.saving') : t('settings.auth.actions.save')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAuthReset}
+                  className={cn(subtleButtonClass, 'h-10 rounded-full px-4')}
+                  disabled={savingAuth}
+                >
+                  {t('common.actions.reset')}
+                </button>
+              </div>
+            </div>
+          )}
+        </PageSection>
 
           <PageSection
             title={t('settings.sections.configFile')}

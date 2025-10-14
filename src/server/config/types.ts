@@ -52,4 +52,13 @@ export interface GatewayConfig {
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
   requestLogging?: boolean
   responseLogging?: boolean
+  bodyLimit?: number
+  webAuth?: WebAuthConfig
+}
+
+export interface WebAuthConfig {
+  enabled: boolean
+  username?: string
+  passwordHash?: string
+  passwordSalt?: string
 }

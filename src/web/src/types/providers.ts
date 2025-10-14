@@ -50,9 +50,22 @@ export interface GatewayConfig {
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
   requestLogging?: boolean
   responseLogging?: boolean
+  bodyLimit?: number
+  webAuth?: WebAuthConfig
 }
 
 export interface ConfigInfoResponse {
   config: GatewayConfig
   path: string
+}
+
+export interface WebAuthConfig {
+  enabled: boolean
+  username?: string
+}
+
+export interface WebAuthStatusResponse {
+  enabled: boolean
+  username: string
+  hasPassword: boolean
 }

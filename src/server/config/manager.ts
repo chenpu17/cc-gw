@@ -8,7 +8,8 @@ import type {
   GatewayConfig,
   GatewayEndpoint,
   ModelRouteMap,
-  RoutingPreset
+  RoutingPreset,
+  WebAuthConfig
 } from './types.js'
 
 const LOG_LEVELS = new Set<NonNullable<GatewayConfig['logLevel']>>([
@@ -82,6 +83,38 @@ function sanitizeModelRoutes(input: Record<string, unknown> | undefined): ModelR
   return sanitized
 }
 
+function sanitizeWebAuth(input: unknown): WebAuthConfig | undefined {
+  if (!input || typeof input !== 'object') {
+    return {
+      enabled: false
+    }
+  }
+  const source = input as Record<string, unknown>
+  const config: WebAuthConfig = {
+    enabled: Boolean(source.enabled)
+  }
+
+  const usernameRaw = source.username
+  if (typeof usernameRaw === 'string') {
+    const trimmed = usernameRaw.trim()
+    if (trimmed) {
+      config.username = trimmed
+    }
+  }
+
+  const hashRaw = source.passwordHash
+  if (typeof hashRaw === 'string' && hashRaw.trim().length > 0) {
+    config.passwordHash = hashRaw.trim()
+  }
+
+  const saltRaw = source.passwordSalt
+  if (typeof saltRaw === 'string' && saltRaw.trim().length > 0) {
+    config.passwordSalt = saltRaw.trim()
+  }
+
+  return config
+}
+
 function resolveEndpointRouting(
   source: unknown,
   fallback: EndpointRoutingConfig
@@ -145,6 +178,9 @@ function parseConfig(raw: string): GatewayConfig {
   }
   if (typeof data.responseLogging !== 'boolean') {
     data.responseLogging = data.requestLogging !== false
+  }
+  if (typeof data.bodyLimit !== 'number' || !Number.isFinite(data.bodyLimit) || data.bodyLimit <= 0) {
+    data.bodyLimit = 10 * 1024 * 1024
   }
 
   const endpointRouting: Partial<Record<GatewayEndpoint, EndpointRoutingConfig>> = {}
@@ -214,6 +250,11 @@ function parseConfig(raw: string): GatewayConfig {
   }
 
   data.routingPresets = routingPresets
+
+  const webAuth = sanitizeWebAuth((data as any).webAuth)
+  if (webAuth) {
+    data.webAuth = webAuth
+  }
 
   return data as GatewayConfig
 }

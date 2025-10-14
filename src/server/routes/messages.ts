@@ -567,21 +567,45 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             if (trimmed.startsWith('event:')) {
               currentEvent = trimmed.slice(6).trim()
             } else if (trimmed.startsWith('data:')) {
-              if (currentEvent === 'message_delta' || currentEvent === 'message_stop') {
+              if (
+                currentEvent === 'message_delta' ||
+                currentEvent === 'message_stop' ||
+                currentEvent === 'content_block_delta'
+              ) {
                 try {
-                  const data = JSON.parse(trimmed.slice(5).trim())
-                  if (data?.usage) {
-                    usagePrompt = data.usage.input_tokens ?? usagePrompt
-                    usageCompletion = data.usage.output_tokens ?? usageCompletion
-                    const maybeCached = resolveCachedTokens(data.usage)
+                  const payload = JSON.parse(trimmed.slice(5).trim())
+                  if (payload?.usage) {
+                    usagePrompt = payload.usage.input_tokens ?? usagePrompt
+                    usageCompletion = payload.usage.output_tokens ?? usageCompletion
+                    const maybeCached = resolveCachedTokens(payload.usage)
                     if (maybeCached !== null) {
                       usageCached = maybeCached
                     }
-                    lastUsagePayload = data.usage
+                    lastUsagePayload = payload.usage
                   }
-                  const deltaText = data?.delta?.text
-                  if (typeof deltaText === 'string') {
-                    if (!firstTokenAt && deltaText.length > 0) {
+
+                  let deltaText: string | null = null
+                  if (currentEvent === 'content_block_delta') {
+                    const delta = payload?.delta
+                    if (delta && typeof delta === 'object') {
+                      const maybeText = (delta as any).text
+                      if (typeof maybeText === 'string') {
+                        deltaText = maybeText
+                      } else if (Array.isArray(maybeText)) {
+                        deltaText = maybeText.filter((item) => typeof item === 'string').join('')
+                      }
+                    }
+                  } else {
+                    const maybeText = payload?.delta?.text
+                    if (typeof maybeText === 'string') {
+                      deltaText = maybeText
+                    } else if (Array.isArray(maybeText)) {
+                      deltaText = maybeText.filter((item) => typeof item === 'string').join('')
+                    }
+                  }
+
+                  if (deltaText && deltaText.length > 0) {
+                    if (!firstTokenAt) {
                       firstTokenAt = Date.now()
                     }
                     accumulatedContent += deltaText

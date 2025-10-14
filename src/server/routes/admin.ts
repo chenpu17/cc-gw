@@ -26,6 +26,7 @@ import {
   ensureWildcardMetadata,
   decryptApiKeyValue
 } from '../api-keys/service.js'
+import { createPasswordRecord, revokeAllSessions, sanitizeUsername } from '../security/webAuth.js'
 
 export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   try {
@@ -64,14 +65,117 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.get('/api/config', async () => {
-    return getConfig()
+    const config = getConfig()
+    if (config.webAuth) {
+      const { passwordHash, passwordSalt, ...rest } = config.webAuth
+      return {
+        ...config,
+        webAuth: rest
+      }
+    }
+    return config
   })
 
   app.get('/api/config/info', async () => {
     const config = getConfig()
+    const sanitizedWebAuth = config.webAuth
+      ? (() => {
+          const { passwordHash, passwordSalt, ...rest } = config.webAuth!
+          return rest
+        })()
+      : undefined
     return {
-      config,
+      config: sanitizedWebAuth ? { ...config, webAuth: sanitizedWebAuth } : config,
       path: CONFIG_PATH
+    }
+  })
+
+  app.get('/api/auth/web', async () => {
+    const config = getConfig()
+    const auth = config.webAuth ?? { enabled: false }
+    return {
+      enabled: Boolean(auth.enabled),
+      username: auth.username ?? '',
+      hasPassword: Boolean(auth.passwordHash && auth.passwordSalt)
+    }
+  })
+
+  interface UpdateWebAuthBody {
+    enabled: boolean
+    username?: string
+    password?: string
+  }
+
+  app.post('/api/auth/web', async (request, reply) => {
+    const body = request.body as UpdateWebAuthBody | undefined
+    if (!body || typeof body.enabled !== 'boolean') {
+      reply.code(400)
+      return { error: 'Invalid payload' }
+    }
+
+    const current = getConfig()
+    const currentAuth = current.webAuth ?? { enabled: false }
+    const nextAuth = { ...currentAuth }
+
+    const normalizedUsername = sanitizeUsername(body.username)
+    const rawPassword = typeof body.password === 'string' ? body.password : undefined
+
+    const enforcingPassword = Boolean(rawPassword && rawPassword.length > 0)
+    if (enforcingPassword && rawPassword!.length < 6) {
+      reply.code(400)
+      return { error: 'Password must be at least 6 characters' }
+    }
+
+    const willEnable = body.enabled
+
+    if (willEnable) {
+      if (!normalizedUsername) {
+        reply.code(400)
+        return { error: 'Username is required when enabling authentication' }
+      }
+      nextAuth.enabled = true
+      nextAuth.username = normalizedUsername
+
+      const usernameChanged =
+        normalizedUsername !== (currentAuth.username ?? undefined)
+
+      if (enforcingPassword) {
+        const record = createPasswordRecord(rawPassword!)
+        nextAuth.passwordHash = record.passwordHash
+        nextAuth.passwordSalt = record.passwordSalt
+      } else if (!currentAuth.passwordHash || !currentAuth.passwordSalt || usernameChanged) {
+        reply.code(400)
+        return { error: 'Password must be provided when enabling authentication' }
+      }
+    } else {
+      nextAuth.enabled = false
+      nextAuth.username = normalizedUsername ?? currentAuth.username ?? undefined
+      if (enforcingPassword) {
+        const record = createPasswordRecord(rawPassword!)
+        nextAuth.passwordHash = record.passwordHash
+        nextAuth.passwordSalt = record.passwordSalt
+      }
+    }
+
+    const nextConfig: GatewayConfig = {
+      ...current,
+      webAuth: nextAuth
+    }
+
+    updateConfig(nextConfig)
+    const updated = getConfig()
+
+    if (!willEnable || enforcingPassword || (normalizedUsername ?? '') !== (currentAuth.username ?? '')) {
+      revokeAllSessions()
+    }
+
+    return {
+      success: true,
+      auth: {
+        enabled: Boolean(updated.webAuth?.enabled),
+        username: updated.webAuth?.username ?? '',
+        hasPassword: Boolean(updated.webAuth?.passwordHash && updated.webAuth?.passwordSalt)
+      }
     }
   })
 
@@ -273,6 +377,44 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    const rawBody = request.body
+    const maskSensitiveHeaders = (headers: Record<string, string> | null): Record<string, string> | null => {
+      if (!headers) return null
+      const masked: Record<string, string> = {}
+      for (const [key, value] of Object.entries(headers)) {
+        const lower = key.toLowerCase()
+        if (lower.includes('authorization') || lower.includes('api-key')) {
+          masked[key] = '<redacted>'
+        } else {
+          masked[key] = value
+        }
+      }
+      return masked
+    }
+
+    const providedHeaders = (() => {
+      if (!rawBody || typeof rawBody !== 'object') return null
+      const candidate = (rawBody as { headers?: Record<string, unknown> }).headers
+      if (!candidate || typeof candidate !== 'object') return null
+      const normalized: Record<string, string> = {}
+      for (const [key, value] of Object.entries(candidate)) {
+        if (typeof value !== 'string') continue
+        const trimmedKey = key.trim()
+        if (!trimmedKey) continue
+        normalized[trimmedKey.toLowerCase()] = value
+      }
+      return Object.keys(normalized).length > 0 ? normalized : null
+    })()
+    const providedQuery = (() => {
+      if (!rawBody || typeof rawBody !== 'object') return null
+      const raw = (rawBody as { query?: unknown }).query
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim()
+        return trimmed.length > 0 ? trimmed : null
+      }
+      return null
+    })()
+
     const testPayload = normalizeClaudePayload({
       model: targetModel,
       stream: false,
@@ -287,17 +429,25 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
             }
           ]
         }
-      ],
-      system: 'You are a connection diagnostic assistant.'
+      ]
     })
 
     const providerBody = provider.type === 'anthropic'
-      ? buildAnthropicBody(testPayload, {
-          maxTokens: 256,
+      ? {
+          model: targetModel,
+          stream: false,
+          max_tokens: 256,
           temperature: 0,
-          toolChoice: undefined,
-          overrideTools: undefined
-        })
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'You are a connection diagnostic assistant.' },
+                { type: 'text', text: '你好，这是一次连接测试。请简短回应以确认服务可用。' }
+              ]
+            }
+          ]
+        }
       : buildProviderBody(testPayload, {
           maxTokens: 256,
           temperature: 0,
@@ -311,17 +461,42 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       const upstream = await connector.send({
         model: targetModel,
         body: providerBody,
-        stream: false
+        stream: false,
+        headers: providedHeaders ?? undefined,
+        query: providedQuery ?? undefined
       })
 
       const duration = Date.now() - startedAt
 
       if (upstream.status >= 400) {
         const errorText = upstream.body ? await new Response(upstream.body).text() : ''
+        const credentialRestricted = errorText.includes('only authorized for use with Claude Code')
+        let requestBodyPreview: string
+        try {
+          requestBodyPreview = JSON.stringify(providerBody).slice(0, 1000)
+        } catch {
+          requestBodyPreview = '[unserializable body]'
+        }
+        request.log.warn(
+          {
+            event: 'provider.test.failure',
+            provider: provider.id,
+            status: upstream.status,
+            statusText: errorText || 'Upstream error',
+            headers: maskSensitiveHeaders(providedHeaders),
+            query: providedQuery ?? null,
+            durationMs: duration,
+            model: targetModel,
+            requestBody: requestBodyPreview
+          },
+          'provider test request failed'
+        )
         return {
           ok: false,
           status: upstream.status,
-          statusText: errorText || 'Upstream error',
+          statusText: credentialRestricted
+            ? '测试请求被拒绝：该凭证仅授权在 Claude Code 内使用。请直接在 IDE 中发起一次对话确认真实连通性。'
+            : errorText || 'Upstream error',
           durationMs: duration
         }
       }
@@ -332,6 +507,19 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         parsed = raw ? JSON.parse(raw) : null
       } catch {
         const fallbackSample = raw?.trim() ?? ''
+        request.log.warn(
+          {
+            event: 'provider.test.invalid_json',
+            provider: provider.id,
+            status: upstream.status,
+            headers: maskSensitiveHeaders(providedHeaders),
+            query: providedQuery ?? null,
+            durationMs: duration,
+            model: targetModel,
+            sample: fallbackSample ? fallbackSample.slice(0, 500) : ''
+          },
+          'provider test response not valid JSON'
+        )
         if (provider.type && provider.type !== 'anthropic') {
           return {
             ok: fallbackSample.length > 0,

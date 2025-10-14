@@ -21,6 +21,13 @@ interface ProviderTestResponse {
   sample?: string | null
 }
 
+interface AnthropicHeaderOption {
+  key: string
+  value: string
+  label: string
+  description: string
+}
+
 const CLAUDE_MODEL_SUGGESTIONS = [
   'claude-sonnet-4-5-20250929',
   'claude-sonnet-4-20250514',
@@ -107,9 +114,118 @@ export default function ModelManagementPage() {
   const [quickAddApiKey, setQuickAddApiKey] = useState('')
   const [quickAddError, setQuickAddError] = useState<string | null>(null)
   const [quickAddLoading, setQuickAddLoading] = useState(false)
+  const [testDialogOpen, setTestDialogOpen] = useState(false)
+  const [testDialogProvider, setTestDialogProvider] = useState<ProviderConfig | null>(null)
+  const [testDialogUsePreset, setTestDialogUsePreset] = useState(true)
+  const [testDialogPreservedExtras, setTestDialogPreservedExtras] = useState<Record<string, string>>({})
 
   const providers = config?.providers ?? []
   const providerCount = providers.length
+
+  const anthropicTestHeaderOptions = useMemo<AnthropicHeaderOption[]>(() => [
+    {
+      key: 'anthropic-beta',
+      value: 'claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14',
+      label: t('providers.testDialog.options.beta.label'),
+      description: t('providers.testDialog.options.beta.description')
+    },
+    {
+      key: 'anthropic-dangerous-direct-browser-access',
+      value: 'true',
+      label: t('providers.testDialog.options.browser.label'),
+      description: t('providers.testDialog.options.browser.description')
+    },
+    {
+      key: 'x-app',
+      value: 'cli',
+      label: t('providers.testDialog.options.xApp.label'),
+      description: t('providers.testDialog.options.xApp.description')
+    },
+    {
+      key: 'user-agent',
+      value: 'claude-cli/2.0.14 (external, cli)',
+      label: t('providers.testDialog.options.userAgent.label'),
+      description: t('providers.testDialog.options.userAgent.description')
+    },
+    {
+      key: 'accept',
+      value: 'application/json',
+      label: t('providers.testDialog.options.accept.label'),
+      description: t('providers.testDialog.options.accept.description')
+    },
+    {
+      key: 'accept-language',
+      value: '*',
+      label: t('providers.testDialog.options.acceptLanguage.label'),
+      description: t('providers.testDialog.options.acceptLanguage.description')
+    },
+    {
+      key: 'sec-fetch-mode',
+      value: 'cors',
+      label: t('providers.testDialog.options.secFetchMode.label'),
+      description: t('providers.testDialog.options.secFetchMode.description')
+    },
+    {
+      key: 'accept-encoding',
+      value: 'gzip, deflate',
+      label: t('providers.testDialog.options.acceptEncoding.label'),
+      description: t('providers.testDialog.options.acceptEncoding.description')
+    },
+    {
+      key: 'x-stainless-helper-method',
+      value: 'stream',
+      label: t('providers.testDialog.options.stainlessHelper.label'),
+      description: t('providers.testDialog.options.stainlessHelper.description')
+    },
+    {
+      key: 'x-stainless-retry-count',
+      value: '0',
+      label: t('providers.testDialog.options.stainlessRetry.label'),
+      description: t('providers.testDialog.options.stainlessRetry.description')
+    },
+    {
+      key: 'x-stainless-timeout',
+      value: '600',
+      label: t('providers.testDialog.options.stainlessTimeout.label'),
+      description: t('providers.testDialog.options.stainlessTimeout.description')
+    },
+    {
+      key: 'x-stainless-lang',
+      value: 'js',
+      label: t('providers.testDialog.options.stainlessLang.label'),
+      description: t('providers.testDialog.options.stainlessLang.description')
+    },
+    {
+      key: 'x-stainless-package-version',
+      value: '0.60.0',
+      label: t('providers.testDialog.options.stainlessPackage.label'),
+      description: t('providers.testDialog.options.stainlessPackage.description')
+    },
+    {
+      key: 'x-stainless-os',
+      value: 'MacOS',
+      label: t('providers.testDialog.options.stainlessOs.label'),
+      description: t('providers.testDialog.options.stainlessOs.description')
+    },
+    {
+      key: 'x-stainless-arch',
+      value: 'arm64',
+      label: t('providers.testDialog.options.stainlessArch.label'),
+      description: t('providers.testDialog.options.stainlessArch.description')
+    },
+    {
+      key: 'x-stainless-runtime',
+      value: 'node',
+      label: t('providers.testDialog.options.stainlessRuntime.label'),
+      description: t('providers.testDialog.options.stainlessRuntime.description')
+    },
+    {
+      key: 'x-stainless-runtime-version',
+      value: 'v22.14.0',
+      label: t('providers.testDialog.options.stainlessRuntimeVersion.label'),
+      description: t('providers.testDialog.options.stainlessRuntimeVersion.description')
+    }
+  ], [t])
 
   useEffect(() => {
     if (configQuery.data) {
@@ -435,11 +551,22 @@ export default function ModelManagementPage() {
     pushToast({ title: toastMessage, variant: 'success' })
   }
 
-  const handleTestConnection = async (provider: ProviderConfig) => {
+  const handleTestConnection = async (
+    provider: ProviderConfig,
+    options?: { headers?: Record<string, string>; query?: string }
+  ) => {
     setTestingProviderId(provider.id)
     try {
+      const payload =
+        options && (options.headers || options.query)
+          ? {
+              headers: options.headers && Object.keys(options.headers).length > 0 ? options.headers : undefined,
+              query: options.query && options.query.trim().length > 0 ? options.query.trim() : undefined
+            }
+          : undefined
       const response = await apiClient.post<ProviderTestResponse>(
-        `/api/providers/${provider.id}/test`
+        `/api/providers/${provider.id}/test`,
+        payload
       )
       if (response.data.ok) {
         pushToast({
@@ -468,6 +595,81 @@ export default function ModelManagementPage() {
     } finally {
       setTestingProviderId(null)
     }
+  }
+
+  const initiateTestConnection = (provider: ProviderConfig) => {
+    if (provider.type === 'anthropic') {
+      const providerHeaders = provider.extraHeaders ?? {}
+      const recommendedLookup = new Map(
+        anthropicTestHeaderOptions.map((option) => [option.key.toLowerCase(), option])
+      )
+      const preservedExtras: Record<string, string> = {}
+      let presetDefault = true
+
+      for (const option of anthropicTestHeaderOptions) {
+        const match = Object.entries(providerHeaders).find(
+          ([headerKey]) => headerKey.toLowerCase() === option.key.toLowerCase()
+        )
+        if (match) {
+          const [headerName, headerValue] = match
+          const matchesValue = String(headerValue ?? '') === option.value
+          if (!matchesValue) {
+            presetDefault = false
+            preservedExtras[headerName] = String(headerValue ?? '')
+          }
+        }
+      }
+
+      for (const [headerKey, headerValue] of Object.entries(providerHeaders)) {
+        if (recommendedLookup.has(headerKey.toLowerCase())) continue
+        preservedExtras[headerKey] = String(headerValue ?? '')
+      }
+
+      setTestDialogPreservedExtras(preservedExtras)
+      setTestDialogUsePreset(presetDefault)
+      setTestDialogProvider(provider)
+      setTestDialogOpen(true)
+      return
+    }
+    void handleTestConnection(provider)
+  }
+
+  const closeTestDialog = () => {
+    setTestDialogOpen(false)
+    setTestDialogProvider(null)
+    setTestDialogUsePreset(true)
+    setTestDialogPreservedExtras({})
+  }
+
+  const confirmTestDialog = async () => {
+    if (!testDialogProvider) return
+    const selectedHeaders: Record<string, string> = {}
+    if (testDialogUsePreset) {
+      for (const option of anthropicTestHeaderOptions) {
+        selectedHeaders[option.key] = option.value
+      }
+    }
+    const recognized = new Map(
+      anthropicTestHeaderOptions.map((option) => [option.key.toLowerCase(), option])
+    )
+    for (const [key, value] of Object.entries(testDialogPreservedExtras)) {
+      const lower = key.toLowerCase()
+      const matchedOption = recognized.get(lower)
+      if (matchedOption && testDialogUsePreset) {
+        // User explicitly selected the recommended value; skip preserved override.
+        continue
+      }
+      selectedHeaders[key] = value
+    }
+    const targetProvider = testDialogProvider
+    closeTestDialog()
+    await handleTestConnection(
+      targetProvider,
+      {
+        headers: Object.keys(selectedHeaders).length > 0 ? selectedHeaders : undefined,
+        query: testDialogUsePreset ? 'beta=true' : undefined
+      }
+    )
   }
 
   const handleDelete = async (provider: ProviderConfig) => {
@@ -791,7 +993,7 @@ export default function ModelManagementPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleTestConnection(provider)}
+                  onClick={() => initiateTestConnection(provider)}
                   disabled={testingProviderId === provider.id}
                   className={testingProviderId === provider.id ?
                     `${subtleButtonClass} opacity-60 cursor-not-allowed` :
@@ -1156,6 +1358,16 @@ export default function ModelManagementPage() {
         }}
         onSubmit={handleQuickAddHuawei}
       />
+      <TestConnectionDialog
+        open={testDialogOpen}
+        provider={testDialogProvider}
+        options={anthropicTestHeaderOptions}
+        preservedExtras={testDialogPreservedExtras}
+        usePreset={testDialogUsePreset}
+        onPresetChange={setTestDialogUsePreset}
+        onConfirm={confirmTestDialog}
+        onClose={closeTestDialog}
+      />
     </div>
   )
 }
@@ -1262,6 +1474,123 @@ function QuickAddHuaweiDialog({
           </button>
         </footer>
       </aside>
+    </div>
+  )
+}
+
+
+function TestConnectionDialog({
+  open,
+  provider,
+  options,
+  usePreset,
+  preservedExtras,
+  onPresetChange,
+  onConfirm,
+  onClose
+}: {
+  open: boolean
+  provider: ProviderConfig | null
+  options: AnthropicHeaderOption[]
+  usePreset: boolean
+  preservedExtras: Record<string, string>
+  onPresetChange: (value: boolean) => void
+  onConfirm: () => Promise<void> | void
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+
+  if (!open || !provider) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="connection-test-dialog-title"
+        className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200/70 bg-white/95 p-6 shadow-2xl backdrop-blur-xl animate-fade-in dark:border-slate-800/60 dark:bg-slate-900/95"
+      >
+        <header className="mb-4 space-y-1">
+          <h2 id="connection-test-dialog-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            {t('providers.testDialog.title')}
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {t('providers.testDialog.subtitle', { name: provider.label || provider.id })}
+          </p>
+        </header>
+        <p className="mb-5 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+          {t('providers.testDialog.description')}
+        </p>
+        <div className="space-y-3">
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/70 dark:border-slate-700 dark:bg-slate-800/70 dark:hover:border-blue-500/60 dark:hover:bg-slate-800">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              checked={usePreset}
+              onChange={(event) => onPresetChange(event.target.checked)}
+            />
+            <div className="space-y-2">
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {t('providers.testDialog.presetLabel')}
+              </span>
+              <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                {t('providers.testDialog.presetDescription')}
+              </p>
+              <details className="rounded-lg bg-slate-50/60 px-3 py-2 text-xs text-slate-600 transition dark:bg-slate-800/50 dark:text-slate-300">
+                <summary className="cursor-pointer text-blue-600 hover:underline dark:text-blue-300">
+                  {t('providers.testDialog.presetPreviewSummary')}
+                </summary>
+                <div className="mt-2 grid gap-1">
+                  {options.map((option) => (
+                    <code
+                      key={option.key}
+                      className="rounded bg-white/80 px-2 py-1 text-[11px] text-slate-700 shadow-sm dark:bg-slate-900/60 dark:text-slate-200"
+                    >
+                      {option.key}: {option.value}
+                    </code>
+                  ))}
+                </div>
+              </details>
+            </div>
+          </label>
+        </div>
+        {Object.keys(preservedExtras).length > 0 ? (
+          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+            <p className="mb-2 font-semibold text-slate-700 dark:text-slate-200">
+              {t('providers.testDialog.preservedInfo')}
+            </p>
+            <div className="grid gap-2">
+              {Object.entries(preservedExtras).map(([key, value]) => (
+                <code
+                  key={key}
+                  className="rounded bg-white/70 px-2 py-1 text-[11px] text-slate-700 shadow-sm dark:bg-slate-900/70 dark:text-slate-200"
+                >
+                  {key}: {value}
+                </code>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <footer className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className={subtleButtonClass}
+          >
+            {t('providers.testDialog.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void onConfirm()
+            }}
+            className={primaryButtonClass}
+          >
+            {t('providers.testDialog.primary')}
+          </button>
+        </footer>
+      </div>
     </div>
   )
 }

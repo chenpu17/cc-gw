@@ -42,7 +42,8 @@ const resources = {
           testingConnection: '测试中...',
           cleanup: '清理历史日志',
           cleaning: '清理中...',
-          checkUpdates: '检查更新'
+          checkUpdates: '检查更新',
+          logout: '退出登录'
         },
         theme: {
           label: '主题',
@@ -63,6 +64,25 @@ const resources = {
           token: 'Tokens',
           msPerToken: 'ms/Token'
         }
+      },
+      login: {
+        title: '登录 cc-gw 控制台',
+        description: '启用 Web UI 访问控制后，请输入账号与密码继续。',
+        fields: {
+          username: '用户名',
+          usernamePlaceholder: '请输入用户名',
+          password: '密码',
+          passwordPlaceholder: '请输入密码'
+        },
+        actions: {
+          submit: '登录'
+        },
+        validation: {
+          required: '请填写用户名和密码',
+          failed: '登录失败，请检查账号或密码后重试'
+        },
+        hint: '如果忘记密码，可在服务器上通过 CLI 或编辑配置重置 Web 登录设置。',
+        status: '已登录：{{username}}'
       },
       dashboard: {
         description: '快速了解请求规模与实时运行状态。',
@@ -321,6 +341,88 @@ const resources = {
             failure: '添加失败，请稍后重试'
           }
         },
+        testDialog: {
+          title: '连接测试选项',
+          subtitle: '针对 {{name}} 的测试请求',
+          description: '部分 Claude 兼容服务需要额外 Header 才能通过诊断。请选择需要附加的 Header，不勾选则保持最简请求。',
+          headerValue: 'Header 值：{{value}}',
+          presetLabel: '模拟 Claude Code 请求（推荐）',
+          presetDescription: '附加 Claude CLI 常用的 Header（anthropic-beta、x-app、user-agent 等）以提升兼容性。',
+          presetPreviewSummary: '查看将附加的 Header 列表',
+          preservedInfo: '以下 Header 将自动附加（来自当前配置）：',
+          cancel: '取消',
+          primary: '开始测试',
+          options: {
+            beta: {
+              label: '`anthropic-beta` 头',
+              description: '启用 Claude Code 的实验特性（如工具流式）；fox code_cc 等服务通常要求此头。'
+            },
+            browser: {
+              label: '`anthropic-dangerous-direct-browser-access` 头',
+              description: '标记请求来自受信客户端，Claude Code 默认会携带此头。'
+            },
+            xApp: {
+              label: '`x-app` 头',
+              description: '标识请求来源，Claude CLI 默认发送为 cli。'
+            },
+            userAgent: {
+              label: '`user-agent` 头',
+              description: '模拟 Claude CLI 的 User-Agent 值。'
+            },
+            accept: {
+              label: '`accept` 头',
+              description: '声明客户端接受 JSON 响应格式。'
+            },
+            acceptLanguage: {
+              label: '`accept-language` 头',
+              description: '兼容要求语言信息的服务。'
+            },
+            secFetchMode: {
+              label: '`sec-fetch-mode` 头',
+              description: '与浏览器/CLI 保持一致的访问信息。'
+            },
+            acceptEncoding: {
+              label: '`accept-encoding` 头',
+              description: '允许 gzip/deflate 压缩响应内容。'
+            },
+            stainlessHelper: {
+              label: '`x-stainless-helper-method` 头',
+              description: '表明请求使用 Claude CLI 的 stream helper。'
+            },
+            stainlessRetry: {
+              label: '`x-stainless-retry-count` 头',
+              description: 'Claude CLI 当前的重试计数。'
+            },
+            stainlessTimeout: {
+              label: '`x-stainless-timeout` 头',
+              description: 'Claude CLI 设定的超时时间（秒）。'
+            },
+            stainlessLang: {
+              label: '`x-stainless-lang` 头',
+              description: 'Claude CLI 所使用的语言标识。'
+            },
+            stainlessPackage: {
+              label: '`x-stainless-package-version` 头',
+              description: 'Claude CLI 的包版本号。'
+            },
+            stainlessOs: {
+              label: '`x-stainless-os` 头',
+              description: '调用方所在的操作系统。'
+            },
+            stainlessArch: {
+              label: '`x-stainless-arch` 头',
+              description: '调用方 CPU 架构信息。'
+            },
+            stainlessRuntime: {
+              label: '`x-stainless-runtime` 头',
+              description: '运行时环境标识，例如 node。'
+            },
+            stainlessRuntimeVersion: {
+              label: '`x-stainless-runtime-version` 头',
+              description: '运行时环境的版本号。'
+            }
+          }
+        },
         card: {
           defaultModel: '默认模型：{{model}}',
           noDefault: '未设置默认模型',
@@ -436,19 +538,23 @@ const resources = {
           cleanupFailure: '清理失败：{{message}}',
           clearAllSuccess: '日志已清空（请求 {{logs}} 条，统计 {{metrics}} 条）。',
           clearAllFailure: '清空失败：{{message}}',
-          missingConfig: '未能加载配置，请刷新或稍后再试。'
+          missingConfig: '未能加载配置，请刷新或稍后再试。',
+          authLoadFailure: '安全配置加载失败：{{message}}'
         },
         sections: {
           basics: '基础配置',
           routing: '模型路由',
           configFile: '配置文件',
-          cleanup: '日志清理'
+          cleanup: '日志清理',
+          security: '访问安全'
         },
         fields: {
           port: '监听端口',
           host: '监听地址（可选）',
           hostPlaceholder: '默认 0.0.0.0',
           retention: '日志保留天数',
+          bodyLimit: '请求体大小上限 (MB)',
+          bodyLimitHint: '默认 10 MB；如 Claude Code 的 /compact 遇到 413，可适当调大。',
           defaults: '默认模型配置',
           storeRequestPayloads: '保存请求内容',
           storeRequestPayloadsHint: '开启后会在日志数据库中保留完整请求原文，便于排查；如含敏感信息可关闭。',
@@ -468,9 +574,39 @@ const resources = {
           responseLogging: '输出响应日志',
           responseLoggingHint: '控制是否输出“request completed …”日志（含状态码与耗时），关闭后终端更安静。'
         },
+        auth: {
+          description: '开启 Web UI 登录后，所有管理接口仅对已登录用户开放，模型代理端点仍保持兼容。',
+          enable: '启用 Web UI 登录保护',
+          enableHint: '推荐在多人共用或生产环境中开启，访问 /ui 与 /api/* 将需要先登录。',
+          username: '登录用户名',
+          usernamePlaceholder: '设置用于登录的用户名',
+          password: '登录密码',
+          passwordPlaceholder: '至少 6 位字符',
+          confirmPassword: '确认密码',
+          confirmPasswordPlaceholder: '再次输入登录密码',
+          status: '当前状态',
+          statusEnabled: '已启用登录保护',
+          statusDisabled: '未启用登录保护',
+          passwordHintRequired: '首次启用或修改用户名时必须设置新密码（不少于 6 位）。',
+          passwordHintOptional: '如需更新密码可填写新值，留空则沿用旧密码。',
+          actions: {
+            save: '保存安全设置'
+          },
+          toast: {
+            success: '安全设置已更新。',
+            failure: '保存失败：{{message}}'
+          },
+          validation: {
+            username: '请填写用户名',
+            minLength: '密码至少需要 6 位字符',
+            passwordRequired: '请设置登录密码',
+            confirmMismatch: '两次输入的密码不一致'
+          }
+        },
         validation: {
           port: '请输入 1-65535 之间的端口号',
           retention: '日志保留天数需为 1-365 之间的数字',
+          bodyLimit: '请求体大小需在 1-2048 MB 之间',
           routePair: '请填写完整的来源模型与目标模型配置。',
           routeDuplicate: '模型 {{model}} 已存在映射，请勿重复配置。'
         },
@@ -715,7 +851,8 @@ const resources = {
           testingConnection: 'Testing...',
           cleanup: 'Clean up logs',
           cleaning: 'Cleaning...',
-          checkUpdates: 'Check for updates'
+          checkUpdates: 'Check for updates',
+          logout: 'Sign out'
         },
         theme: {
           label: 'Theme',
@@ -736,6 +873,25 @@ const resources = {
           token: 'tokens',
           msPerToken: 'ms/token'
         }
+      },
+      login: {
+        title: 'Sign in to cc-gw',
+        description: 'Authentication is required before accessing the console.',
+        fields: {
+          username: 'Username',
+          usernamePlaceholder: 'Enter your username',
+          password: 'Password',
+          passwordPlaceholder: 'Enter your password'
+        },
+        actions: {
+          submit: 'Sign in'
+        },
+        validation: {
+          required: 'Please enter both username and password',
+          failed: 'Sign in failed. Check your credentials and try again.'
+        },
+        hint: 'Forgot your credentials? You can reset the Web UI login settings from the server CLI or by editing the configuration file.',
+        status: 'Signed in as {{username}}'
       },
       dashboard: {
         description: 'Monitor request volume and runtime health at a glance.',
@@ -994,6 +1150,88 @@ const resources = {
             failure: 'Failed to add provider. Please try again later.'
           }
         },
+        testDialog: {
+          title: 'Connection Test Options',
+          subtitle: 'Test request for {{name}}',
+          description: 'Some Claude-compatible providers expect additional headers before accepting diagnostic calls. Select the headers to include; leave unchecked to send none.',
+          headerValue: 'Header value: {{value}}',
+          presetLabel: 'Simulate Claude Code request (recommended)',
+          presetDescription: 'Adds the headers Claude CLI normally sends (anthropic-beta, x-app, user-agent, etc.) for maximum compatibility.',
+          presetPreviewSummary: 'Show headers that will be attached',
+          preservedInfo: 'Headers below are always included from the saved configuration:',
+          cancel: 'Cancel',
+          primary: 'Run Test',
+          options: {
+            beta: {
+              label: '`anthropic-beta` header',
+              description: 'Enables Claude Code experimental capabilities like fine-grained tool streaming. Services such as fox code_cc typically require it.'
+            },
+            browser: {
+              label: '`anthropic-dangerous-direct-browser-access` header',
+              description: 'Marks the request as coming from a trusted client. Claude Code includes this header by default.'
+            },
+            xApp: {
+              label: '`x-app` header',
+              description: 'Identifies the client as Claude CLI (cli).'
+            },
+            userAgent: {
+              label: '`user-agent` header',
+              description: 'Imitates the Claude CLI user agent string.'
+            },
+            accept: {
+              label: '`accept` header',
+              description: 'Declares JSON as the expected response format.'
+            },
+            acceptLanguage: {
+              label: '`accept-language` header',
+              description: 'Provides language information for providers that require it.'
+            },
+            secFetchMode: {
+              label: '`sec-fetch-mode` header',
+              description: 'Matches browser/CLI fetch metadata.'
+            },
+            acceptEncoding: {
+              label: '`accept-encoding` header',
+              description: 'Allows gzip/deflate compressed responses.'
+            },
+            stainlessHelper: {
+              label: '`x-stainless-helper-method` header',
+              description: 'Indicates the Claude CLI stream helper.'
+            },
+            stainlessRetry: {
+              label: '`x-stainless-retry-count` header',
+              description: 'Carries Claude CLI retry metadata.'
+            },
+            stainlessTimeout: {
+              label: '`x-stainless-timeout` header',
+              description: 'Specifies the CLI timeout window in seconds.'
+            },
+            stainlessLang: {
+              label: '`x-stainless-lang` header',
+              description: 'Reports the implementation language (js).'
+            },
+            stainlessPackage: {
+              label: '`x-stainless-package-version` header',
+              description: 'Provides the Claude CLI package version.'
+            },
+            stainlessOs: {
+              label: '`x-stainless-os` header',
+              description: 'Reports the operating system of the caller.'
+            },
+            stainlessArch: {
+              label: '`x-stainless-arch` header',
+              description: 'Reports the CPU architecture of the caller.'
+            },
+            stainlessRuntime: {
+              label: '`x-stainless-runtime` header',
+              description: 'Specifies the runtime environment (e.g. node).'
+            },
+            stainlessRuntimeVersion: {
+              label: '`x-stainless-runtime-version` header',
+              description: 'Specifies the runtime version number.'
+            }
+          }
+        },
         card: {
           defaultModel: 'Default model: {{model}}',
           noDefault: 'No default model',
@@ -1109,19 +1347,23 @@ const resources = {
           cleanupFailure: 'Cleanup failed: {{message}}',
           clearAllSuccess: 'All logs cleared ({{logs}} requests, {{metrics}} daily rows).',
           clearAllFailure: 'Full wipe failed: {{message}}',
-          missingConfig: 'Configuration not available. Refresh and try again.'
+          missingConfig: 'Configuration not available. Refresh and try again.',
+          authLoadFailure: 'Failed to load security settings: {{message}}'
         },
         sections: {
           basics: 'Basic configuration',
           routing: 'Model routing',
           configFile: 'Configuration file',
-          cleanup: 'Log cleanup'
+          cleanup: 'Log cleanup',
+          security: 'Access security'
         },
         fields: {
           port: 'Listen port',
           host: 'Listen host (optional)',
           hostPlaceholder: 'Defaults to 0.0.0.0',
           retention: 'Log retention days',
+          bodyLimit: 'Request body limit (MB)',
+          bodyLimitHint: 'Default is 10 MB. Increase this value if Claude Code /compact returns 413 errors.',
           defaults: 'Default models',
           storeRequestPayloads: 'Store request bodies',
           storeRequestPayloadsHint: 'Keep the full prompt for debugging; disable if payloads are sensitive.',
@@ -1141,9 +1383,39 @@ const resources = {
           responseLogging: 'Emit response logs',
           responseLoggingHint: 'Controls the “request completed …” entries (status + latency). Disable for quieter output.'
         },
+        auth: {
+          description: 'Require a username and password before accessing the Web UI. Model relay endpoints (/anthropic, /openai) remain publicly accessible.',
+          enable: 'Enable Web UI sign-in',
+          enableHint: 'Recommended for shared or production instances. The console and all /api/* routes will require authentication.',
+          username: 'Username',
+          usernamePlaceholder: 'Set the login username',
+          password: 'Password',
+          passwordPlaceholder: 'At least 6 characters',
+          confirmPassword: 'Confirm password',
+          confirmPasswordPlaceholder: 'Re-enter the password',
+          status: 'Current status',
+          statusEnabled: 'Sign-in protection enabled',
+          statusDisabled: 'Sign-in protection disabled',
+          passwordHintRequired: 'A new password (≥6 characters) is required when enabling auth or changing the username.',
+          passwordHintOptional: 'Optional: set a new password. Leave blank to keep the current password.',
+          actions: {
+            save: 'Save security settings'
+          },
+          toast: {
+            success: 'Security settings updated.',
+            failure: 'Failed to save security settings: {{message}}'
+          },
+          validation: {
+            username: 'Please enter a username',
+            minLength: 'Password must be at least 6 characters',
+            passwordRequired: 'Please provide a password',
+            confirmMismatch: 'Passwords do not match'
+          }
+        },
         validation: {
           port: 'Enter a port between 1 and 65535',
           retention: 'Retention days must be between 1 and 365',
+          bodyLimit: 'Request body limit must be between 1 and 2048 MB',
           routePair: 'Fill both the source and target models.',
           routeDuplicate: 'A route for {{model}} already exists.'
         },

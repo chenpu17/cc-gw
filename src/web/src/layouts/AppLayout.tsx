@@ -5,7 +5,8 @@ import { BarChart3, Cog, FileText, Key, Layers, LifeBuoy, Menu, Settings, X } fr
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { cn } from '@/utils/cn'
-import { pageContainerClass } from '@/styles/theme'
+import { pageContainerClass, subtleButtonClass } from '@/styles/theme'
+import { useAuth } from '@/providers/AuthProvider'
 
 const navItems = [
   { to: '/', icon: BarChart3, labelKey: 'nav.dashboard' },
@@ -72,10 +73,22 @@ export function AppLayout() {
   const { t } = useTranslation()
   const location = useLocation()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const { authEnabled, username, logout } = useAuth()
+  const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
     setMobileNavOpen(false)
   }, [location.pathname])
+
+  const handleLogout = async () => {
+    if (loggingOut) return
+    setLoggingOut(true)
+    try {
+      await logout()
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   return (
     <div className="relative flex min-h-screen text-slate-900 dark:text-slate-50">
@@ -86,7 +99,7 @@ export function AppLayout() {
         {t('app.skipToContent')}
       </a>
       {/* Desktop Sidebar */}
-      <aside className="relative z-20 hidden flex-col gap-8 border-r border-slate-200/40 bg-gradient-to-b from-white/90 to-white/80 px-6 py-8 shadow-xl shadow-slate-200/30 backdrop-blur-xl lg:flex lg:w-80 dark:border-slate-800/50 dark:from-slate-950/95 dark:to-slate-950/85 dark:shadow-2xl dark:shadow-slate-900/50">
+      <aside className="relative z-20 hidden flex-col gap-8 border-r border-slate-200/40 bg-gradient-to-b from-white/90 to-white/80 px-6 py-8 shadow-xl shadow-slate-200/30 backdrop-blur-xl lg:flex lg:w-80 lg:min-w-[20rem] lg:max-w-[20rem] lg:flex-shrink-0 dark:border-slate-800/50 dark:from-slate-950/95 dark:to-slate-950/85 dark:shadow-2xl dark:shadow-slate-900/50">
         <div className="space-y-4" aria-label={t('app.title')}>
           <div className="flex items-center gap-4 rounded-2xl border border-slate-200/40 bg-white/90 p-4 shadow-lg shadow-slate-200/30 backdrop-blur-sm dark:border-slate-700/40 dark:bg-slate-900/90 dark:shadow-xl dark:shadow-slate-900/40">
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 text-base font-bold text-white shadow-lg shadow-blue-500/30 dark:shadow-blue-500/20">
@@ -124,6 +137,23 @@ export function AppLayout() {
             <div className="text-lg font-bold gradient-text">{t('app.title')}</div>
           </div>
           <div className="flex items-center gap-3">
+            {authEnabled ? (
+              <div className="flex items-center gap-3">
+                {username ? (
+                  <span className="hidden text-xs font-medium text-slate-500 dark:text-slate-400 sm:inline">
+                    {t('login.status', { username })}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className={cn(subtleButtonClass, 'h-10 rounded-full px-4')}
+                  disabled={loggingOut}
+                >
+                  {loggingOut ? t('common.actions.loading') : t('common.actions.logout')}
+                </button>
+              </div>
+            ) : null}
             <LanguageSwitcher />
             <ThemeSwitcher />
           </div>

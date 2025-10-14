@@ -53,6 +53,7 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 - **请求日志**：多条件筛选（时间、Provider、模型、状态），查看压缩日志详情，支持分页导出与清理。
 - **模型管理**：维护 Provider 列表、预置模型、路由策略；一键测试连通性（发送诊断 PROMPT），支持保存并应用 Anthropic 路由模板，实现不同 Provider 方案的“一键切换”。
 - **系统设置**：端口、日志保留策略、是否存储请求 payload、日志级别与访问日志开关、日志清理工具。
+- **安全控制**：在“系统设置 → 安全”中可启用 Web UI 登录校验，自定义用户名及密码并自动保护所有 `/api/*` 管理接口（模型请求端点仍保持开放）。
 - **使用指南**：提供图文步骤、常见问题与排查提示，帮助团队成员快速熟悉配置流程。
 
 UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供键盘可达性（Skip Link、焦点管理）。
@@ -78,6 +79,36 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 2. 在 Codex 或其他需要 OpenAI 风格接口的客户端中，将 Base URL 设置为 `http://127.0.0.1:4100/openai/v1`；若需手动指定路径，请调用 `POST /openai/v1/responses`。
 3. 将 API Key 设置为 cc-gw 生成的密钥（支持 Bearer Header 或 `x-api-key` Header）。
 4. 触发一次 `hello` 或最小请求检查 Streaming 是否正常；若遇到 `Unsupported parameter: thinking` 等提示，说明 cc-gw 已自动剥离该字段并兼容上游。
+
+### 环境变量与客户端配置示例
+
+绝大多数 Claude Code/Codex 客户端都支持通过环境变量快速切换到 cc-gw。建议在启动 IDE 或终端前写入：
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
+export ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# 如需走 OpenAI 兼容接口（Codex、Open Interpreter 等）
+export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
+export OPENAI_API_KEY=$ANTHROPIC_API_KEY
+```
+
+对于 Codex CLI，可在 `~/.codex/config.toml` 中直接声明 cc-gw，避免每次手动输入：
+
+```toml
+model = "gpt-5-codex"
+model_provider = "cc_gw"
+model_reasoning_effort = "high"
+disable_response_storage = true
+
+[model_providers.cc_gw]
+name = "cc_gw"
+base_url = "http://127.0.0.1:4100/openai/v1"
+wire_api = "responses"
+env_key = "cc_gw_key"
+```
+
+设置完成后，运行 `source ~/.bashrc`（或等效文件）即可让 IDE/CLI 读取新的网关地址与密钥，无需在界面里多次粘贴。
 
 ### 使用场景 / Usage Scenarios
 
@@ -142,6 +173,7 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 - `modelRoutes`：将 Claude 发起的模型名映射到上游模型；未命中时使用 `defaults`。
 - `routingPresets`：可选字段，保存多个 `anthropic`（或其他端点）路由模板，供 Web UI “一键切换”；每个模板仅包含 `name` 与 `modelRoutes`。
 - `storeRequestPayloads` / `storeResponsePayloads`：是否分别在 SQLite 中压缩保存请求原文与响应内容；关闭可减少敏感数据落盘。
+- `bodyLimit`：单次请求允许的最大请求体大小（字节），默认 10 MiB。`/compact` 等场景会发送较大上下文，如遇 413 可按需增大。
 - `logLevel`：控制 Fastify/Pino 控制台日志级别（`fatal`/`error`/`warn`/`info`/`debug`/`trace`）。
 - `providers[].authMode`：仅在 `type: "anthropic"` 时生效，可选 `apiKey`（默认，发送 `x-api-key`）或 `authToken`（发送 `Authorization: Bearer`）。配置 Claude Code 使用 `ANTHROPIC_AUTH_TOKEN` 时，请选择 `authToken` 并在 `apiKey` 输入框填入该值。
 - `requestLogging`：是否输出每个 HTTP 请求的进入日志。
@@ -173,6 +205,7 @@ pnpm --filter @cc-gw/cli exec tsx index.ts status
 
 - 守护模式下 PID/日志存放于 `~/.cc-gw/cc-gw.pid` 与 `~/.cc-gw/logs/cc-gw.log`。
 - `status` 会回显配置与日志路径，便于排查。
+- `cc-gw version`（或 `cc-gw --version`）可输出与 npm 包同步的版本号，便于核对升级情况。
 
 ## 数据与日志
 
@@ -248,6 +281,7 @@ If the client expects a full path, call `POST /openai/v1/responses`. The gateway
 - When `type` is `anthropic`, cc-gw forwards the original Claude payload and all headers to `<baseUrl>/v1/messages`, so tool calls/metadata remain intact.
 - Model routes use `providerId:modelId` syntax to remap Claude requests.
 - `storeRequestPayloads` / `storeResponsePayloads` control whether prompts and completions are persisted; disable either switch to avoid storing sensitive data.
+- `bodyLimit`: maximum request body size (in bytes). Defaults to 10 MiB—raise this if clients like Claude Code `/compact` hit HTTP 413.
 - `logLevel` adjusts Fastify/Pino verbosity (`fatal` → `trace`).
 - `requestLogging` controls whether per-request access logs are emitted to the console.
 - `responseLogging` toggles completion logs separately so you can keep the console quieter while preserving metrics.

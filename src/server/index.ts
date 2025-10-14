@@ -9,7 +9,9 @@ import { loadConfig, onConfigChange, getConfig } from './config/manager.js'
 import { registerMessagesRoute } from './routes/messages.js'
 import { registerOpenAiRoutes } from './routes/openai.js'
 import { registerAdminRoutes } from './routes/admin.js'
+import { registerAuthRoutes } from './routes/auth.js'
 import { startMaintenanceTimers } from './tasks/maintenance.js'
+import { readSession } from './security/webAuth.js'
 
 const DEFAULT_PORT = 4100
 const DEFAULT_HOST = '127.0.0.1'
@@ -44,12 +46,53 @@ export async function createServer(): Promise<FastifyInstance> {
   const config = cachedConfig ?? loadConfig()
   const requestLogEnabled = config.requestLogging !== false
   const responseLogEnabled = config.responseLogging !== false
+  const bodyLimit = typeof config.bodyLimit === 'number' && Number.isFinite(config.bodyLimit) && config.bodyLimit > 0
+    ? config.bodyLimit
+    : 10 * 1024 * 1024
 
   const app = Fastify({
     logger: {
       level: config.logLevel ?? 'info'
     },
-    disableRequestLogging: true
+    disableRequestLogging: true,
+    bodyLimit
+  })
+
+  app.addHook('onRequest', async (request, reply) => {
+    const authConfig = (cachedConfig ?? getConfig()).webAuth
+    if (!authConfig?.enabled) {
+      return
+    }
+
+    const rawUrl = request.raw?.url ?? request.url ?? ''
+    if (!rawUrl) return
+
+    if (
+      rawUrl.startsWith('/auth/') ||
+      rawUrl.startsWith('/anthropic') ||
+      rawUrl.startsWith('/openai') ||
+      rawUrl.startsWith('/assets/') ||
+      rawUrl.startsWith('/favicon.ico') ||
+      rawUrl === '/' ||
+      rawUrl.startsWith('/ui') ||
+      rawUrl.startsWith('/health')
+    ) {
+      return
+    }
+
+    if (request.method === 'OPTIONS') {
+      return
+    }
+
+    if (rawUrl.startsWith('/api/')) {
+      const session = readSession(request)
+      if (session) {
+        return
+      }
+      reply.code(401)
+      reply.header('Cache-Control', 'no-store')
+      await reply.send({ error: 'Authentication required' })
+    }
   })
 
   if (requestLogEnabled) {
@@ -144,6 +187,7 @@ export async function createServer(): Promise<FastifyInstance> {
     app.log.warn('未找到 Web UI 构建产物，/ui 目录将不可用。')
   }
 
+  await registerAuthRoutes(app)
   await registerMessagesRoute(app)
   await registerOpenAiRoutes(app)
   await registerAdminRoutes(app)
