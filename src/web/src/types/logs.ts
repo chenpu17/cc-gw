@@ -17,6 +17,8 @@ export interface LogRecord {
   error: string | null
   api_key_id: number | null
   api_key_name: string | null
+  api_key_value_masked?: string | null
+  api_key_value_available?: boolean
 }
 
 export interface LogPayload {
@@ -26,7 +28,6 @@ export interface LogPayload {
 
 export interface LogDetail extends LogRecord {
   payload: LogPayload | null
-  api_key_value?: string | null
 }
 
 export interface LogListResponse {

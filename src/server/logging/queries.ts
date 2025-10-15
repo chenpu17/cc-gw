@@ -40,10 +40,12 @@ export interface LogListResult {
   items: LogRecord[]
 }
 
-export async function queryLogs(options: LogListOptions = {}): Promise<LogListResult> {
-  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200)
-  const offset = Math.max(options.offset ?? 0, 0)
+interface LogFilterResult {
+  whereClause: string
+  params: Record<string, unknown>
+}
 
+function buildLogFilters(options: LogListOptions = {}): LogFilterResult {
   const conditions: string[] = []
   const params: Record<string, unknown> = {}
 
@@ -89,6 +91,17 @@ export async function queryLogs(options: LogListOptions = {}): Promise<LogListRe
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  return {
+    whereClause,
+    params
+  }
+}
+
+export async function queryLogs(options: LogListOptions = {}): Promise<LogListResult> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200)
+  const offset = Math.max(options.offset ?? 0, 0)
+
+  const { whereClause, params } = buildLogFilters(options)
 
   const totalRow = await getOne<{ count: number }>(
     `SELECT COUNT(*) AS count FROM request_logs ${whereClause}`,
@@ -159,6 +172,78 @@ export async function clearAllLogs(): Promise<{ logs: number; metrics: number }>
     logs: Number(logsResult.changes ?? 0),
     metrics: Number(metricsResult.changes ?? 0)
   }
+}
+
+interface ExportLogRow extends LogRecord {
+  prompt: unknown
+  response: unknown
+}
+
+export interface LogExportRecord extends LogRecord {
+  payload: {
+    prompt: string | null
+    response: string | null
+  } | null
+}
+
+export interface LogExportOptions extends LogListOptions {
+  limit?: number
+}
+
+export async function exportLogs(options: LogExportOptions = {}): Promise<LogExportRecord[]> {
+  const maxLimit = options.limit ? Math.min(Math.max(options.limit, 1), 5000) : undefined
+  const { whereClause, params } = buildLogFilters(options)
+  const limitClause = maxLimit ? 'LIMIT @limit' : ''
+  const rows = await getAll<ExportLogRow & { prompt: unknown; response: unknown }>(
+    `SELECT l.id,
+            l.timestamp,
+            l.session_id,
+            l.endpoint,
+            l.provider,
+            l.model,
+            l.client_model,
+            l.stream,
+            l.latency_ms,
+            l.status_code,
+            l.input_tokens,
+            l.output_tokens,
+            l.cached_tokens,
+            l.ttft_ms,
+            l.tpot_ms,
+            l.error,
+            l.api_key_id,
+            l.api_key_name,
+            l.api_key_value,
+            p.prompt,
+            p.response
+       FROM request_logs l
+       LEFT JOIN request_payloads p ON p.request_id = l.id
+       ${whereClause}
+       ORDER BY l.timestamp DESC
+       ${limitClause}`,
+    maxLimit ? { ...params, limit: maxLimit } : params
+  )
+
+  return rows.map((row) => {
+    const { prompt, response, ...rest } = row
+    const payload =
+      prompt == null && response == null
+        ? null
+        : {
+            prompt: decompressPayload(prompt),
+            response: decompressPayload(response)
+          }
+
+    const baseRecord: LogRecord = {
+      ...(rest as LogRecord)
+    }
+
+    return {
+      ...baseRecord,
+      api_key_value: row.api_key_value ?? null,
+      payload
+    }
+  })
 }
 
 export interface DailyMetric {

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { FileText } from 'lucide-react'
 import { useToast } from '@/providers/ToastProvider'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import type { ApiError } from '@/services/api'
+import { apiClient, type ApiError, toApiError } from '@/services/api'
 import type { LogDetail, LogListResponse, LogRecord } from '@/types/logs'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import { Loader } from '@/components/Loader'
@@ -12,7 +12,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
 import { FormField, Select, Input, Button, StatusBadge } from '@/components'
 import { cn } from '@/utils/cn'
-import { mutedTextClass, subtleButtonClass, surfaceCardClass, paginationContainerClass, paginationSelectClass, statusBadgeClass } from '@/styles/theme'
+import { mutedTextClass, subtleButtonClass, surfaceCardClass, paginationContainerClass, paginationSelectClass } from '@/styles/theme'
 
 interface ProviderSummary {
   id: string
@@ -77,6 +77,7 @@ export default function LogsPage() {
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [selectedApiKeys, setSelectedApiKeys] = useState<number[]>([])
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     setPage(1)
@@ -197,6 +198,42 @@ export default function LogsPage() {
     setSelectedApiKeys([])
   }
 
+  const handleExport = useCallback(async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const exportLimit = total > 0 ? Math.min(total, 5000) : 1000
+      const payload: Record<string, unknown> = { ...queryParams, limit: exportLimit, offset: 0 }
+      const response = await apiClient.post('/api/logs/export', payload, {
+        responseType: 'blob'
+      })
+      const blob = new Blob([response.data], { type: 'application/zip' })
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `cc-gw-logs-${timestamp}.zip`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      pushToast({
+        title: t('logs.toast.exportSuccess.title'),
+        description: t('logs.toast.exportSuccess.desc'),
+        variant: 'success'
+      })
+    } catch (error) {
+      const apiError = toApiError(error)
+      pushToast({
+        title: t('logs.toast.exportError.title'),
+        description: t('logs.toast.exportError.desc', { message: apiError.message }),
+        variant: 'error'
+      })
+    } finally {
+      setExporting(false)
+    }
+  }, [exporting, pushToast, queryParams, t, total])
+
   const handleOpenDetail = useCallback((id: number) => {
     setSelectedLogId(id)
     setIsDetailOpen(true)
@@ -213,8 +250,19 @@ export default function LogsPage() {
         icon={<FileText className="h-6 w-6" aria-hidden="true" />}
         title={t('logs.title')}
         description={t('logs.description')}
+        disableAnimation
+        variant="plain"
         actions={
-          <div className="flex items-center gap-3 text-sm" aria-live="polite">
+          <div className="flex flex-wrap items-center gap-3 text-sm" aria-live="polite">
+            <Button
+              variant="primary"
+              onClick={handleExport}
+              loading={exporting}
+              aria-label={t('logs.actions.export')}
+              className="rounded-full"
+            >
+              {t('logs.actions.export')}
+            </Button>
             <span className={cn(mutedTextClass, 'font-medium')}>
               {t('logs.summary.total', { value: total.toLocaleString() })}
             </span>
@@ -246,7 +294,9 @@ export default function LogsPage() {
             {t('common.actions.reset')}
           </button>
         }
-        contentClassName="grid w-full gap-4 md:grid-cols-2 xl:grid-cols-4"
+        disableAnimation
+        variant="plain"
+        contentClassName="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-4"
       >
         <FormField label={t('logs.filters.provider')}>
           <Select
@@ -315,8 +365,8 @@ export default function LogsPage() {
         </FormField>
       </PageSection>
 
-      <PageSection className="p-0" contentClassName="gap-0">
-        <div className="overflow-x-auto">
+      <PageSection disableAnimation variant="plain" className="p-0" contentClassName="gap-0 overflow-hidden">
+        <div className="overflow-x-auto w-full">
           <table className="min-w-full divide-y divide-slate-200/70 text-sm dark:divide-slate-700/60">
             <caption className="sr-only">{t('logs.title')}</caption>
             <thead className="bg-slate-100/70 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
@@ -368,7 +418,9 @@ export default function LogsPage() {
         </div>
         <div className={paginationContainerClass}>
           <div className="flex items-center gap-2">
-            <span className={mutedTextClass}>{t('logs.table.pagination.perPage')}</span>
+            <span className={cn(mutedTextClass, 'whitespace-nowrap')}>
+              {t('logs.table.pagination.perPage')}
+            </span>
             <select
               value={pageSize}
               onChange={(event) => setPageSize(Number(event.target.value))}
@@ -455,7 +507,7 @@ function LogRow({
 
   return (
     <tr className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-      <td className={cn(mutedTextClass, 'px-5 py-3 text-xs font-medium')}>
+      <td className="px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-100">
         {formatDateTime(record.timestamp)}
       </td>
       <td className="px-5 py-3 text-sm text-slate-700 dark:text-slate-100">{endpointLabel}</td>
@@ -765,29 +817,18 @@ function LogDetailsDrawer({
                     </dd>
                   </div>
                 </dl>
-                <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300">
-                  <div>
-                    <p className="font-medium text-slate-700 dark:text-slate-200">
-                      {t('logs.detail.apiKey.raw')}
-                    </p>
-                    <p className="mt-1 text-xs">
-                      {record.api_key_value ? record.api_key_value : t('logs.detail.apiKey.rawUnavailable')}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!record.api_key_value}
-                    onClick={() =>
-                      handleCopy(
-                        t('logs.detail.apiKey.raw'),
-                        record.api_key_value,
-                        'logs.detail.copy.keySuccess'
-                      )
-                    }
-                    className="rounded-md border border-slate-200 px-2 py-1 text-xs transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                  >
-                    {t('common.actions.copy')}
-                  </button>
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300">
+                  <p className="font-medium text-slate-700 dark:text-slate-200">
+                    {t('logs.detail.apiKey.rawMasked')}
+                  </p>
+                  <p className="mt-1 break-all text-xs font-mono">
+                    {record.api_key_value_available
+                      ? record.api_key_value_masked ?? t('logs.detail.apiKey.rawUnavailable')
+                      : t('logs.detail.apiKey.rawUnavailable')}
+                  </p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    {t('logs.detail.apiKey.rawMaskedHint')}
+                  </p>
                 </div>
               </section>
 

@@ -112,6 +112,21 @@ function sanitizeWebAuth(input: unknown): WebAuthConfig | undefined {
     config.passwordSalt = saltRaw.trim()
   }
 
+  if (config.enabled) {
+    const hasUsername = typeof config.username === 'string' && config.username.length > 0
+    const hasPassword =
+      typeof config.passwordHash === 'string' &&
+      config.passwordHash.length > 0 &&
+      typeof config.passwordSalt === 'string' &&
+      config.passwordSalt.length > 0
+    if (!hasUsername || !hasPassword) {
+      config.enabled = false
+      if (!hasUsername) {
+        delete config.username
+      }
+    }
+  }
+
   return config
 }
 

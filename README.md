@@ -17,7 +17,150 @@ cc-gw 是一个面向 Claude Code 与同类客户端的本地多模型网关，�
 | `@cc-gw/web` | React + Vite Web UI，包含仪表盘、日志面板、模型管理、系统设置 |
 | `@cc-gw/cli` | CLI 守护工具，封装 start/stop/restart/status 并托管 PID/日志 |
 
-## 快速开始
+## 🚀 快速开始
+
+### 完整配置指南（新手必读）
+
+以下是完整的配置流程，请按照步骤顺序操作：
+
+#### 步骤 1: 安装并启动服务
+
+```bash
+# 方式一：npm 全局安装（推荐）
+npm install -g @chenpu17/cc-gw
+cc-gw start --daemon --port 4100
+
+# 方式二：从源码构建（开发者）
+git clone <repository>
+cd cc-gw
+pnpm install
+pnpm --filter @cc-gw/server build
+pnpm --filter @cc-gw/web build
+pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
+```
+
+启动后访问 Web 管理界面：`http://127.0.0.1:4100/ui`
+
+#### 步骤 2: 配置模型提供商
+
+1. 在 Web UI 中进入 **模型管理** 页面
+2. 点击 **添加提供商**，配置至少一个 Provider：
+   - **Anthropic Claude**：
+     ```
+     Base URL: https://api.anthropic.com
+     API Key: sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+     默认模型: claude-3-5-sonnet-20241022
+     ```
+   - **Moonshot Kimi**：
+     ```
+     Base URL: https://api.moonshot.cn/v1
+     API Key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+     默认模型: kimi-k2-0905-preview
+     ```
+   - **DeepSeek**：
+     ```
+     Base URL: https://api.deepseek.com/v1
+     API Key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+     默认模型: deepseek-chat
+     ```
+3. 配置完成后使用 **测试连接** 验证连通性
+
+#### 步骤 3: 生成网关 API Key
+
+1. 在 Web UI 中进入 **系统设置 → API Key 管理**
+2. 点击 **生成新密钥**，为不同客户端创建独立的密钥：
+   - Claude Code IDE: `sk-gw-ide-xxxxxxxx`
+   - Codex CLI: `sk-gw-codex-xxxxxxxx`
+   - 其他工具: `sk-gw-other-xxxxxxxx`
+
+#### 步骤 4: 配置环境变量（关键步骤）
+
+将以下命令添加到 `~/.bashrc`、`~/.zshrc` 等 shell 启动脚本，或使用 `direnv` 等工具统一管理：
+
+```bash
+# Claude Code / VS Code
+export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
+export ANTHROPIC_API_KEY=sk-gw-ide-xxxxxxxxxxxxxxxx
+
+# Codex CLI
+export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
+export OPENAI_API_KEY=sk-gw-codex-xxxxxxxxxxxxxxxx
+export CC_GW_KEY=sk-gw-codex-xxxxxxxxxxxxxxxx
+```
+
+更新完毕后执行 `source ~/.bashrc`（或 `source ~/.zshrc`）让环境变量立即生效。完成后可以马上做一次快速连通性测试：
+
+```bash
+claude "你好，请简短回应"
+codex ask "你好，请介绍一下自己"
+```
+
+若命令能够正常返回，同时可在 Web UI 的 **请求日志** 页面看到对应记录，即表明环境变量已经正确生效。
+
+#### 步骤 5: 配置客户端
+
+- **Claude Code / VS Code**：在设置中选择自定义 API，填入 `http://127.0.0.1:4100/anthropic` 与 `sk-gw-ide-xxxxxxxxxxxxxxxx`。
+- **Codex CLI**：编辑 `~/.codex/config.toml`，内容示例：
+
+  ```toml
+  model = "gpt-5-codex"
+  model_provider = "cc_gw"
+  model_reasoning_effort = "high"
+  disable_response_storage = true
+
+  [model_providers.cc_gw]
+  name = "cc_gw"
+  base_url = "http://127.0.0.1:4100/openai/v1"
+  wire_api = "responses"
+  env_key = "cc_gw_key"
+  ```
+
+配置完成后，建议运行 `codex status` 或 `codex chat "测试"` 再确认一次终端输出。
+
+#### 步骤 6: 高级配置（可选）
+
+##### 6.1 模型路由配置
+
+在 **模型管理 → 路由配置** 中，可以设置模型映射：
+```json
+{
+  "claude-3-5-sonnet-20241022": "kimi:kimi-k2-0905-preview",
+  "claude-opus-4-1-20250805": "anthropic:claude-3-5-sonnet-20241022"
+}
+```
+
+##### 6.2 环境变量持久化
+
+推荐使用 `direnv` 管理环境变量，在项目目录创建 `.envrc`：
+```bash
+# .envrc
+export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
+export ANTHROPIC_API_KEY=sk-gw-ide-xxxxxxxxxxxxxxxx
+export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
+export OPENAI_API_KEY=sk-gw-codex-xxxxxxxxxxxxxxxx
+export CC_GW_KEY=sk-gw-codex-xxxxxxxxxxxxxxxx
+```
+
+然后运行 `direnv allow` 自动加载。
+
+#### 常见问题排查
+
+1. **连接失败**：
+   - 检查 cc-gw 服务状态：`cc-gw status`
+   - 验证环境变量：`echo $ANTHROPIC_BASE_URL`
+   - 查看请求日志确认错误信息
+
+2. **认证错误**：
+   - 确认 API Key 正确且未过期
+   - 检查环境变量是否正确加载
+   - 验证 Provider 的 API Key 配置
+
+3. **模型不可用**：
+   - 在"模型管理"中测试 Provider 连接
+   - 检查模型路由配置
+   - 确认上游服务模型名称正确
+
+> ✅ 完成以上 6 个步骤后，你的 cc-gw 网关就完全配置好了！所有 AI 客户端都可以通过统一的网关访问不同的模型服务。
 
 ### 推荐方式：npm 全局安装
 
@@ -43,6 +186,15 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 
 > ✅ 首次启动后推荐直接使用 Web 管理台完成 Provider、模型、日志等设置；仅在自动化或高级场景下再手动编辑配置文件。
 
+如需以 CLI 启动后配合本地脚本使用，可在 shell 中补充以下变量：
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
+export ANTHROPIC_API_KEY=$(cc-gw keys current)
+```
+
+将其写入 `direnv`/shell profile，即可让后续工具自动读取。
+
 ## Web 管理台
 
 强烈建议以 Web 管理台作为主要的配置入口，可视化界面涵盖仪表盘、请求日志、模型管理与系统设置，所见即所得，避免手工改动 JSON 引入错误。
@@ -65,50 +217,20 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 ![Request Logs](docs/images/logs.png)
 
 ### 连接 Claude Code
-1. 启动 cc-gw 并确认配置中 `host` 为 `127.0.0.1`，`port` 与 CLI 启动一致。
-2. 在安装了 Claude Code 的终端设置环境变量：
-   ```bash
-   export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
-   claude "help me review this file"
-   ```
-3. 如果使用 VS Code 插件（Claude Code），在“自定义 API”中同样填写 `http://127.0.0.1:4100/anthropic`，插件会自动追加 `/v1/messages` 与 `?beta=true`，最后粘贴 cc-gw Web UI 或 CLI 创建的 API Key。
-4. cc-gw 会根据 `modelRoutes`/默认策略将 Claude 请求路由到已配置的目标模型（如 Kimi、火山 DeepSeek、OpenAI 或自建模型）。
+1. 启动 cc-gw 并在“模型管理”完成 Provider 配置。
+2. 确认第 4 步环境变量已写入当前 shell 或系统（`ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY`）。
+3. 在 Claude Code 终端或 VS Code 插件中选择“自定义 API”，填入 `http://127.0.0.1:4100/anthropic` 并粘贴密钥。
+4. 运行 `claude "hello"` 或在 VS Code 新建对话，若能在 Web UI 的“请求日志”看到记录即成功。
 
 ### 连接 Codex（原 Claude Code for Repo）
-1. 在 Web UI 的“模型管理 → 路由配置”中为 `/openai` 端点选择目标模型，默认会映射至配置中的 `defaults.completion`。
-2. 在 Codex 或其他需要 OpenAI 风格接口的客户端中，将 Base URL 设置为 `http://127.0.0.1:4100/openai/v1`；若需手动指定路径，请调用 `POST /openai/v1/responses`。
-3. 将 API Key 设置为 cc-gw 生成的密钥（支持 Bearer Header 或 `x-api-key` Header）。
-4. 触发一次 `hello` 或最小请求检查 Streaming 是否正常；若遇到 `Unsupported parameter: thinking` 等提示，说明 cc-gw 已自动剥离该字段并兼容上游。
+1. 在 Web UI “路由配置”页设定 `/openai` 端点默认模型。
+2. 设置环境变量 `OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1` 与 `OPENAI_API_KEY=<第 3 步生成的密钥>`。
+3. 在 `~/.codex/config.toml` 按前文示例声明 `model_providers.cc_gw`，或在 CLI `codex config set` 中写入相同配置。
+4. 执行 `codex status` / `codex ask` 验证连通性；如遇 404，请确认是否调用了 `/openai/v1/responses`。
 
 ### 环境变量与客户端配置示例
 
-绝大多数 Claude Code/Codex 客户端都支持通过环境变量快速切换到 cc-gw。建议在启动 IDE 或终端前写入：
-
-```bash
-export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
-export ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# 如需走 OpenAI 兼容接口（Codex、Open Interpreter 等）
-export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
-export OPENAI_API_KEY=$ANTHROPIC_API_KEY
-```
-
-对于 Codex CLI，可在 `~/.codex/config.toml` 中直接声明 cc-gw，避免每次手动输入：
-
-```toml
-model = "gpt-5-codex"
-model_provider = "cc_gw"
-model_reasoning_effort = "high"
-disable_response_storage = true
-
-[model_providers.cc_gw]
-name = "cc_gw"
-base_url = "http://127.0.0.1:4100/openai/v1"
-wire_api = "responses"
-env_key = "cc_gw_key"
-```
-
-设置完成后，运行 `source ~/.bashrc`（或等效文件）即可让 IDE/CLI 读取新的网关地址与密钥，无需在界面里多次粘贴。
+（段落保留，已在上方详细说明，可用于快速复制粘贴。）
 
 ### 使用场景 / Usage Scenarios
 
@@ -237,16 +359,51 @@ cc-gw is a local gateway tailored for Claude Code and similar Anthropic-compatib
 | Web console | React + Vite UI with dashboards, filters, provider CRUD, bilingual copy, and responsive layout. |
 | CLI daemon | `cc-gw` command wraps start/stop/restart/status, manages PID/log files, and scaffolds a default config on first launch. |
 
-### Quick Start
+### Standard Onboarding Checklist
+
+1. **Install & launch**: `npm install -g @chenpu17/cc-gw && cc-gw start --daemon --port 4100`. The first run scaffolds `~/.cc-gw/config.json` and makes the Web UI available at `http://127.0.0.1:4100/ui`.
+2. **Add providers**: In *Model Management*, create at least one provider by entering its base URL/API key and selecting default models. Templates for Anthropic, Kimi, DeepSeek, etc., are provided in the sidebar.
+3. **Issue gateway API keys**: Navigate to *System Settings → API Keys* and mint a key for each client (IDE, Codex CLI, automation). This is what clients will send to cc-gw.
+4. **Export environment variables (required)**:
+   ```bash
+   export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
+   export ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+   # Optional: OpenAI-compatible endpoint (Codex, Open Interpreter, ...)
+   export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
+   export OPENAI_API_KEY=$ANTHROPIC_API_KEY
+   ```
+   Drop these lines into your shell profile (or `direnv`) so that IDEs inherit them automatically.
+5. **Point your clients**:
+   - **Claude Code / VS Code extension**: enable custom API mode, paste `http://127.0.0.1:4100/anthropic`, and use the key from step 3. The extension appends `/v1/messages?beta=true` automatically.
+   - **Codex CLI**: update `~/.codex/config.toml`:
+     ```toml
+     model = "gpt-5-codex"
+     model_provider = "cc_gw"
+     model_reasoning_effort = "high"
+     disable_response_storage = true
+
+     [model_providers.cc_gw]
+     name = "cc_gw"
+     base_url = "http://127.0.0.1:4100/openai/v1"
+     wire_api = "responses"
+     env_key = "cc_gw_key"
+     ```
+     Then export `CC_GW_KEY=<gateway api key>`.
+6. **Smoke test**: run a short prompt (`claude "hello"`, `codex ask`, etc.) and confirm a matching entry appears in *Request Logs*. If not, re-check the environment variables and provider routing.
+
+> Once these six steps are complete, any Anthropic/OpenAI-style client can pivot to cc-gw. All further tweaks (providers, routing, logging) can be handled from the Web UI.
+
+### Quick reinstall / binary upgrade
 
 ```bash
 npm install -g @chenpu17/cc-gw
 cc-gw start --daemon --port 4100
 ```
 
-The first launch writes `~/.cc-gw/config.json`. Manage everything through the Web UI at `http://127.0.0.1:4100/ui`. Use `cc-gw status`, `cc-gw stop`, and `cc-gw restart` to control the daemon.
+`cc-gw status`, `cc-gw stop`, and `cc-gw restart` manage the daemon. The Web UI remains at `http://127.0.0.1:4100/ui`.
 
-> ⚠️ **Linux build note**: We now depend on `better-sqlite3`. Prebuilt binaries ship for Node 20/22/24 on glibc & musl (x64/arm64/arm). If you’re targeting an unsupported combo, install `build-essential python3 make g++` first, then rerun `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source`.
+> ⚠️ **Linux build note**: cc-gw relies on `better-sqlite3`. Prebuilt binaries cover Node 20/22/24 on glibc & musl (x64/arm64/arm). For other combos install `build-essential python3 make g++`, then rerun `npm install -g @chenpu17/cc-gw --unsafe-perm --build-from-source`.
 
 ### From Source (contributors)
 
@@ -257,23 +414,7 @@ pnpm --filter @cc-gw/web build
 pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 ```
 
-Connect Claude Code by pointing `ANTHROPIC_BASE_URL` to the Anthropic namespace on cc-gw. Both the CLI and editor clients append `/v1/messages` automatically:
-
-```bash
-export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
-claude "help me review this file"
-```
-
-Using the Claude Code VS Code extension? Open the extension settings, enable the custom API mode, set the Base URL to the same `http://127.0.0.1:4100/anthropic`, and paste an API key generated from the cc-gw Web UI or CLI—the extension appends `/v1/messages?beta=true` automatically and cc-gw now forwards the query string upstream.
-
-Connect Codex (or any OpenAI-compatible IDE integration) by targeting the OpenAI endpoint exposed by cc-gw:
-
-```bash
-export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
-export OPENAI_API_KEY="<your cc-gw api key>"
-```
-
-If the client expects a full path, call `POST /openai/v1/responses`. The gateway strips unsupported fields (such as `thinking`) before forwarding to the upstream provider, so health checks like `hello` should stream back correctly.
+Connect Claude Code after completing the onboarding steps above—the CLI and editor automatically append `/v1/messages`, and cc-gw will forward `?beta=true` samples or tool metadata upstream. For Codex or other OpenAI-style integrations, use `http://127.0.0.1:4100/openai/v1` (or the equivalent value from step 4) and hit `POST /openai/v1/responses` if the client requires an explicit path.
 
 ### Configuration Snapshot
 

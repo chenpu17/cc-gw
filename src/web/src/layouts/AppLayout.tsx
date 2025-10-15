@@ -22,7 +22,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation()
 
   return (
-    <nav className="flex h-full flex-col gap-2" aria-label={t('app.title')}>
+    <nav className="flex h-full flex-col gap-1" aria-label={t('app.title')}>
       {navItems.map((item) => {
         const Icon = item.icon
         return (
@@ -32,30 +32,31 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             className={({ isActive }) =>
               cn(
-                'group relative flex items-center gap-4 rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 hover-lift',
+                'group relative flex items-center justify-center gap-1.5 rounded-lg px-1.5 py-1.5 transition-all duration-200',
                 isActive
-                  ? 'bg-gradient-to-r from-blue-600/15 to-indigo-600/10 text-blue-700 shadow-lg shadow-blue-200/40 ring-1 ring-blue-500/20 dark:from-blue-500/25 dark:to-indigo-500/15 dark:text-blue-100 dark:shadow-xl dark:shadow-blue-500/20 dark:ring-blue-400/20'
-                  : 'text-slate-600 hover:bg-white/80 hover:text-slate-900 hover:shadow-md hover:shadow-slate-200/40 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:shadow-lg dark:hover:shadow-slate-900/30'
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
               )
             }
             end={item.to === '/'}
+            title={t(item.labelKey)}
           >
             {({ isActive }) => (
               <>
-                <span
-                  className={cn(
-                    'flex h-10 w-10 items-center justify-center rounded-2xl border transition-all duration-200',
-                    isActive
-                      ? 'border-blue-500/30 bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/30 dark:from-blue-500 dark:to-indigo-500 dark:shadow-blue-500/20'
-                      : 'border-slate-200/60 bg-white/90 text-slate-600 shadow-sm shadow-slate-200/30 group-hover:border-slate-300/70 group-hover:bg-white group-hover:shadow-md dark:border-slate-700/60 dark:bg-slate-800/90 dark:text-slate-300 dark:shadow-lg dark:shadow-slate-900/30'
-                  )}
-                >
-                  <Icon size={18} aria-hidden="true" />
+                <span className="flex h-7 w-7 items-center justify-center">
+                  <Icon
+                    size={14}
+                    className={cn(
+                      'transition-colors duration-200',
+                      isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+                    )}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span
                   className={cn(
-                    'font-medium transition-colors duration-200',
-                    isActive ? 'text-blue-700 dark:text-blue-100' : ''
+                    'hidden xl:block font-medium text-xs leading-tight whitespace-nowrap transition-colors duration-200',
+                    isActive ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'
                   )}
                 >
                   {t(item.labelKey)}
@@ -99,34 +100,29 @@ export function AppLayout() {
         {t('app.skipToContent')}
       </a>
       {/* Desktop Sidebar */}
-      <aside className="relative z-20 hidden flex-col gap-8 border-r border-slate-200/40 bg-gradient-to-b from-white/90 to-white/80 px-6 py-8 shadow-xl shadow-slate-200/30 backdrop-blur-xl lg:flex lg:w-80 lg:min-w-[20rem] lg:max-w-[20rem] lg:flex-shrink-0 dark:border-slate-800/50 dark:from-slate-950/95 dark:to-slate-950/85 dark:shadow-2xl dark:shadow-slate-900/50">
-        <div className="space-y-4" aria-label={t('app.title')}>
-          <div className="flex items-center gap-4 rounded-2xl border border-slate-200/40 bg-white/90 p-4 shadow-lg shadow-slate-200/30 backdrop-blur-sm dark:border-slate-700/40 dark:bg-slate-900/90 dark:shadow-xl dark:shadow-slate-900/40">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 text-base font-bold text-white shadow-lg shadow-blue-500/30 dark:shadow-blue-500/20">
+      <aside className="relative z-20 hidden flex-col gap-3 border-r border-slate-200/20 bg-white/60 px-2 py-3 shadow-md shadow-slate-200/15 backdrop-blur-sm lg:flex lg:w-36 lg:min-w-[9rem] lg:max-w-[9rem] xl:w-40 xl:min-w-[10rem] xl:max-w-[10rem] 2xl:w-44 2xl:min-w-[11rem] 2xl:max-w-[11rem] lg:flex-shrink-0 dark:border-slate-800/20 dark:bg-slate-950/60 dark:shadow-lg dark:shadow-slate-900/20">
+        <div className="space-y-2" aria-label={t('app.title')}>
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200/30 bg-white/80 p-1.5 shadow-sm shadow-slate-200/20 backdrop-blur-sm dark:border-slate-700/30 dark:bg-slate-900/80 dark:shadow-md dark:shadow-slate-900/20">
+            <div className="grid h-6 w-6 place-items-center rounded-lg bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 text-xs font-bold text-white shadow-md shadow-blue-500/20">
               GW
             </div>
-            <div>
-              <p className="text-base font-bold text-slate-800 dark:text-slate-100">{t('app.title')}</p>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{t('dashboard.description')}</p>
+            <div className="hidden xl:block">
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{t('app.title')}</p>
             </div>
           </div>
         </div>
-        <div className="flex-1">
+        <div className="flex-1 overflow-y-auto">
           <SidebarNav />
-        </div>
-        <div className="rounded-2xl border border-slate-200/40 bg-gradient-to-br from-slate-50/90 to-white/90 p-4 text-xs font-medium text-slate-600 shadow-lg shadow-slate-200/30 backdrop-blur-sm dark:border-slate-700/40 dark:from-slate-900/90 dark:to-slate-800/90 dark:text-slate-400 dark:shadow-xl dark:shadow-slate-900/40">
-          <div className="mb-2 font-bold text-slate-700 dark:text-slate-300">{t('help.title')}</div>
-          {t('help.intro')}
         </div>
       </aside>
 
       <div className="flex flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-slate-200/40 bg-gradient-to-r from-white/90 to-white/85 px-4 py-4 shadow-lg shadow-slate-200/20 backdrop-blur-xl sm:px-6 dark:border-slate-800/40 dark:from-slate-950/90 dark:to-slate-950/85 dark:shadow-2xl dark:shadow-slate-900/30">
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-2 sm:gap-4 border-b border-slate-200/30 bg-white/90 px-3 sm:px-4 lg:px-6 py-2.5 sm:py-3 shadow-md shadow-slate-200/15 backdrop-blur-sm dark:border-slate-800/30 dark:bg-slate-950/90 dark:shadow-lg dark:shadow-slate-900/20">
           <div className="flex items-center gap-3 lg:hidden">
             <button
               type="button"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200/50 bg-white/90 text-slate-600 shadow-lg shadow-slate-200/30 transition-all duration-200 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 dark:border-slate-700/50 dark:bg-slate-900/90 dark:text-slate-200 dark:shadow-xl dark:shadow-slate-900/30 dark:hover:bg-slate-900"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200/50 bg-white/90 text-slate-600 shadow-lg shadow-slate-200/30 transition-shadow duration-200 hover:bg-white hover:shadow-xl dark:border-slate-700/50 dark:bg-slate-900/90 dark:text-slate-200 dark:shadow-xl dark:shadow-slate-900/30 dark:hover:bg-slate-900"
               onClick={() => setMobileNavOpen((prev) => !prev)}
               aria-label={mobileNavOpen ? t('common.actions.closeNavigation') : t('common.actions.openNavigation')}
               aria-expanded={mobileNavOpen}
@@ -164,7 +160,7 @@ export function AppLayout() {
           id="main-content"
           role="main"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto px-4 pb-12 pt-8 sm:px-6 sm:pb-16"
+          className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 pb-8 sm:pb-12 lg:pb-16 pt-6 sm:pt-8"
         >
           <div className={cn(pageContainerClass, 'animate-fade-in')}>
             <Outlet />
@@ -177,13 +173,13 @@ export function AppLayout() {
         <div className="fixed inset-0 z-40 bg-slate-900/80 backdrop-blur-sm lg:hidden animate-fade-in" role="dialog" aria-modal="true">
           <div
             id="mobile-nav"
-            className="absolute inset-y-0 left-0 w-80 border-r border-slate-200/40 bg-gradient-to-b from-white/95 to-white/90 px-6 py-8 shadow-2xl shadow-slate-900/30 backdrop-blur-xl animate-slide-up dark:border-slate-800/40 dark:from-slate-950/95 dark:to-slate-950/90"
+            className="absolute inset-y-0 left-0 w-72 sm:w-80 border-r border-slate-200/40 bg-gradient-to-b from-white/95 to-white/90 px-4 sm:px-6 py-6 sm:py-8 shadow-2xl shadow-slate-900/30 backdrop-blur-xl animate-slide-up dark:border-slate-800/40 dark:from-slate-950/95 dark:to-slate-950/90 gpu-accelerated"
           >
             <div className="mb-8 flex items-center justify-between">
               <span className="text-lg font-bold gradient-text">{t('app.title')}</span>
               <button
                 type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200/50 bg-white/90 text-slate-600 shadow-lg shadow-slate-200/30 transition-all duration-200 hover:bg-white hover:-translate-y-0.5 dark:border-slate-700/50 dark:bg-slate-900/90 dark:text-slate-200 dark:shadow-xl dark:shadow-slate-900/30"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200/50 bg-white/90 text-slate-600 shadow-lg shadow-slate-200/30 transition-shadow duration-200 hover:bg-white dark:border-slate-700/50 dark:bg-slate-900/90 dark:text-slate-200 dark:shadow-xl dark:shadow-slate-900/30"
                 onClick={() => setMobileNavOpen(false)}
                 aria-label={t('common.actions.closeNavigation')}
               >

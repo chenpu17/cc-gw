@@ -7,6 +7,8 @@ const HOME_OVERRIDE = process.env.CC_GW_HOME
 export const HOME_DIR = path.resolve(HOME_OVERRIDE ?? path.join(os.homedir(), '.cc-gw'))
 export const DATA_DIR = path.join(HOME_DIR, 'data')
 export const DB_PATH = path.join(DATA_DIR, 'gateway.db')
+const DB_WAL_PATH = `${DB_PATH}-wal`
+const DB_SHM_PATH = `${DB_PATH}-shm`
 
 type StatementParams = any[] | Record<string, unknown>
 
@@ -271,4 +273,80 @@ export async function getAll<T = any>(sql: string, params: StatementParams = [])
 export async function execQuery(sql: string): Promise<void> {
   const db = await getDb()
   await exec(db, sql)
+}
+
+async function getFileSize(filePath: string): Promise<number> {
+  try {
+    const stats = await fs.promises.stat(filePath)
+    return stats.size
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return 0
+    }
+    throw error
+  }
+}
+
+export interface DatabaseFileStats {
+  mainBytes: number
+  walBytes: number
+  shmBytes: number
+  totalBytes: number
+}
+
+export async function getDatabaseFileStats(): Promise<DatabaseFileStats> {
+  const [mainBytes, walBytes, shmBytes] = await Promise.all([
+    getFileSize(DB_PATH),
+    getFileSize(DB_WAL_PATH),
+    getFileSize(DB_SHM_PATH)
+  ])
+
+  return {
+    mainBytes,
+    walBytes,
+    shmBytes,
+    totalBytes: mainBytes + walBytes + shmBytes
+  }
+}
+
+export interface DatabasePageStats {
+  pageCount: number
+  pageSize: number
+  freelistPages: number
+}
+
+export async function getDatabasePageStats(): Promise<DatabasePageStats> {
+  const db = await getDb()
+  const pageCount = Number(db.pragma('page_count', { simple: true })) || 0
+  const pageSize = Number(db.pragma('page_size', { simple: true })) || 0
+  const freelistPages = Number(db.pragma('freelist_count', { simple: true })) || 0
+  return {
+    pageCount,
+    pageSize,
+    freelistPages
+  }
+}
+
+export interface CompactResult {
+  beforeBytes: number
+  afterBytes: number
+  reclaimedBytes: number
+}
+
+export async function compactDatabase(): Promise<CompactResult> {
+  const before = await getDatabaseFileStats()
+  const db = await getDb()
+
+  db.pragma('wal_checkpoint(TRUNCATE)')
+  db.exec('VACUUM')
+
+  const after = await getDatabaseFileStats()
+  const beforeTotal = before.totalBytes
+  const afterTotal = after.totalBytes
+
+  return {
+    beforeBytes: beforeTotal,
+    afterBytes: afterTotal,
+    reclaimedBytes: Math.max(0, beforeTotal - afterTotal)
+  }
 }

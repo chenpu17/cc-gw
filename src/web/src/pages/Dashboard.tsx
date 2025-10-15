@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BarChart3, TrendingUp, Activity, Timer } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
@@ -9,10 +9,10 @@ import { PageSection } from '@/components/PageSection'
 import { Select, StatusBadge } from '@/components'
 import { useToast } from '@/providers/ToastProvider'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import type { ApiError } from '@/services/api'
+import { apiClient, type ApiError, toApiError } from '@/services/api'
 import type { LogListResponse, LogRecord } from '@/types/logs'
 import { cn } from '@/utils/cn'
-import { mutedTextClass, sectionTitleClass, surfaceCardClass, glassCardClass, badgeClass, statusIndicatorClass, loadingStateClass, emptyStateClass, loadingSpinnerClass, chartContainerClass } from '@/styles/theme'
+import { mutedTextClass, sectionTitleClass, surfaceCardClass, glassCardClass, badgeClass, statusIndicatorClass, loadingStateClass, emptyStateClass, loadingSpinnerClass, chartContainerClass, subtleButtonClass, responsiveGridClass, responsiveTextClass, enhancedLoadingClass } from '@/styles/theme'
 
 interface OverviewStats {
   totals: {
@@ -59,6 +59,13 @@ interface DatabaseInfo {
   pageCount: number
   pageSize: number
   sizeBytes: number
+  freelistPages?: number
+  fileSizeBytes?: number
+  walSizeBytes?: number
+  totalBytes?: number
+  memoryRssBytes?: number
+  memoryHeapBytes?: number
+  memoryExternalBytes?: number
 }
 
 function formatLatencyValue(
@@ -93,6 +100,7 @@ export default function DashboardPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
   const [endpointFilter, setEndpointFilter] = useState<'all' | 'anthropic' | 'openai'>('all')
+  const [compacting, setCompacting] = useState(false)
   const endpointParam = endpointFilter === 'all' ? undefined : endpointFilter
 
   const overviewQuery = useApiQuery<OverviewStats, ApiError>(
@@ -138,6 +146,7 @@ export default function DashboardPage() {
     ['db', 'info'],
     { url: '/api/db/info', method: 'GET' }
   )
+  const refetchDbInfo = dbInfoQuery.refetch ?? (async () => undefined)
 
   const latestLogsQuery = useApiQuery<LogListResponse, ApiError>(
     ['logs', 'recent', endpointFilter],
@@ -186,6 +195,29 @@ export default function DashboardPage() {
     }
   }, [dbInfoQuery.isError, dbInfoQuery.error, pushToast, t])
 
+  const handleCompact = useCallback(async () => {
+    if (compacting) return
+    setCompacting(true)
+    try {
+      await apiClient.post('/api/db/compact')
+      await refetchDbInfo()
+      pushToast({
+        title: t('dashboard.toast.compactSuccess.title'),
+        description: t('dashboard.toast.compactSuccess.desc'),
+        variant: 'success'
+      })
+    } catch (error) {
+      const apiError = toApiError(error)
+      pushToast({
+        title: t('dashboard.toast.compactError.title'),
+        description: apiError.message,
+        variant: 'error'
+      })
+    } finally {
+      setCompacting(false)
+    }
+  }, [compacting, pushToast, refetchDbInfo, t])
+
   useEffect(() => {
     if (latestLogsQuery.isError && latestLogsQuery.error) {
       pushToast({ title: t('dashboard.toast.recentError'), description: latestLogsQuery.error.message, variant: 'error' })
@@ -198,6 +230,8 @@ export default function DashboardPage() {
   const status = statusQuery.data
   const dbInfo = dbInfoQuery.data
   const recentLogs = latestLogsQuery.data?.items ?? []
+  const dbSizeDisplay = dbInfo ? formatBytes(dbInfo.totalBytes ?? dbInfo.sizeBytes) : '-'
+  const memoryDisplay = dbInfo ? formatBytes(dbInfo.memoryRssBytes ?? 0) : '-'
 
   const dailyOption = useMemo<EChartsOption>(() => {
     const dates = daily.map((item) => item.date)
@@ -508,14 +542,31 @@ export default function DashboardPage() {
           </span>
           <span className={cn(badgeClass.default, 'font-semibold')}>
             {t('dashboard.status.dbSize', {
-              value: dbInfo ? formatBytes(dbInfo.sizeBytes) : '-'
+              value: dbSizeDisplay
             })}
           </span>
+          <span className={cn(badgeClass.default, 'font-semibold')}>
+            {t('dashboard.status.memory', {
+              value: memoryDisplay
+            })}
+          </span>
+          <button
+            type="button"
+            onClick={handleCompact}
+            disabled={compacting}
+            className={cn(
+              subtleButtonClass,
+              'h-9 rounded-full px-4 text-xs font-semibold',
+              compacting ? 'cursor-wait opacity-70' : ''
+            )}
+          >
+            {compacting ? t('dashboard.actions.compacting') : t('dashboard.actions.compact')}
+          </button>
         </section>
       ) : null}
 
       {/* Statistics Cards */}
-      <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <section className={cn(responsiveGridClass.fixed[4], 'gap-4 sm:gap-6')}>
         <StatCard
           icon={<Activity className="h-5 w-5" />}
           title={t('dashboard.cards.todayRequests')}
@@ -551,7 +602,7 @@ export default function DashboardPage() {
       </section>
 
       {/* Charts Grid */}
-      <div className="grid gap-8 xl:grid-cols-2">
+      <div className={cn(responsiveGridClass.fixed[2], 'gap-6 sm:gap-8')}>
         <ChartCard
           title={t('dashboard.charts.requestsTitle')}
           description={t('dashboard.charts.requestsDesc')}
@@ -570,7 +621,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-8 xl:grid-cols-2">
+      <div className={cn(responsiveGridClass.fixed[2], 'gap-6 sm:gap-8')}>
         <ChartCard
           title={t('dashboard.charts.ttftTitle')}
           description={t('dashboard.charts.ttftDesc')}
@@ -626,7 +677,7 @@ function StatCard({
           <p className="text-3xl font-bold text-slate-900 dark:text-slate-50">
             {value.toLocaleString()}
             {suffix ? (
-              <span className={cn(mutedTextClass, 'ml-2 text-lg font-medium')}>{suffix}</span>
+              <span className={cn(mutedTextClass, 'ml-2 text-base sm:text-lg font-medium')}>{suffix}</span>
             ) : null}
           </p>
           {trend && (
@@ -661,16 +712,16 @@ function ChartCard({
 }) {
   const { t } = useTranslation()
   return (
-    <div className={cn(glassCardClass, 'space-y-6 hover-lift animate-slide-up')}>
+    <div className={cn(glassCardClass, 'space-y-4 sm:space-y-6 hover-lift animate-slide-up')}>
       <div>
         <p className="text-xl font-bold text-slate-900 dark:text-slate-50">{title}</p>
-        <p className={cn(mutedTextClass, 'mt-2 text-sm leading-relaxed')}>{description}</p>
+        <p className={cn(mutedTextClass, 'mt-2 text-xs sm:text-sm leading-relaxed')}>{description}</p>
       </div>
       {loading ? (
-        <div className={loadingStateClass}>
+        <div className={enhancedLoadingClass.container}>
           <div className="text-center">
-            <div className={loadingSpinnerClass}></div>
-            <span className={cn(mutedTextClass, 'text-sm mt-4 block')}>{t('common.loadingShort')}</span>
+            <div className={enhancedLoadingClass.spinner}></div>
+            <span className={cn(enhancedLoadingClass.text)}>{t('common.loadingShort')}</span>
           </div>
         </div>
       ) : empty ? (
@@ -725,7 +776,7 @@ function ModelMetricsTable({ models, loading }: { models: ModelUsageMetric[]; lo
                 <th className="px-5 py-3 text-right font-semibold">{t('dashboard.modelTable.columns.tpot')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200/60 text-sm dark:divide-slate-800/60">
+            <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
               {models.map((item) => (
                 <tr key={`${item.provider}/${item.model}`} className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                   <td className="px-5 py-3">

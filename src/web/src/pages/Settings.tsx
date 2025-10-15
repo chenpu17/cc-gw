@@ -7,7 +7,7 @@ import { Loader } from '@/components/Loader'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
 import { cn } from '@/utils/cn'
-import { dangerButtonClass, mutedTextClass, primaryButtonClass, subtleButtonClass } from '@/styles/theme'
+import { dangerButtonClass, mutedTextClass, primaryButtonClass, subtleButtonClass, inputClass } from '@/styles/theme'
 import { apiClient, type ApiError } from '@/services/api'
 import type { ConfigInfoResponse, GatewayConfig, WebAuthStatusResponse } from '@/types/providers'
 
@@ -462,7 +462,7 @@ export default function SettingsPage() {
                 max={65535}
                 value={form.port}
                 onChange={(event) => handleInputChange('port')(event.target.value)}
-                className="h-10"
+                className={cn(inputClass, 'h-11')}
                 aria-invalid={Boolean(errors.port)}
               />
               {errors.port ? (
@@ -478,7 +478,7 @@ export default function SettingsPage() {
                 value={form.host}
                 onChange={(event) => handleInputChange('host')(event.target.value)}
                 placeholder={t('settings.fields.hostPlaceholder')}
-                className="h-10"
+                className={cn(inputClass, 'h-11')}
               />
             </div>
 
@@ -492,7 +492,7 @@ export default function SettingsPage() {
                 max={365}
                 value={form.logRetentionDays}
                 onChange={(event) => handleInputChange('logRetentionDays')(event.target.value)}
-                className="h-10"
+                className={cn(inputClass, 'h-11')}
                 aria-invalid={Boolean(errors.logRetentionDays)}
               />
               {errors.logRetentionDays ? (
@@ -510,7 +510,7 @@ export default function SettingsPage() {
                 max={2048}
                 value={form.bodyLimitMb}
                 onChange={(event) => handleInputChange('bodyLimitMb')(event.target.value)}
-                className="h-10"
+                className={cn(inputClass, 'h-11')}
                 aria-invalid={Boolean(errors.bodyLimitMb)}
               />
               <p className={cn(mutedTextClass, 'text-[11px] leading-relaxed')}>
@@ -629,15 +629,15 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="rounded-3xl border border-blue-200/50 bg-gradient-to-br from-blue-50/70 via-white/90 to-blue-100/60 p-5 shadow-lg shadow-blue-200/40 transition dark:border-blue-500/30 dark:from-slate-900/80 dark:via-slate-900/60 dark:to-slate-900/70 dark:shadow-blue-900/20">
-                <label className="flex cursor-pointer select-none items-start gap-4">
+              <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-200/50 transition dark:border-slate-700/60 dark:bg-slate-900/80 dark:shadow-slate-900/40">
+                <label className="flex cursor-pointer select-none items-start gap-3">
                   <input
                     type="checkbox"
                     checked={authForm.enabled}
                     onChange={(event) =>
                       setAuthForm((prev) => ({ ...prev, enabled: event.target.checked }))
                     }
-                    className="mt-1 h-5 w-5 rounded-full border-blue-300 bg-white text-blue-600 shadow-sm transition focus:ring-2 focus:ring-blue-400/40 accent-blue-600 dark:border-blue-500/40 dark:bg-slate-900 dark:text-blue-300"
+                    className="mt-1 h-5 w-5 rounded border-slate-300 bg-white text-blue-600 shadow-sm transition focus:ring-blue-400/40 dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200"
                   />
                   <div className="space-y-2">
                     <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -646,14 +646,14 @@ export default function SettingsPage() {
                     <p className={cn(mutedTextClass, 'text-xs leading-relaxed')}>
                       {t('settings.auth.enableHint')}
                     </p>
-                    <div className="flex flex-wrap gap-3 text-[11px] font-medium text-blue-600/80 dark:text-blue-300/80">
-                      <span className="rounded-full bg-blue-100/80 px-3 py-1 shadow-sm shadow-blue-200/40 dark:bg-blue-500/20">
+                    <div className="flex flex-wrap gap-2 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                      <span className="rounded-full bg-slate-100/90 px-3 py-1 shadow-sm shadow-slate-200/40 dark:bg-slate-800/70">
                         /ui
                       </span>
-                      <span className="rounded-full bg-blue-100/80 px-3 py-1 shadow-sm shadow-blue-200/40 dark:bg-blue-500/20">
+                      <span className="rounded-full bg-slate-100/90 px-3 py-1 shadow-sm shadow-slate-200/40 dark:bg-slate-800/70">
                         /api/*
                       </span>
-                      <span className="rounded-full bg-blue-100/80 px-3 py-1 shadow-sm shadow-blue-200/40 dark:bg-blue-500/20">
+                      <span className="rounded-full bg-slate-100/90 px-3 py-1 shadow-sm shadow-slate-200/40 dark:bg-slate-800/70">
                         Cookie Session
                       </span>
                     </div>
@@ -673,7 +673,7 @@ export default function SettingsPage() {
                         setAuthForm((prev) => ({ ...prev, username: event.target.value }))
                       }
                       placeholder={t('settings.auth.usernamePlaceholder')}
-                      className="h-11 rounded-2xl border border-blue-200/60 bg-blue-50/70 px-4 text-sm font-medium text-blue-900 shadow-sm shadow-blue-200/50 transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40 dark:border-blue-500/40 dark:bg-slate-900/80 dark:text-blue-100 dark:shadow-blue-900/30"
+                      className={cn(inputClass, 'h-11 font-medium')}
                     />
                     {authErrors.username ? (
                       <span className="text-xs font-medium text-red-500 dark:text-red-300">
@@ -694,7 +694,10 @@ export default function SettingsPage() {
                         setAuthForm((prev) => ({ ...prev, password: event.target.value }))
                       }
                       placeholder={t('settings.auth.passwordPlaceholder')}
-                      className="h-11 rounded-2xl border border-slate-200/70 bg-white/95 px-4 text-sm shadow-sm shadow-slate-200/40 transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-100 dark:shadow-slate-900/40 dark:disabled:bg-slate-900/40"
+                      className={cn(
+                        inputClass,
+                        'h-11 disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-slate-900/40'
+                      )}
                     />
                     {authErrors.password ? (
                       <span className="text-xs font-medium text-red-500 dark:text-red-300">
@@ -723,7 +726,10 @@ export default function SettingsPage() {
                         setAuthForm((prev) => ({ ...prev, confirmPassword: event.target.value }))
                       }
                       placeholder={t('settings.auth.confirmPasswordPlaceholder')}
-                      className="h-11 rounded-2xl border border-slate-200/70 bg-white/95 px-4 text-sm shadow-sm shadow-slate-200/40 transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-100 dark:shadow-slate-900/40 dark:disabled:bg-slate-900/40"
+                      className={cn(
+                        inputClass,
+                        'h-11 disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-slate-900/40'
+                      )}
                     />
                     {authErrors.confirmPassword ? (
                       <span className="text-xs font-medium text-red-500 dark:text-red-300">
@@ -734,7 +740,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex flex-col gap-4">
-                  <div className="rounded-3xl border border-slate-200/80 bg-white/90 px-5 py-4 text-sm shadow-md shadow-slate-200/50 dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-200 dark:shadow-slate-900/40">
+                  <div className="rounded-2xl border border-slate-200/70 bg-white/95 px-5 py-4 text-sm shadow-sm shadow-slate-200/40 dark:border-slate-700/60 dark:bg-slate-900/75 dark:text-slate-200 dark:shadow-slate-900/40">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500/90 dark:text-slate-400">
                       {t('settings.auth.status')}
                     </div>
@@ -750,7 +756,7 @@ export default function SettingsPage() {
                     ) : null}
                   </div>
 
-                  <div className="rounded-3xl border border-blue-200/60 bg-blue-50/40 px-5 py-4 text-xs leading-relaxed text-blue-700 shadow-sm shadow-blue-200/40 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-100">
+                  <div className="rounded-2xl border border-slate-200/60 bg-slate-50/80 px-5 py-4 text-xs leading-relaxed text-slate-600 shadow-sm shadow-slate-200/40 dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300">
                     {t(
                       needsPassword
                         ? 'settings.auth.passwordHintRequired'

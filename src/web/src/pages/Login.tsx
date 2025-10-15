@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/providers/AuthProvider'
 import { Loader } from '@/components/Loader'
 import { cn } from '@/utils/cn'
-import { mutedTextClass, primaryButtonClass } from '@/styles/theme'
+import { mutedTextClass, primaryButtonClass, inputClass } from '@/styles/theme'
 
 interface LocationState {
   from?: {
@@ -55,11 +55,11 @@ export default function LoginPage() {
   }
 
   const renderBackground = (children: React.ReactNode) => (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-blue-50/80 via-white to-indigo-100/60 px-4 dark:from-slate-950/95 dark:via-slate-950 dark:to-slate-900">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-slate-100 via-white to-slate-200 px-4 dark:from-slate-950/95 dark:via-slate-950 dark:to-slate-900">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-10 top-20 h-48 w-48 rounded-full bg-blue-200/50 blur-3xl dark:bg-blue-500/20" />
-        <div className="absolute right-16 bottom-32 h-56 w-56 rounded-full bg-indigo-200/40 blur-3xl dark:bg-indigo-500/20" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,_130,_246,_0.12),_transparent_55%)]" />
+        <div className="absolute left-10 top-20 h-48 w-48 rounded-full bg-slate-200/40 blur-3xl dark:bg-slate-700/30" />
+        <div className="absolute right-16 bottom-32 h-56 w-56 rounded-full bg-slate-300/35 blur-3xl dark:bg-slate-800/30" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_55%)]" />
       </div>
       <div className="relative z-10 w-full max-w-lg">{children}</div>
     </div>
@@ -78,9 +78,9 @@ export default function LoginPage() {
   }
 
   return renderBackground(
-    <main className="rounded-3xl border border-blue-200/70 bg-white/95 px-8 pb-10 pt-9 shadow-2xl shadow-blue-200/50 backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-900/85 dark:shadow-slate-900/60">
+    <main className="rounded-3xl border border-slate-200/70 bg-white/95 px-8 pb-10 pt-9 shadow-2xl shadow-slate-200/40 backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-900/85 dark:shadow-slate-900/60">
       <header className="mb-8 flex flex-col items-center gap-3 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 text-xl font-bold text-white shadow-lg shadow-blue-500/30 dark:shadow-blue-900/40">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 text-xl font-bold text-white shadow-lg shadow-slate-400/30 dark:from-blue-500 dark:via-blue-600 dark:to-indigo-600 dark:shadow-blue-900/40">
           GW
         </div>
         <div className="space-y-1">
@@ -102,7 +102,7 @@ export default function LoginPage() {
             autoFocus
             onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))}
             placeholder={t('login.fields.usernamePlaceholder')}
-            className="h-11 rounded-2xl border border-blue-200/60 bg-blue-50/70 px-4 text-sm font-medium text-blue-900 shadow-sm shadow-blue-200/40 transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-100 dark:shadow-blue-900/30"
+            className={cn(inputClass, 'h-11 font-medium')}
           />
         </div>
         <div className="flex flex-col gap-2">
@@ -115,7 +115,7 @@ export default function LoginPage() {
             autoComplete="current-password"
             onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
             placeholder={t('login.fields.passwordPlaceholder')}
-            className="h-11 rounded-2xl border border-slate-200/70 bg-white/95 px-4 text-sm shadow-sm shadow-slate-200/40 transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40 dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-100 dark:shadow-slate-900/40"
+            className={cn(inputClass, 'h-11')}
           />
         </div>
         {(formError || error) ? (

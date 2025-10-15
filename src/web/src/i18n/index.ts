@@ -97,7 +97,12 @@ const resources = {
           providers: 'Provider 数量：{{value}}',
           todayRequests: '今日请求：{{value}}',
           active: '活动请求：{{value}}',
-          dbSize: '数据库：{{value}}'
+          dbSize: '数据库：{{value}}',
+          memory: '内存占用：{{value}}'
+        },
+        actions: {
+          compact: '释放数据库空间',
+          compacting: '整理中...'
         },
         toast: {
           overviewError: '统计数据获取失败',
@@ -105,7 +110,15 @@ const resources = {
           modelError: '模型统计获取失败',
           statusError: '状态信息获取失败',
           dbError: '数据库信息获取失败',
-          recentError: '最近请求获取失败'
+          recentError: '最近请求获取失败',
+          compactSuccess: {
+            title: '数据库整理完成',
+            desc: '空闲页已整理，建议稍后刷新确认容量。'
+          },
+          compactError: {
+            title: '数据库整理失败',
+            desc: '错误信息：{{message}}'
+          }
         },
         cards: {
           todayRequests: '今日请求数',
@@ -193,6 +206,8 @@ const resources = {
         actions: {
           manualRefresh: '手动刷新',
           refreshing: '刷新中...',
+          export: '导出日志',
+          exporting: '导出中...',
           detail: '详情'
         },
         table: {
@@ -235,6 +250,14 @@ const resources = {
           },
           providerError: {
             title: 'Provider 列表获取失败',
+            desc: '错误信息：{{message}}'
+          },
+          exportSuccess: {
+            title: '导出完成',
+            desc: '压缩日志文件已开始下载。'
+          },
+          exportError: {
+            title: '导出失败',
             desc: '错误信息：{{message}}'
           }
         },
@@ -285,6 +308,8 @@ const resources = {
             maskedUnavailable: '暂无掩码信息',
             raw: '原始密钥',
             rawUnavailable: '未记录原始密钥',
+            rawMasked: '原始密钥（已脱敏）',
+            rawMaskedHint: '出于安全考虑，仅展示部分前后缀。如需完整值，请在上游服务中重新生成。',
             missing: '未记录',
             lastUsed: '最后使用'
           },
@@ -647,47 +672,90 @@ const resources = {
       },
       help: {
         title: '使用指南',
-        intro: '本页汇总了如何通过 Web UI 完成配置与日常运维，帮助新接入者快速上手 cc-gw。',
-        note: '所有变更都会实时写入 ~/.cc-gw/config.json，并立即影响正在运行的网关；建议通过 Web UI 完成常规操作，CLI 仅用于启动/重启。',
+        intro: '完整的 cc-gw 配置和使用指南，帮助您从零开始搭建 AI 模型网关。',
+        note: '所有配置变更都会实时生效。建议通过 Web UI 进行配置管理，CLI 主要用于服务启动和重启。',
+        clientConfig: {
+          title: '客户端配置指南',
+          subtitle: '选择您的客户端工具，按照步骤进行配置'
+        },
+        advancedGuide: {
+          title: '高级使用指南',
+          subtitle: '日常使用技巧与最佳实践'
+        },
         sections: {
           configuration: {
-            title: '一、初始配置',
+            title: '🚀 基础配置流程',
             items: [
-              '在“系统设置”中确认监听地址、端口以及日志策略，并视需要开启或关闭请求/响应日志。',
-              '前往“模型管理 → 模型提供商”添加上游 Provider，填写 Base URL、API Key、默认模型等信息。',
-              '使用“测试连接”按钮验证 Provider 是否可用；如果失败，请检查网络连通性与密钥权限。',
-              '在“模型管理 → 路由配置”中为 /anthropic 与 /openai 端点指定目标模型，保存后立即生效。',
-              '在 IDE 中配置接入：Claude Code（含 VS Code 插件）统一设置 Base URL=http://127.0.0.1:4100/anthropic，客户端会自动附加 /v1/messages?beta=true；Codex 指向 http://127.0.0.1:4100/openai/v1，并使用 cc-gw 生成的 API Key。'
+              '📦 **安装并启动服务**：运行 `npm install -g @chenpu17/cc-gw && cc-gw start --daemon --port 4100`，然后访问 http://127.0.0.1:4100/ui',
+              '🔧 **配置模型提供商**：在"模型管理 → 模型提供商"中添加至少一个 Provider，配置 Base URL、API Key 和默认模型',
+              '🔑 **生成网关 API Key（可选）**：在"系统设置 → API 密钥管理"创建 API 密钥，为不同客户端创建独立密钥。默认情况下，所有请求都可以通过网关访问。'
+            ]
+          },
+          claudeCodeConfig: {
+            title: '⚡ Claude Code 配置',
+            items: [
+              '🎯 **配置环境变量**：\n```bash\nexport ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic\nexport ANTHROPIC_API_KEY=sk-ant-oat01-8HEmUDacamV1...\n```\n写入 ~/.bashrc 或 ~/.zshrc 后执行 `source ~/.bashrc` 或 `source ~/.zshrc` 让变量生效。',
+              '🔧 **插件设置配置**：\n- 在 Claude Code 插件设置中选择"自定义 API"\n- 填入 Base URL：`http://127.0.0.1:4100/anthropic`\n- 填入 API Key：使用你的实际 API Key（如 `sk-ant-oat01-8HEmUDacamV1...`）',
+              '✅ **快速验证**：\n```bash\nclaude "你好，请简短回应"\n```\n输出正常即代表配置成功，可在"请求日志"页看到对应记录。'
+            ]
+          },
+          codexConfig: {
+            title: '🛠️ Codex CLI 配置',
+            items: [
+              '📝 **编辑配置文件**：\n在 `~/.codex/config.toml` 进行配置：\n```toml\nmodel = "gpt-5-codex"\nmodel_provider = "cc_gw"\nmodel_reasoning_effort = "high"\ndisable_response_storage = true\n\n[model_providers.cc_gw]\nname = "cc_gw"\nbase_url = "http://127.0.0.1:4100/openai/v1"\nwire_api = "responses"\nenv_key = "cc_gw_key"\n```',
+              '🔑 **设置环境变量**：\n```bash\nexport cc_gw_key=sk-ant.....\n```\n写入 ~/.bashrc 或 ~/.zshrc 后执行 `source` 让变量生效。',
+              '✅ **验证配置**：\n```bash\ncodex status  # 检查连接状态\ncodex ask "你好，请介绍一下自己"  # 测试对话\ncodex chat  # 进入交互模式\n```\n输出正常即代表配置成功。'
             ]
           },
           usage: {
-            title: '二、日常使用',
+            title: '📊 日常使用指南',
             items: [
-              'Dashboard 提供实时请求量、Token、缓存命中以及 TTFT/TPOT 指标，便于了解服务运行状况。',
-              '“请求日志”支持多维度筛选，并可查看完整的请求/响应 Payload，适合排查联调问题。',
-              '“模型管理”可以快速切换默认模型或更新路由映射，适合 IDE / 自动化场景的随时切换。',
-              '“系统设置”中可调整日志保留天数、Payload 存储策略以及日志输出级别。'
+              '📈 **仪表盘监控**：实时查看请求量、Token 使用量、缓存命中率和响应时间（TTFT/TPOT）等关键指标',
+              '📋 **日志分析**：使用"请求日志"页面筛选和分析请求记录，支持按 Provider、模型、状态、时间范围等多维度过滤',
+              '🔄 **模型路由管理**：在"模型管理 → 路由配置"中设置模型映射规则，实现不同模型的智能路由',
+              '🎛️ **系统配置**：在"系统设置"中调整日志保留策略、数据存储设置和运行参数',
+              '🔐 **安全配置**：启用 Web UI 登录保护，设置用户名密码，确保管理接口安全'
             ]
           },
           tips: {
-            title: '三、实用技巧',
+            title: '💡 高级技巧与最佳实践',
             items: [
-              '开启“保存请求/响应内容”后，可在日志详情中复制原始 Payload，定位上游兼容性问题。',
-              '分别关闭“访问日志”或“响应日志”可降低终端噪声，同时仍保留数据库与统计数据。',
-              '若手动修改配置文件后 UI 未更新，可使用“系统设置”页的刷新按钮或重启 cc-gw。'
+              '📦 **环境变量管理**：推荐使用 direnv 管理环境变量，创建 .envrc 文件自动加载配置',
+              '🗃️ **数据备份**：定期备份 ~/.cc-gw/ 目录（包含配置、日志和数据库）',
+              '🧹 **日志清理**：根据需要调整日志保留天数，或使用"日志清理"功能手动清理',
+              '🔍 **问题排查**：开启"保存请求/响应内容"以便调试客户端兼容性问题',
+              '⚡ **性能优化**：关闭不必要的访问日志可降低终端输出，提升服务性能',
+              '🎯 **模型切换**：使用路由模板功能，实现不同 Provider 方案的一键切换',
+              '📊 **监控告警**：结合 Dashboard 数据设置自定义监控，及时发现异常'
             ]
           }
         },
         faq: {
-          title: '常见问题',
+          title: '❓ 常见问题解答',
           items: [
             {
-              q: '如何切换不同端点的默认模型？',
-              a: '在“模型管理 → 路由配置”中分别选择 /anthropic 与 /openai 的默认模型并保存，即可立即生效。'
+              q: '如何解决 Claude Code 连接失败问题？',
+              a: '1) 检查 cc-gw 服务状态：`cc-gw status`\n2) 验证环境变量：`echo $ANTHROPIC_BASE_URL`\n3) 确认 API Key 正确性\n4) 在"请求日志"中查看详细错误信息'
             },
             {
-              q: '为什么日志里没有缓存命中数据？',
-              a: '需要上游模型返回 cached_tokens 或 input_tokens_details.cached_tokens 字段，确认 Provider 已启用相关功能。'
+              q: '为什么没有缓存命中数据？',
+              a: '需要上游 Provider 返回 cached_tokens 或 input_tokens_details.cached_tokens 字段。确认 Provider 支持缓存功能并已正确配置。'
+            },
+            {
+              q: '如何配置多个客户端使用不同模型？',
+              a: '为每个客户端创建独立的 API Key，在"模型管理 → 路由配置"中设置不同的路由规则，或使用不同的环境变量配置。'
+            },
+            {
+              q: 'Codex CLI 如何连接到 cc-gw？',
+              a: '配置 ~/.codex/config.toml 文件，设置 model_provider 为 "cc_gw"，base_url 为 cc-gw 的 OpenAI 兼容端点，并设置相应的环境变量。'
+            },
+            {
+              q: '如何备份和迁移配置？',
+              a: '备份整个 ~/.cc-gw/ 目录，包含 config.json、数据库和日志文件。在新环境中恢复目录并重启服务即可。'
+            },
+            {
+              q: 'Web UI 显示 404 错误怎么办？',
+              a: '确认已执行 `pnpm --filter @cc-gw/web build`，或使用 npm 全局安装版本。检查服务启动日志中的静态资源路径。'
             }
           ]
         }
@@ -906,7 +974,12 @@ const resources = {
           providers: 'Providers: {{value}}',
           todayRequests: 'Requests today: {{value}}',
           active: 'Active requests: {{value}}',
-          dbSize: 'Database: {{value}}'
+          dbSize: 'Database: {{value}}',
+          memory: 'Memory usage: {{value}}'
+        },
+        actions: {
+          compact: 'Compact database',
+          compacting: 'Compacting...'
         },
         toast: {
           overviewError: 'Failed to load overview metrics',
@@ -914,7 +987,15 @@ const resources = {
           modelError: 'Failed to load model statistics',
           statusError: 'Failed to load gateway status',
           dbError: 'Failed to load database info',
-          recentError: 'Failed to load recent requests'
+          recentError: 'Failed to load recent requests',
+          compactSuccess: {
+            title: 'Database compact completed',
+            desc: 'Free pages were compacted. Refresh later to confirm size.'
+          },
+          compactError: {
+            title: 'Database compact failed',
+            desc: 'Error: {{message}}'
+          }
         },
         cards: {
           todayRequests: 'Requests Today',
@@ -1002,6 +1083,8 @@ const resources = {
         actions: {
           manualRefresh: 'Manual refresh',
           refreshing: 'Refreshing...',
+          export: 'Export logs',
+          exporting: 'Exporting...',
           detail: 'Detail'
         },
         table: {
@@ -1049,6 +1132,14 @@ const resources = {
           providerError: {
             title: 'Failed to fetch providers',
             desc: 'Error: {{message}}'
+          },
+          exportSuccess: {
+            title: 'Export ready',
+            desc: 'A compressed log archive is downloading now.'
+          },
+          exportError: {
+            title: 'Export failed',
+            desc: 'Error: {{message}}'
           }
         },
         detail: {
@@ -1094,6 +1185,8 @@ const resources = {
             maskedUnavailable: 'No mask available',
             raw: 'Raw key',
             rawUnavailable: 'Raw key not stored',
+            rawMasked: 'Raw key (masked)',
+            rawMaskedHint: 'For security, only the prefix and suffix are shown. Regenerate the key upstream if you need the full value.',
             missing: 'Not recorded',
             lastUsed: 'Last used'
           },
@@ -1458,19 +1551,41 @@ const resources = {
         title: 'Help & Guidance',
         intro: 'This page summarises how to configure cc-gw via the Web UI and how to operate it day to day.',
         note: 'Changes are written to ~/.cc-gw/config.json immediately. Prefer editing through the Web UI; use the CLI mainly to start or restart the daemon.',
+        clientConfig: {
+          title: 'Client Configuration Guide',
+          subtitle: 'Choose your client tool and follow the steps to configure'
+        },
+        advancedGuide: {
+          title: 'Advanced Usage Guide',
+          subtitle: 'Daily usage tips and best practices'
+        },
         sections: {
           configuration: {
-            title: '1. Initial setup',
+            title: '1. Initial Setup',
             items: [
-              'Review “Settings” to confirm the listening host/port and decide whether to emit request or response access logs.',
-              'Open “Model Management → Providers” to add upstream providers, including base URL, API key, and default model.',
-              'Click “Test connection” to ensure the provider is reachable. If it fails, double-check network access and API key permissions.',
-              'Configure “Model Management → Routing” for both /anthropic and /openai endpoints, then save to apply immediately.',
-              'Point your IDEs to the gateway: set `http://127.0.0.1:4100/anthropic` for both the Claude CLI and VS Code extension (they append `/v1/messages?beta=true` automatically), and target `http://127.0.0.1:4100/openai/v1` for Codex; authenticate with a cc-gw API key.'
+              'Install the service and start it with `npm install -g @chenpu17/cc-gw && cc-gw start --daemon --port 4100`, then open http://127.0.0.1:4100/ui.',
+              'Go to "Model Management → Providers" to add upstream providers including base URL, API key, and default model.',
+              'Generate Gateway API Keys (Optional): Create API keys in "System Settings → API Keys" for different clients. By default, all requests can pass through the gateway.'
+            ]
+          },
+          claudeCodeConfig: {
+            title: '2. Claude Code Configuration',
+            items: [
+              'Configure environment variables:\n```bash\nexport ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic\nexport ANTHROPIC_API_KEY=sk-ant-oat01-8HEmUDacamV1...\n```\nAdd them to ~/.bashrc or ~/.zshrc and run `source ~/.bashrc` or `source ~/.zshrc` to apply.',
+              'Plugin setup:\n- In Claude Code plugin settings, select "Custom API"\n- Base URL: `http://127.0.0.1:4100/anthropic`\n- API Key: Use your actual API key (e.g., `sk-ant-oat01-8HEmUDacamV1...`)',
+              'Quick verification:\n```bash\nclaude "Hello, please respond briefly"\n```\nSuccessful response indicates proper configuration. Check the "Request Logs" page to see the request.'
+            ]
+          },
+          codexConfig: {
+            title: '3. Codex CLI Configuration',
+            items: [
+              'Edit configuration file in `~/.codex/config.toml`:\n```toml\nmodel = "gpt-5-codex"\nmodel_provider = "cc_gw"\nmodel_reasoning_effort = "high"\ndisable_response_storage = true\n\n[model_providers.cc_gw]\nname = "cc_gw"\nbase_url = "http://127.0.0.1:4100/openai/v1"\nwire_api = "responses"\nenv_key = "cc_gw_key"\n```',
+              'Set environment variable:\n```bash\nexport cc_gw_key=sk-ant.....\n```\nAdd to ~/.bashrc or ~/.zshrc and run `source` to apply.',
+              'Verify configuration:\n```bash\ncodex status  # Check connection status\ncodex ask "Hello, please introduce yourself"  # Test conversation\ncodex chat  # Enter interactive mode\n```\nSuccessful responses indicate proper setup.'
             ]
           },
           usage: {
-            title: '2. Daily usage',
+            title: '4. Daily Usage',
             items: [
               'Use the dashboard to keep an eye on request volume, token usage, cache hits, and TTFT/TPOT trends.',
               '“Request Logs” provides rich filters plus full payload replay for debugging client/provider compatibility issues.',
@@ -1479,7 +1594,7 @@ const resources = {
             ]
           },
           tips: {
-            title: '3. Practical tips',
+            title: '5. Practical Tips',
             items: [
               'Enable “Store request/response bodies” to copy raw payloads from the log drawer when troubleshooting.',
               'Turn off request or response logs individually to keep the console quiet while preserving metrics and database records.',

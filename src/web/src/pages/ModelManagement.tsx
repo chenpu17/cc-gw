@@ -110,10 +110,6 @@ export default function ModelManagementPage() {
   const [savingPreset, setSavingPreset] = useState(false)
   const [applyingPreset, setApplyingPreset] = useState<string | null>(null)
   const [deletingPreset, setDeletingPreset] = useState<string | null>(null)
-  const [quickAddOpen, setQuickAddOpen] = useState(false)
-  const [quickAddApiKey, setQuickAddApiKey] = useState('')
-  const [quickAddError, setQuickAddError] = useState<string | null>(null)
-  const [quickAddLoading, setQuickAddLoading] = useState(false)
   const [testDialogOpen, setTestDialogOpen] = useState(false)
   const [testDialogProvider, setTestDialogProvider] = useState<ProviderConfig | null>(null)
   const [testDialogUsePreset, setTestDialogUsePreset] = useState(true)
@@ -442,86 +438,11 @@ export default function ModelManagementPage() {
     setDrawerOpen(true)
   }
 
-  const handleOpenQuickAdd = () => {
-    if (!ensureConfig()) return
-    setQuickAddApiKey('')
-    setQuickAddError(null)
-    setQuickAddOpen(true)
-  }
-
   const handleOpenEdit = (provider: ProviderConfig) => {
     if (!ensureConfig()) return
     setDrawerMode('edit')
     setEditingProvider(provider)
     setDrawerOpen(true)
-  }
-
-  const handleQuickAddHuawei = async () => {
-    if (!config) {
-      pushToast({ title: t('settings.toast.missingConfig'), variant: 'error' })
-      return
-    }
-
-    const apiKey = quickAddApiKey.trim()
-    if (!apiKey) {
-      setQuickAddError(t('providers.quickAddHuawei.validation.apiKey'))
-      return
-    }
-
-    const baseId = 'huawei-cloud'
-    const providerId = ensureUniqueProviderId(baseId)
-
-    const providerPayload: ProviderConfig = {
-      id: providerId,
-      label: t('providers.quickAddHuawei.providerLabel'),
-      baseUrl: 'https://api.modelarts-maas.com/v1',
-      apiKey,
-      type: 'huawei',
-      defaultModel: 'deepseek-v3.1',
-      models: [
-        {
-          id: 'deepseek-v3.1',
-          label: 'DeepSeek V3.1'
-        },
-        {
-          id: 'KIMI-K2',
-          label: 'KIMI-K2'
-        },
-        {
-          id: 'qwen3-235b-a22b',
-          label: 'Qwen3 235B A22B'
-        }
-      ]
-    }
-
-    const nextConfig: GatewayConfig = {
-      ...config,
-      providers: [...config.providers, providerPayload]
-    }
-
-    try {
-      setQuickAddLoading(true)
-      await apiClient.put('/api/config', nextConfig)
-      setConfig(nextConfig)
-      setRoutesByEndpoint(deriveRoutesFromConfig(nextConfig))
-      setQuickAddOpen(false)
-      pushToast({
-        title: t('providers.quickAddHuawei.toast.success'),
-        description: t('providers.quickAddHuawei.toast.added', {
-          name: providerPayload.label || providerPayload.id
-        }),
-        variant: 'success'
-      })
-      void configQuery.refetch()
-    } catch (error) {
-      setQuickAddError(
-        error instanceof Error
-          ? error.message
-          : t('providers.quickAddHuawei.toast.failure')
-      )
-    } finally {
-      setQuickAddLoading(false)
-    }
   }
 
   const handleSubmit = async (payload: ProviderConfig) => {
@@ -877,13 +798,6 @@ export default function ModelManagementPage() {
             disabled={configQuery.isFetching}
           >
             {configQuery.isFetching ? t('common.actions.refreshing') : t('providers.actions.refresh')}
-          </button>
-          <button
-            type="button"
-            className={subtleButtonClass}
-            onClick={handleOpenQuickAdd}
-          >
-            {t('providers.quickAddHuawei.button')}
           </button>
           <button
             type="button"
@@ -1342,22 +1256,6 @@ export default function ModelManagementPage() {
         onSubmit={handleSubmit}
       />
 
-      <QuickAddHuaweiDialog
-        open={quickAddOpen}
-        apiKey={quickAddApiKey}
-        onApiKeyChange={(value) => {
-          setQuickAddApiKey(value)
-          if (quickAddError) setQuickAddError(null)
-        }}
-        loading={quickAddLoading}
-        error={quickAddError}
-        onClose={() => {
-          if (quickAddLoading) return
-          setQuickAddOpen(false)
-          setQuickAddError(null)
-        }}
-        onSubmit={handleQuickAddHuawei}
-      />
       <TestConnectionDialog
         open={testDialogOpen}
         provider={testDialogProvider}
@@ -1371,113 +1269,6 @@ export default function ModelManagementPage() {
     </div>
   )
 }
-
-function QuickAddHuaweiDialog({
-  open,
-  apiKey,
-  onApiKeyChange,
-  loading,
-  error,
-  onClose,
-  onSubmit
-}: {
-  open: boolean
-  apiKey: string
-  onApiKeyChange: (value: string) => void
-  loading: boolean
-  error: string | null
-  onClose: () => void
-  onSubmit: () => void
-}) {
-  const { t } = useTranslation()
-
-  if (!open) return null
-
-  return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in">
-      <div className="flex-1 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="quick-add-huawei"
-        className="flex h-full w-full max-w-md flex-col border-l border-slate-200/50 bg-gradient-to-b from-white/95 to-white/90 shadow-2xl backdrop-blur-xl animate-slide-up dark:border-slate-800/50 dark:from-slate-950/95 dark:to-slate-950/90"
-      >
-        <header className="flex items-center justify-between border-b border-slate-200/50 px-6 py-5 dark:border-slate-800/50">
-          <div className="flex flex-col gap-2">
-            <h2 id="quick-add-huawei" className="text-xl font-bold text-slate-800 dark:text-slate-100">
-              {t('providers.quickAddHuawei.title')}
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              {t('providers.quickAddHuawei.description')}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className={subtleButtonClass}
-            disabled={loading}
-          >
-            {t('common.actions.close')}
-          </button>
-        </header>
-        <div className="flex flex-1 flex-col gap-6 px-6 py-6">
-          <div className="space-y-3">
-            <label className="flex flex-col gap-2">
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">
-                {t('providers.quickAddHuawei.apiKeyLabel')}
-              </span>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(event) => onApiKeyChange(event.target.value)}
-                placeholder={t('providers.quickAddHuawei.apiKeyPlaceholder')}
-                className={inputClass}
-                disabled={loading}
-              />
-            </label>
-            <div className="rounded-xl border border-blue-200/50 bg-blue-50/80 p-4 text-sm text-blue-700 dark:border-blue-800/50 dark:bg-blue-900/40 dark:text-blue-300 backdrop-blur-sm">
-              <div className="flex items-start gap-2">
-                <svg className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm">{t('providers.quickAddHuawei.note')}</p>
-              </div>
-            </div>
-            {error ? (
-              <div className="rounded-xl bg-red-50/80 border border-red-200/50 p-4 text-sm text-red-700 dark:bg-red-900/40 dark:border-red-800/50 dark:text-red-300 backdrop-blur-sm">
-                <div className="flex items-start gap-2">
-                  <svg className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-sm">{error}</p>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <footer className="flex items-center justify-end gap-3 border-t border-slate-200/50 px-6 py-5 dark:border-slate-800/50">
-          <button
-            type="button"
-            onClick={onClose}
-            className={subtleButtonClass}
-            disabled={loading}
-          >
-            {t('common.actions.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={onSubmit}
-            className={primaryButtonClass}
-            disabled={loading}
-          >
-            {loading ? t('common.actions.saving') : t('providers.quickAddHuawei.submit')}
-          </button>
-        </footer>
-      </aside>
-    </div>
-  )
-}
-
 
 function TestConnectionDialog({
   open,

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/utils/cn'
-import { mutedTextClass, sectionTitleClass, surfaceCardClass } from '@/styles/theme'
+import { mutedTextClass, sectionTitleClass, surfaceCardClass, plainSurfaceCardClass } from '@/styles/theme'
 
 interface PageSectionProps {
   title?: ReactNode
@@ -9,6 +9,8 @@ interface PageSectionProps {
   className?: string
   contentClassName?: string
   children: ReactNode
+  disableAnimation?: boolean
+  variant?: 'default' | 'plain'
 }
 
 export function PageSection({
@@ -17,10 +19,14 @@ export function PageSection({
   actions,
   className,
   contentClassName,
-  children
+  children,
+  disableAnimation,
+  variant = 'default'
 }: PageSectionProps) {
+  const baseClass = variant === 'plain' ? plainSurfaceCardClass : surfaceCardClass
+
   return (
-    <section className={cn(surfaceCardClass, 'animate-slide-up', className)}>
+    <section className={cn(baseClass, !disableAnimation && 'animate-slide-up', className)}>
       {(title || description || actions) && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-6">
           <div className="space-y-3">

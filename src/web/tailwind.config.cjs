@@ -5,7 +5,12 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Inter"', 'ui-sans-serif', 'system-ui']
+        sans: ['"Inter"', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont']
+      },
+      screens: {
+        'xs': '475px',
+        '3xl': '1600px',
+        '4xl': '1920px'
       },
       colors: {
         primary: {
@@ -69,7 +74,30 @@ module.exports = {
       spacing: {
         '18': '4.5rem',
         '88': '22rem',
-        '128': '32rem'
+        '128': '32rem',
+        'px': '1px',
+        '0.5': '0.125rem',
+        '1.5': '0.375rem'
+      },
+      maxWidth: {
+        '4xl': '56rem',
+        '5xl': '64rem',
+        '6xl': '72rem',
+        '7xl': '80rem',
+        '8xl': '88rem'
+      },
+      typography: {
+        DEFAULT: {
+          css: {
+            maxWidth: 'none',
+            color: 'inherit',
+            a: {
+              color: 'inherit',
+              textDecoration: 'underline',
+              fontWeight: '500'
+            }
+          }
+        }
       }
     }
   },

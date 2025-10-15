@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import JSZip from 'jszip'
 import { normalizeClaudePayload } from '../protocol/normalize.js'
 import { buildProviderBody, buildAnthropicBody } from '../protocol/toProvider.js'
 import { getConnector } from '../providers/registry.js'
@@ -14,9 +15,15 @@ import {
   getModelUsageMetrics,
   getApiKeyOverviewMetrics,
   getApiKeyUsageMetrics,
-  queryLogs
+  queryLogs,
+  exportLogs,
+  type LogListOptions
 } from '../logging/queries.js'
-import { getOne } from '../storage/index.js'
+import {
+  compactDatabase,
+  getDatabaseFileStats,
+  getDatabasePageStats
+} from '../storage/index.js'
 import { getActiveRequestCount } from '../metrics/activity.js'
 import {
   listApiKeys,
@@ -35,19 +42,120 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     app.log.warn({ error }, '[api-keys] failed to ensure wildcard metadata')
   }
 
+  const maskApiKeyValue = (value: string | null | undefined): string | null => {
+    if (!value) return null
+    const trimmed = value.trim()
+    if (trimmed.length === 0) return null
+    if (trimmed.length <= 4) {
+      return `${trimmed.slice(0, 1)}***`
+    }
+    if (trimmed.length <= 8) {
+      const prefix = trimmed.slice(0, 2)
+      const suffix = trimmed.slice(-2)
+      return `${prefix}****${suffix}`
+    }
+    const prefix = trimmed.slice(0, 4)
+    const suffix = trimmed.slice(-4)
+    return `${prefix}****${suffix}`
+  }
+
   const mapLogRecord = (record: any, options?: { includeKeyValue?: boolean; decryptedKey?: string | null }) => {
     const base: any = {
       ...record,
       stream: Boolean(record?.stream)
     }
 
-    if (options?.includeKeyValue) {
-      base.api_key_value = options.decryptedKey ?? record?.api_key_value ?? null
-    } else {
+    if ('api_key_value' in base) {
       delete base.api_key_value
     }
 
+    const masked = maskApiKeyValue(options?.decryptedKey ?? record?.api_key_value ?? null)
+    if (masked) {
+      base.api_key_value_masked = masked
+    }
+    base.api_key_value_available = Boolean(masked)
+
     return base
+  }
+
+  const parseTimestamp = (value: unknown): number | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+    if (typeof value === 'string' && value.length > 0) {
+      const numeric = Number(value)
+      if (Number.isFinite(numeric)) {
+        return numeric
+      }
+      const parsed = Date.parse(value)
+      if (Number.isFinite(parsed)) {
+        return parsed
+      }
+    }
+    return undefined
+  }
+
+  const parseApiKeyIds = (value: unknown): number[] => {
+    if (!value) return []
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => parseApiKeyIds(item))
+    }
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((part) => Number(part.trim()))
+        .filter((num) => Number.isFinite(num))
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return [value]
+    }
+    return []
+  }
+
+  const buildLogOptions = (
+    raw: Record<string, unknown>,
+    config?: { defaultLimit?: number; maxLimit?: number; includeOffset?: boolean }
+  ): { limit: number; offset?: number; filters: LogListOptions } => {
+    const defaultLimit = config?.defaultLimit ?? 50
+    const maxLimit = config?.maxLimit ?? 200
+    const includeOffset = config?.includeOffset ?? true
+
+    const limitRaw = Number(raw.limit ?? defaultLimit)
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), maxLimit)
+      : defaultLimit
+
+    let offset: number | undefined
+    if (includeOffset) {
+      const offsetRaw = Number(raw.offset ?? 0)
+      offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0
+    }
+
+    const provider = typeof raw.provider === 'string' && raw.provider.length > 0 ? raw.provider : undefined
+    const model = typeof raw.model === 'string' && raw.model.length > 0 ? raw.model : undefined
+    const statusParam = typeof raw.status === 'string' ? raw.status : undefined
+    const status = statusParam === 'success' || statusParam === 'error' ? statusParam : undefined
+    const endpoint = isEndpoint(raw.endpoint) ? (raw.endpoint as GatewayEndpoint) : undefined
+    const from = parseTimestamp(raw.from)
+    const to = parseTimestamp(raw.to)
+    const apiKeyIdsRaw = parseApiKeyIds(raw.apiKeys ?? raw.apiKeyIds ?? raw.apiKey)
+    const apiKeyIds = apiKeyIdsRaw.length > 0 ? Array.from(new Set(apiKeyIdsRaw)) : undefined
+
+    const filters: LogListOptions = {
+      provider,
+      model,
+      status,
+      from,
+      to,
+      apiKeyIds,
+      endpoint
+    }
+
+    return {
+      limit,
+      offset,
+      filters
+    }
   }
   app.get('/api/status', async () => {
     const config = getConfig()
@@ -185,7 +293,24 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       reply.code(400)
       return { error: 'Invalid config payload' }
     }
-    updateConfig(body)
+    const current = getConfig()
+    const hasWebAuthField = Object.prototype.hasOwnProperty.call(body, 'webAuth')
+    const nextWebAuth = hasWebAuthField
+      ? (body.webAuth
+        ? {
+            ...current.webAuth,
+            ...body.webAuth
+          }
+        : undefined)
+      : current.webAuth
+
+    const nextConfig: GatewayConfig = {
+      ...current,
+      ...body,
+      webAuth: nextWebAuth
+    }
+
+    updateConfig(nextConfig)
     return { success: true }
   })
 
@@ -576,49 +701,46 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.get('/api/logs', async (request, reply) => {
-    const query = (request.query ?? {}) as Record<string, string>
-    const limitRaw = Number(query.limit ?? 50)
-    const offsetRaw = Number(query.offset ?? 0)
-    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50
-    const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0
-
-    const provider = typeof query.provider === 'string' && query.provider.length > 0 ? query.provider : undefined
-    const model = typeof query.model === 'string' && query.model.length > 0 ? query.model : undefined
-    const statusParam = typeof query.status === 'string' ? query.status : undefined
-    const status = statusParam === 'success' || statusParam === 'error' ? statusParam : undefined
-    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
-
-    const parseTime = (value: string | undefined) => {
-      if (!value) return undefined
-      const numeric = Number(value)
-      if (Number.isFinite(numeric)) return numeric
-      const parsed = Date.parse(value)
-      return Number.isFinite(parsed) ? parsed : undefined
-    }
-
-    const from = parseTime(query.from)
-    const to = parseTime(query.to)
-
-    const collectApiKeyIds = (value: unknown): number[] => {
-      if (!value) return []
-      if (Array.isArray(value)) {
-        return value.flatMap((item) => collectApiKeyIds(item))
-      }
-      if (typeof value === 'string') {
-        return value
-          .split(',')
-          .map((part) => Number(part.trim()))
-          .filter((num) => Number.isFinite(num))
-      }
-      return []
-    }
-
-    const apiKeyIdsRaw = collectApiKeyIds(query.apiKeys ?? query.apiKeyIds ?? query.apiKey)
-    const apiKeyIds = apiKeyIdsRaw.length > 0 ? Array.from(new Set(apiKeyIdsRaw)) : undefined
-
-    const { items, total } = await queryLogs({ limit, offset, provider, model, status, from, to, apiKeyIds, endpoint })
+    const query = (request.query ?? {}) as Record<string, unknown>
+    const { limit, offset, filters } = buildLogOptions(query)
+    const { items, total } = await queryLogs({ ...filters, limit, offset })
     reply.header('x-total-count', String(total))
     return { total, items: items.map((item) => mapLogRecord(item)) }
+  })
+
+  app.post('/api/logs/export', async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>
+    const { limit, filters } = buildLogOptions(body, { defaultLimit: 1000, maxLimit: 5000, includeOffset: false })
+    const records = await exportLogs({ ...filters, limit })
+    const filtersForExport = Object.fromEntries(
+      Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== '')
+    )
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      count: records.length,
+      limit,
+      filters: filtersForExport,
+      records: records.map((record) => ({
+        ...mapLogRecord(record, { includeKeyValue: true }),
+        payload: record.payload
+      }))
+    }
+
+    const filename = `cc-gw-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`
+    const zip = new JSZip()
+    zip.file('logs.json', JSON.stringify(payload, null, 2))
+
+    const buffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 9 }
+    })
+
+    reply.header('Content-Type', 'application/zip')
+    reply.header('Content-Disposition', `attachment; filename="${filename}"`)
+
+    return reply.send(buffer)
   })
 
   app.get('/api/logs/:id', async (request, reply) => {
@@ -651,14 +773,32 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.get('/api/db/info', async () => {
-    const pageCountRow = await getOne<{ page_count: number }>('PRAGMA page_count')
-    const pageSizeRow = await getOne<{ page_size: number }>('PRAGMA page_size')
-    const pageCount = pageCountRow?.page_count ?? 0
-    const pageSize = pageSizeRow?.page_size ?? 0
+    const [pageStats, fileStats] = await Promise.all([getDatabasePageStats(), getDatabaseFileStats()])
+    const memory = process.memoryUsage()
+    const sizeBytes = pageStats.pageCount * pageStats.pageSize
     return {
-      pageCount,
-      pageSize,
-      sizeBytes: pageCount * pageSize
+      pageCount: pageStats.pageCount,
+      pageSize: pageStats.pageSize,
+      freelistPages: pageStats.freelistPages,
+      sizeBytes,
+      fileSizeBytes: fileStats.mainBytes,
+      walSizeBytes: fileStats.walBytes,
+      totalBytes: fileStats.totalBytes,
+      memoryRssBytes: memory.rss,
+      memoryHeapBytes: memory.heapUsed,
+      memoryExternalBytes: memory.external ?? 0
+    }
+  })
+
+  app.post('/api/db/compact', async () => {
+    const result = await compactDatabase()
+    const pageStats = await getDatabasePageStats()
+    return {
+      success: true,
+      ...result,
+      pageCount: pageStats.pageCount,
+      freelistPages: pageStats.freelistPages,
+      sizeBytes: pageStats.pageCount * pageStats.pageSize
     }
   })
 

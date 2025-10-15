@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebUI 优化效果展示</title>
+    <style>
+        body {
+            font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 50%, #e0e7ff 100%);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .demo-section {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+            transition: all 0.3s ease;
+        }
+
+        .demo-section:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 50px rgba(31, 38, 135, 0.2);
+        }
+
+        .grid {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        .responsive-text {
+            font-size: clamp(14px, 2vw, 18px);
+        }
+
+        .card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            border-radius: 16px;
+            padding: 20px;
+            backdrop-filter: blur(8px);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-height: 44px;
+            min-width: 44px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(16, 185, 129, 0.1);
+            color: #059669;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .status-indicator::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        @media (max-width: 640px) {
+            body {
+                font-size: 14px;
+            }
+            .demo-section {
+                padding: 16px;
+                margin-bottom: 16px;
+            }
+            .grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+        }
+
+        @media (min-width: 1921px) {
+            body {
+                font-size: 18px;
+            }
+            .container {
+                max-width: 1400px;
+            }
+        }
+
+        @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+            .fine-detail {
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }
+        }
+
+        .gpu-accelerated {
+            will-change: transform;
+            transform: translateZ(0);
+            backface-visibility: hidden;
+            perspective: 1000px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header style="text-align: center; margin-bottom: 40px;">
+            <h1 style="font-size: clamp(24px, 4vw, 48px); margin-bottom: 16px; background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                WebUI 优化效果展示
+            </h1>
+            <p class="responsive-text" style="color: #64748b;">
+                展示响应式设计、高分辨率适配和视觉效果优化
+            </p>
+        </header>
+
+        <div class="grid">
+            <div class="demo-section gpu-accelerated">
+                <h2 style="color: #1e293b; margin-bottom: 16px;">📱 响应式设计</h2>
+                <p class="responsive-text" style="margin-bottom: 16px;">
+                    优化了不同屏幕尺寸下的显示效果，从手机到大屏显示器都能完美适配。
+                </p>
+                <div class="card" style="margin-bottom: 16px;">
+                    <h3 style="color: #475569; margin-bottom: 8px;">特性：</h3>
+                    <ul style="color: #64748b; padding-left: 20px;">
+                        <li>自适应网格布局</li>
+                        <li>响应式文本大小</li>
+                        <li>移动端优化触摸体验</li>
+                        <li>灵活的间距系统</li>
+                    </ul>
+                </div>
+                <button class="btn">测试按钮</button>
+            </div>
+
+            <div class="demo-section gpu-accelerated">
+                <h2 style="color: #1e293b; margin-bottom: 16px;">🎨 视觉效果优化</h2>
+                <p class="responsive-text" style="margin-bottom: 16px;">
+                    采用现代玻璃态设计，增强视觉层次感和交互体验。
+                </p>
+                <div class="card" style="margin-bottom: 16px;">
+                    <h3 style="color: #475569; margin-bottom: 8px;">改进：</h3>
+                    <ul style="color: #64748b; padding-left: 20px;">
+                        <li>玻璃态背景效果</li>
+                        <li>GPU加速动画</li>
+                        <li>优化字体渲染</li>
+                        <li>平滑过渡效果</li>
+                    </ul>
+                </div>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <span class="status-indicator">运行正常</span>
+                    <button class="btn">交互测试</button>
+                </div>
+            </div>
+
+            <div class="demo-section gpu-accelerated">
+                <h2 style="color: #1e293b; margin-bottom: 16px;">🖥️ 分辨率适配</h2>
+                <p class="responsive-text" style="margin-bottom: 16px;">
+                    针对不同分辨率设备进行了特别优化，确保清晰度和可读性。
+                </p>
+                <div class="card" style="margin-bottom: 16px;">
+                    <h3 style="color: #475569; margin-bottom: 8px;">支持：</h3>
+                    <ul style="color: #64748b; padding-left: 20px;">
+                        <li>高DPI屏幕优化</li>
+                        <li>超宽屏适配</li>
+                        <li>动态字体大小</li>
+                        <li>图像渲染优化</li>
+                    </ul>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button class="btn">高清模式</button>
+                    <button class="btn">自动适配</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-section gpu-accelerated fine-detail">
+            <h2 style="color: #1e293b; margin-bottom: 16px;">🚀 性能优化</h2>
+            <div class="grid">
+                <div class="card">
+                    <h3 style="color: #475569; margin-bottom: 8px;">动画性能</h3>
+                    <p class="responsive-text" style="color: #64748b;">
+                        使用GPU加速和transform优化，确保60fps流畅动画体验。
+                    </p>
+                </div>
+                <div class="card">
+                    <h3 style="color: #475569; margin-bottom: 8px;">加载优化</h3>
+                    <p class="responsive-text" style="color: #64748b;">
+                        优化CSS和JavaScript打包大小，减少首屏加载时间。
+                    </p>
+                </div>
+                <div class="card">
+                    <h3 style="color: #475569; margin-bottom: 8px;">内存管理</h3>
+                    <p class="responsive-text" style="color: #64748b;">
+                        使用will-change等现代CSS属性，优化内存使用和渲染性能。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-section gpu-accelerated">
+            <h2 style="color: #1e293b; margin-bottom: 16px;">📊 交互体验</h2>
+            <p class="responsive-text" style="margin-bottom: 20px;">
+                所有交互元素都经过精心设计，提供即时的视觉反馈和流畅的用户体验。
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <button class="btn">主要操作</button>
+                <button class="btn" style="background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); color: #374151;">次要操作</button>
+                <button class="btn" style="background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); color: #dc2626;">危险操作</button>
+            </div>
+        </div>
+
+        <footer style="text-align: center; margin-top: 40px; padding: 20px; color: #64748b;">
+            <p>✨ WebUI优化完成 - 支持各种设备和分辨率的精致用户界面</p>
+            <p style="font-size: 0.9em; margin-top: 8px;">
+                请调整浏览器窗口大小或使用不同设备查看响应式效果
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // 添加交互效果
+        document.querySelectorAll('.btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                this.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 150);
+            });
+        });
+
+        // 检测设备类型并显示提示
+        function detectDevice() {
+            const width = window.innerWidth;
+            let deviceType = '桌面设备';
+
+            if (width <= 768) {
+                deviceType = '移动设备';
+            } else if (width <= 1024) {
+                deviceType = '平板设备';
+            } else if (width >= 1920) {
+                deviceType = '大屏设备';
+            }
+
+            console.log(`当前设备: ${deviceType} (${width}px)`);
+        }
+
+        detectDevice();
+        window.addEventListener('resize', detectDevice);
+
+        // 检测高DPI屏幕
+        if (window.matchMedia('(-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi)').matches) {
+            console.log('检测到高DPI屏幕，已启用字体渲染优化');
+        }
+    </script>
+</body>
+</html>
