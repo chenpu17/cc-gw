@@ -159,6 +159,18 @@ export default function LogsPage() {
     }
   }, [totalPages, page])
 
+  // Safari 滚动修复
+  useEffect(() => {
+    const tableContainer = document.querySelector('.table-container')
+    if (tableContainer) {
+      // 强制 Safari 重新计算滚动区域
+      tableContainer.style.overflow = 'hidden'
+      setTimeout(() => {
+        tableContainer.style.overflow = 'auto'
+      }, 10)
+    }
+  }, [items])
+
   const providerOptions = providersQuery.data ?? []
   const providerLabelMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -245,13 +257,14 @@ export default function LogsPage() {
   }, [])
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8" style={{width: '100%', maxWidth: '100%', overflow: 'hidden'}}>
       <PageHeader
         icon={<FileText className="h-6 w-6" aria-hidden="true" />}
         title={t('logs.title')}
         description={t('logs.description')}
         disableAnimation
         variant="plain"
+        className="max-w-full"
         actions={
           <div className="flex flex-wrap items-center gap-3 text-sm" aria-live="polite">
             <Button
@@ -296,6 +309,7 @@ export default function LogsPage() {
         }
         disableAnimation
         variant="plain"
+        className="max-w-full"
         contentClassName="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-4"
       >
         <FormField label={t('logs.filters.provider')}>
@@ -365,56 +379,77 @@ export default function LogsPage() {
         </FormField>
       </PageSection>
 
-      <PageSection disableAnimation variant="plain" className="p-0" contentClassName="gap-0 overflow-hidden">
-        <div className="overflow-x-auto w-full">
-          <table className="min-w-full divide-y divide-slate-200/70 text-sm dark:divide-slate-700/60">
-            <caption className="sr-only">{t('logs.title')}</caption>
-            <thead className="bg-slate-100/70 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+      <PageSection disableAnimation variant="plain" className="p-0 max-w-full" contentClassName="gap-0">
+        <div className="w-full rounded-lg border border-slate-200 dark:border-slate-700">
+          <div className="table-container" style={{overflowX: 'auto', overflowY: 'hidden', width: '100%'}}>
+            <div style={{width: '1270px', minWidth: '1270px'}}>
+              <table className="divide-y divide-slate-200 dark:divide-slate-700" style={{width: '100%', tableLayout: 'fixed'}}>
+              <colgroup>
+                <col style={{width: '140px'}} />
+                <col style={{width: '80px'}} />
+                <col style={{width: '120px'}} />
+                <col style={{width: '130px'}} />
+                <col style={{width: '130px'}} />
+                <col style={{width: '100px'}} />
+                <col style={{width: '70px'}} />
+                <col style={{width: '70px'}} />
+                <col style={{width: '70px'}} />
+                <col style={{width: '70px'}} />
+                <col style={{width: '70px'}} />
+                <col style={{width: '80px'}} />
+                <col style={{width: '90px'}} />
+                <col style={{width: '120px'}} />
+                <col style={{width: '120px'}} />
+              </colgroup>
+              <caption className="sr-only">{t('logs.title')}</caption>
+              <thead className="bg-gradient-to-b from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-800/60 text-left font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b-2 border-slate-200 dark:border-slate-700" style={{fontSize: '10px'}}>
               <tr>
-                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.time')}</th>
-                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.endpoint')}</th>
-                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.provider')}</th>
-                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.requestedModel')}</th>
-                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.routedModel')}</th>
-                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.apiKey')}</th>
-                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.inputTokens')}</th>
-                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.cachedTokens')}</th>
-                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.outputTokens')}</th>
-                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.stream')}</th>
-                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.latency')}</th>
-                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.ttft')}</th>
-                <th className="px-5 py-3 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.tpot')}</th>
-                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.status')}</th>
-                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.error')}</th>
-                <th className="px-5 py-3 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.actions')}</th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.time')}</th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.endpoint')}</th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.provider')}</th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.requestedModel')}</th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.routedModel')}</th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.apiKey')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.inputTokens')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.cachedTokens')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.outputTokens')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.latency')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.ttft')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.tpot')}</th>
+                <th className="px-3 py-2 text-center font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.status')}</th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.error')}</th>
+                <th className="px-3 py-2 text-center font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.actions')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
+            <tbody className="divide-y divide-slate-200/80 bg-white dark:divide-slate-700/80 dark:bg-slate-900">
               {logsQuery.isPending ? (
                 <tr>
-                  <td colSpan={16} className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-500">
+                  <td colSpan={15} className="px-3 py-8 text-center text-xs text-slate-400 dark:text-slate-500">
                     {t('logs.table.loading')}
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={16} className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-500">
+                  <td colSpan={15} className="px-3 py-8 text-center text-xs text-slate-400 dark:text-slate-500">
                     {t('logs.table.empty')}
                   </td>
                 </tr>
               ) : (
-                items.map((item) => (
+                items.map((item, index) => (
                   <LogRow
                     key={item.id}
                     record={item}
                     providerLabelMap={providerLabelMap}
                     apiKeyMap={apiKeyMap}
                     onSelect={handleOpenDetail}
+                    isEven={index % 2 === 0}
                   />
                 ))
               )}
             </tbody>
           </table>
+            </div>
+          </div>
         </div>
         <div className={paginationContainerClass}>
           <div className="flex items-center gap-2">
@@ -475,12 +510,14 @@ function LogRow({
   record,
   providerLabelMap,
   apiKeyMap,
-  onSelect
+  onSelect,
+  isEven
 }: {
   record: LogRecord
   providerLabelMap: Map<string, string>
   apiKeyMap: Map<number, ApiKeySummary>
   onSelect: (id: number) => void
+  isEven: boolean
 }) {
   const { t } = useTranslation()
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
@@ -506,58 +543,64 @@ function LogRow({
   })()
 
   return (
-    <tr className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-      <td className="px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-100">
+    <tr className={cn(
+      "transition-colors duration-150",
+      isEven ? "bg-slate-50/30 dark:bg-slate-800/20" : "bg-white dark:bg-slate-900",
+      "hover:bg-blue-50/50 dark:hover:bg-blue-900/20"
+    )}>
+      <td className="px-3 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-100 whitespace-nowrap">
         {formatDateTime(record.timestamp)}
       </td>
-      <td className="px-5 py-3 text-sm text-slate-700 dark:text-slate-100">{endpointLabel}</td>
-      <td className="px-5 py-3 text-sm text-slate-700 dark:text-slate-100">{providerLabel}</td>
-      <td className="px-5 py-3 text-sm text-slate-600 dark:text-slate-200">{requestedModel}</td>
-      <td className="px-5 py-3 text-sm text-slate-700 dark:text-slate-100">{record.model}</td>
-      <td className="px-5 py-3">
-        <span className={cn(mutedTextClass, 'block truncate text-sm')} title={apiKeyLabel}>
-          {apiKeyLabel}
-        </span>
+      <td className="px-3 py-2.5 text-xs text-slate-700 dark:text-slate-100 whitespace-nowrap">{endpointLabel}</td>
+      <td className="px-3 py-2.5 text-xs text-slate-700 dark:text-slate-100">
+        <div className="truncate" title={providerLabel}>{providerLabel}</div>
       </td>
-      <td className="px-5 py-3 text-right text-sm font-medium text-slate-700 dark:text-slate-100">
+      <td className="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-200">
+        <div className="truncate" title={requestedModel}>{requestedModel}</div>
+      </td>
+      <td className="px-3 py-2.5 text-xs text-slate-700 dark:text-slate-100">
+        <div className="truncate" title={record.model}>{record.model}</div>
+      </td>
+      <td className="px-3 py-2.5">
+        <div className={cn(mutedTextClass, 'truncate text-xs')} title={apiKeyLabel}>
+          {apiKeyLabel}
+        </div>
+      </td>
+      <td className="px-3 py-2.5 text-right text-xs font-medium text-slate-700 dark:text-slate-100 tabular-nums">
         {formatNumber(record.input_tokens)}
       </td>
-      <td className="px-5 py-3 text-right text-sm font-medium text-slate-700 dark:text-slate-100">
+      <td className="px-3 py-2.5 text-right text-xs font-medium text-slate-700 dark:text-slate-100 tabular-nums">
         {formatNumber(record.cached_tokens)}
       </td>
-      <td className="px-5 py-3 text-right text-sm font-medium text-slate-700 dark:text-slate-100">
+      <td className="px-3 py-2.5 text-right text-xs font-medium text-slate-700 dark:text-slate-100 tabular-nums">
         {formatNumber(record.output_tokens)}
       </td>
-      <td className="px-5 py-3 text-right text-sm text-slate-600 dark:text-slate-200">
-        {formatStreamLabel(record.stream)}
+      <td className="px-3 py-2.5 text-right text-xs text-slate-700 dark:text-slate-100 tabular-nums whitespace-nowrap">
+        {formatLatency(record.latency_ms, 'ms')}
       </td>
-      <td className="px-5 py-3 text-right text-sm text-slate-700 dark:text-slate-100">
-        {formatLatency(record.latency_ms, t('common.units.ms'))}
+      <td className="px-3 py-2.5 text-right text-xs text-slate-700 dark:text-slate-100 tabular-nums whitespace-nowrap">
+        {formatLatency(record.ttft_ms, 'ms')}
       </td>
-      <td className="px-5 py-3 text-right text-sm text-slate-700 dark:text-slate-100">
-        {formatLatency(record.ttft_ms, t('common.units.ms'))}
+      <td className="px-3 py-2.5 text-right text-xs text-slate-700 dark:text-slate-100 tabular-nums whitespace-nowrap">
+        {formatLatency(record.tpot_ms, 'ms/tk')}
       </td>
-      <td className="px-5 py-3 text-right text-sm text-slate-700 dark:text-slate-100">
-        {formatLatency(record.tpot_ms, t('common.units.msPerToken'))}
-      </td>
-      <td className="px-5 py-3">
+      <td className="px-3 py-2.5 text-center">
         <StatusBadge variant={isError ? 'error' : 'success'}>
           {statusCode ?? (isError ? 500 : 200)}
-          <span>{isError ? t('common.status.error') : t('common.status.success')}</span>
         </StatusBadge>
       </td>
-      <td className="max-w-xs px-5 py-3 text-xs text-slate-500 dark:text-slate-400">
-        <span className="block truncate" title={record.error ?? ''}>
+      <td className="px-3 py-2.5 text-[10px] text-slate-500 dark:text-slate-400">
+        <div className="truncate" title={record.error ?? ''}>
           {record.error ? record.error : '-'}
-        </span>
+        </div>
       </td>
-      <td className="px-5 py-3">
+      <td className="px-3 py-2.5 text-center">
         <Button
           onClick={() => onSelect(record.id)}
           size="sm"
-          className="rounded-full"
+          className="rounded-full text-xs px-2 py-1"
         >
-          {t('logs.actions.detail')}
+          详情
         </Button>
       </td>
     </tr>
@@ -658,7 +701,7 @@ function LogDetailsDrawer({
         aria-modal="true"
         aria-labelledby="log-detail-title"
         aria-describedby="log-detail-content"
-        className="flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white shadow-xl transition-transform dark:border-slate-800 dark:bg-slate-900"
+        className="flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white shadow-xl transition-all dark:border-slate-800 dark:bg-slate-900"
       >
         <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
           <div>
@@ -972,7 +1015,7 @@ function ApiKeyFilter({
           )}
         </span>
         <svg
-          className={cn('h-4 w-4 text-slate-400 transition-transform dark:text-slate-300', open ? 'rotate-180' : '')}
+          className={cn('h-4 w-4 text-slate-400 transition-all dark:text-slate-300', open ? 'rotate-180' : '')}
           viewBox="0 0 20 20"
           fill="currentColor"
           aria-hidden="true"
@@ -985,7 +1028,7 @@ function ApiKeyFilter({
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-2xl border border-slate-200/70 bg-white/95 p-2 shadow-lg shadow-slate-200/70 backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/90">
+        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-2xl border border-slate-200/70 bg-white p-2 shadow-lg shadow-slate-200/70 dark:border-slate-700/60 dark:bg-slate-900">
           <div className="flex items-center justify-between rounded-xl border border-slate-200/60 bg-slate-50/70 px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300">
             <span>{summaryText}</span>
             <button
