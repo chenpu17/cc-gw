@@ -280,6 +280,15 @@ export default function ModelManagementPage() {
           options.push({ value, label: `${providerLabel} · ${provider.defaultModel}` })
         }
       }
+
+      const passthroughValue = `${provider.id}:*`
+      if (!seen.has(passthroughValue)) {
+        seen.add(passthroughValue)
+        options.push({
+          value: passthroughValue,
+          label: t('settings.routing.providerPassthroughOption', { provider: providerLabel })
+        })
+      }
     }
 
     const combinedEntries = [...routesByEndpoint.anthropic, ...routesByEndpoint.openai]
@@ -293,7 +302,7 @@ export default function ModelManagementPage() {
     }
 
     return options
-  }, [providers, routesByEndpoint])
+  }, [providers, routesByEndpoint, t])
 
   const syncAnthropicPresets = (presets: RoutingPreset[]) => {
     setAnthropicPresets(presets)
@@ -1038,6 +1047,9 @@ export default function ModelManagementPage() {
             </h2>
             <p className="max-w-3xl text-sm text-slate-600 dark:text-slate-400">
               {t(`settings.routing.descriptionByEndpoint.${endpoint}`)}
+            </p>
+            <p className="max-w-3xl text-xs text-slate-500 dark:text-slate-400">
+              {t('settings.routing.wildcardHint')}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">

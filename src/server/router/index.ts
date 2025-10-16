@@ -1,5 +1,5 @@
 import { getConfig } from '../config/manager.js'
-import type { GatewayEndpoint, ProviderConfig } from '../config/types.js'
+import type { GatewayEndpoint, ModelRouteMap, ProviderConfig } from '../config/types.js'
 import { estimateTokens } from '../protocol/tokenizer.js'
 import type { NormalizedPayload } from '../protocol/types.js'
 
@@ -16,12 +16,73 @@ export interface RouteTarget {
   tokenEstimate: number
 }
 
-function resolveByIdentifier(identifier: string | null | undefined, providers: ProviderConfig[]): RouteTarget | null {
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function wildcardMatches(pattern: string, value: string): boolean {
+  const regex = new RegExp(`^${pattern.split('*').map(escapeRegExp).join('.*')}$`)
+  return regex.test(value)
+}
+
+function derivePassthroughModel(requestedModel: string | null | undefined): string | null {
+  if (!requestedModel) return null
+  const trimmed = requestedModel.trim()
+  if (!trimmed) return null
+  const parts = trimmed.split(':', 2)
+  if (parts.length === 2 && parts[1]) {
+    return parts[1]
+  }
+  return trimmed
+}
+
+function findMappedIdentifier(modelId: string | null | undefined, routes: ModelRouteMap | undefined): string | null {
+  if (!modelId || !routes) return null
+  const direct = routes[modelId]
+  if (direct) {
+    return direct
+  }
+
+  let bestTarget: string | null = null
+  let bestSpecificity = -1
+  let bestIndex = Number.POSITIVE_INFINITY
+  const entries = Object.entries(routes)
+
+  for (let index = 0; index < entries.length; index += 1) {
+    const [pattern, target] = entries[index]
+    if (!pattern.includes('*')) continue
+    if (!wildcardMatches(pattern, modelId)) continue
+    const specificity = pattern.replace(/\*/g, '').length
+    if (specificity > bestSpecificity || (specificity === bestSpecificity && index < bestIndex)) {
+      bestTarget = target
+      bestSpecificity = specificity
+      bestIndex = index
+    }
+  }
+
+  return bestTarget
+}
+
+function resolveByIdentifier(
+  identifier: string | null | undefined,
+  providers: ProviderConfig[],
+  requestedModel?: string
+): RouteTarget | null {
   if (!identifier) return null
   if (identifier.includes(':')) {
     const [providerId, modelId] = identifier.split(':', 2)
     const provider = providers.find((p) => p.id === providerId)
-    if (provider && (provider.defaultModel === modelId || provider.models?.some((m) => m.id === modelId))) {
+    if (!provider) {
+      return null
+    }
+    if (modelId === '*') {
+      const passthrough = derivePassthroughModel(requestedModel)
+      if (passthrough) {
+        return { providerId, modelId: passthrough, provider, tokenEstimate: 0 }
+      }
+      return null
+    }
+    if (provider.defaultModel === modelId || provider.models?.some((m) => m.id === modelId)) {
       return { providerId, modelId, provider, tokenEstimate: 0 }
     }
   } else {
@@ -46,25 +107,25 @@ export function resolveRoute(ctx: RouteContext): RouteTarget {
   }
 
   const requestedModel = ctx.requestedModel?.trim()
-  const mappedIdentifier = requestedModel ? (endpointConfig.modelRoutes?.[requestedModel] ?? null) : null
+  const mappedIdentifier = requestedModel ? findMappedIdentifier(requestedModel, endpointConfig.modelRoutes) : null
+  const mapped = mappedIdentifier ? resolveByIdentifier(mappedIdentifier, providers, requestedModel) : null
+  if (mappedIdentifier && !mapped) {
+    console.warn(`modelRoutes 映射目标无效: ${mappedIdentifier}`)
+  }
   const fallbackModelId = providers[0].defaultModel ?? providers[0].models?.[0]?.id ?? 'gpt-4o'
   const tokenEstimate = estimateTokens(
     ctx.payload,
-    mappedIdentifier ?? requestedModel ?? fallbackModelId
+    mapped?.modelId ?? requestedModel ?? fallbackModelId
   )
 
   const strategy = ctx.payload
   const defaults = endpointConfig.defaults
 
-  if (mappedIdentifier) {
-    const mapped = resolveByIdentifier(mappedIdentifier, providers)
-    if (mapped) {
-      return { ...mapped, tokenEstimate }
-    }
-    console.warn(`modelRoutes 映射目标无效: ${mappedIdentifier}`)
+  if (mapped) {
+    return { ...mapped, tokenEstimate }
   }
 
-  const fromRequest = resolveByIdentifier(requestedModel, providers)
+  const fromRequest = resolveByIdentifier(requestedModel, providers, requestedModel)
   if (fromRequest) {
     return { ...fromRequest, tokenEstimate }
   }

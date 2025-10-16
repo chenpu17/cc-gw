@@ -31,8 +31,8 @@
 - English: normalization merges Claude messages, preserving tool calls; OpenAI/Kimi use `buildProviderBody`, while the Anthropic path clones the original payload so metadata and cache hints reach upstream unchanged.
 
 ### 路由策略 Routing Strategy
-- 中文：`resolveRoute` 结合 `modelRoutes`、默认模型与 `longContextThreshold`，并通过 `estimateTokens` 预估 token，决定下游 Provider/模型。
-- English: combines configured overrides and token estimates to pick the best upstream target for the current request.
+- 中文：`resolveRoute` 结合 `modelRoutes`、默认模型与 `longContextThreshold`，并通过 `estimateTokens` 预估 token，决定下游 Provider/模型；`modelRoutes` 支持 `*` 通配符并可通过 `providerId:*` 透传原始模型名。
+- English: combines configured overrides and token estimates to pick the best upstream target; routing now accepts `*` wildcards and `providerId:*` passthrough targets.
 
 ### Provider 注册表 Provider Registry
 - 中文：`providers/registry.ts` 根据 `type` 返回对应适配器，统一封装鉴权、SSE 解码、错误码映射；可新增自定义 Provider。

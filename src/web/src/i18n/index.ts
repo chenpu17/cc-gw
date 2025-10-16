@@ -649,6 +649,7 @@ const resources = {
             anthropic: '当 Claude Code 通过 /anthropic 端点请求特定模型时，将根据此映射选择目标 Provider 与模型。',
             openai: '当 Codex 通过 /openai 端点请求特定模型时，将根据此映射选择目标 Provider 与模型。'
           },
+          wildcardHint: '来源模型支持使用 * 通配符（如 claude-*），匹配度更高的规则优先；若目标写成 providerId:*，会将请求里的模型名原样转发给对应 Provider。',
           add: '新增映射',
           empty: '尚未配置映射，系统将使用默认模型策略。',
           sourceLabel: '来源模型',
@@ -656,6 +657,7 @@ const resources = {
           targetLabel: '目标 Provider:模型',
           targetPlaceholder: '如 kimi:kimi-k2-0905-preview',
           customTargetOption: '自定义目标…',
+          providerPassthroughOption: '{{provider}} · 透传原始模型 (*)',
           remove: '移除',
           suggested: '常用 Anthropic 模型'
         },
@@ -1526,6 +1528,7 @@ const resources = {
             anthropic: 'Requests hitting the /anthropic endpoint will use these mappings.',
             openai: 'Requests hitting the /openai endpoint will use these mappings.'
           },
+          wildcardHint: "Source model ids accept '*' wildcards (e.g. claude-*); the most specific match wins, and targets defined as providerId:* forward the original requested model name upstream.",
           add: 'Add route',
           empty: 'No custom routes configured. Default strategy will be used.',
           sourceLabel: 'Source model',
@@ -1533,6 +1536,7 @@ const resources = {
           targetLabel: 'Target provider:model',
           targetPlaceholder: 'e.g. kimi:kimi-k2-0905-preview',
           customTargetOption: 'Custom target…',
+          providerPassthroughOption: '{{provider}} · passthrough (*)',
           remove: 'Remove',
           suggested: 'Anthropic presets'
         },

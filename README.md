@@ -292,7 +292,7 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 
 - `providers`：定义上游服务；`type` 支持 `openai | anthropic | kimi | deepseek | custom`。
 - 模型标识使用 `providerId:modelId` 形式供路由引用。
-- `modelRoutes`：将 Claude 发起的模型名映射到上游模型；未命中时使用 `defaults`。
+- `modelRoutes`：将 Claude 发起的模型名映射到上游模型；支持在源模型名中使用 `*` 通配符匹配，匹配度更高（字符更多）的规则优先，同等情况下按配置顺序取第一条；若希望直接透传请求的模型名，可将目标写成 `providerId:*`，此时会将源请求中的模型名原样发送给对应 Provider。
 - `routingPresets`：可选字段，保存多个 `anthropic`（或其他端点）路由模板，供 Web UI “一键切换”；每个模板仅包含 `name` 与 `modelRoutes`。
 - `storeRequestPayloads` / `storeResponsePayloads`：是否分别在 SQLite 中压缩保存请求原文与响应内容；关闭可减少敏感数据落盘。
 - `bodyLimit`：单次请求允许的最大请求体大小（字节），默认 10 MiB。`/compact` 等场景会发送较大上下文，如遇 413 可按需增大。

@@ -120,6 +120,50 @@ describe('resolveRoute', () => {
     expect(result).toMatchObject({ providerId: 'kimi', modelId: 'kimi-think' })
   })
 
+  it('supports wildcard passthrough routes preserving requested model id', () => {
+    mockedGetConfig.mockReturnValueOnce({
+      ...baseConfig,
+      endpointRouting: {
+        ...baseConfig.endpointRouting,
+        anthropic: {
+          defaults: { ...baseConfig.endpointRouting!.anthropic!.defaults },
+          modelRoutes: {
+            'claude-*': 'kimi:*'
+          }
+        }
+      }
+    })
+    const result = resolveRoute({
+      payload,
+      requestedModel: 'claude-3-5-sonnet-latest',
+      endpoint: 'anthropic'
+    })
+    expect(result).toMatchObject({ providerId: 'kimi', modelId: 'claude-3-5-sonnet-latest' })
+    expect(mockedEstimateTokens).toHaveBeenCalledWith(payload, 'claude-3-5-sonnet-latest')
+  })
+
+  it('falls back to global wildcard route when no specific mapping matches', () => {
+    mockedGetConfig.mockReturnValueOnce({
+      ...baseConfig,
+      endpointRouting: {
+        ...baseConfig.endpointRouting,
+        anthropic: {
+          defaults: { ...baseConfig.endpointRouting!.anthropic!.defaults },
+          modelRoutes: {
+            'claude-3-5-*': 'deepseek:deepseek-think',
+            '*': 'kimi:*'
+          }
+        }
+      }
+    })
+    const result = resolveRoute({
+      payload,
+      requestedModel: 'claude-unknown-next',
+      endpoint: 'anthropic'
+    })
+    expect(result).toMatchObject({ providerId: 'kimi', modelId: 'claude-unknown-next' })
+  })
+
   it('falls back to defaults when mapped target is invalid', () => {
     mockedGetConfig.mockReturnValueOnce({
       ...baseConfig,
