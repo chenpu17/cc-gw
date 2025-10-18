@@ -206,7 +206,7 @@ export function ProviderDrawer({
       const next: FormState = {
         ...prev,
         type: value,
-        authMode: value === 'anthropic' ? (prev.authMode ?? 'apiKey') : 'apiKey'
+        authMode: value === 'anthropic' ? (prev.authMode ?? 'apiKey') : 'apiKey',
       }
 
       if (preset?.baseUrl && shouldReplaceBaseUrl) {
@@ -351,7 +351,7 @@ export function ProviderDrawer({
       defaultModel: form.defaultModel || undefined,
       models: trimmedModels,
       extraHeaders,
-      authMode
+      authMode,
     }
   }
 

@@ -8,6 +8,7 @@
 | 功能 Feature | 描述 Description |
 |--------------|------------------|
 | 协议转换 Protocol adaptation | 标准化 Claude payload，构建 OpenAI、Anthropic、Kimi K2 兼容请求，并保持工具调用/思考模式；Anthropic 分支支持原样透传 payload/headers。 |
+| OpenAI 兼容入口 OpenAI-compatible gateway | 单一 `/openai` 接入点聚合多 Provider 模型，同时兼容 Responses API 与旧版 Chat Completions API，自动转换 Anthropic/SSE 语义（推荐作为实验性功能使用）。 |
 | 模型路由 Model routing | 依据 `modelRoutes` 与默认策略在 Provider/模型之间切换，支持长上下文与推理模型，并可为 Anthropic 端点保存/应用路由模板实现一键切换。 |
 | Provider 适配 Provider adapters | 内置 OpenAI-compatible、Anthropic Messages、Kimi 连接器，统一鉴权、超时与错误映射；Anthropic 适配器自动拼接 `/v1/messages` 并处理 `x-api-key`。 |
 | 日志与指标 Logging & metrics | SQLite 记录请求明细、每日 token 统计、缓存命中（含 `cache_read_input_tokens` / `cache_creation_input_tokens`）；Web UI 支持筛选/导出/清理。 |
@@ -28,7 +29,9 @@
 ## 模块设计 Module Breakdown
 ### 协议层 Protocol Layer
 - 中文：`normalizeClaudePayload` 合并 system/developer、工具调用、思考块；OpenAI/Kimi 通过 `buildProviderBody` 生成目标请求体，Anthropic 分支则克隆原始 payload，确保 metadata、parallel tool calls 与缓存提示完整透传。
+- 中文（新增）：`normalizeOpenAIChatPayload` 将传统 Chat Completions 请求映射为内部统一结构，并在返回时自动生成 `chat.completion`/SSE `chunk`，兼容旧式函数调用 (`functions/function_call`)，并会按需尝试推断 `anthropic-beta`。
 - English: normalization merges Claude messages, preserving tool calls; OpenAI/Kimi use `buildProviderBody`, while the Anthropic path clones the original payload so metadata and cache hints reach upstream unchanged.
+- English (new): `normalizeOpenAIChatPayload` converts legacy Chat Completions traffic into the shared format, rebuilding `chat.completion` responses (including tool_calls/function_call) from Anthropic/OpenAI providers, and heuristically adds `anthropic-beta` when newer Claude models require it.
 
 ### 路由策略 Routing Strategy
 - 中文：`resolveRoute` 结合 `modelRoutes`、默认模型与 `longContextThreshold`，并通过 `estimateTokens` 预估 token，决定下游 Provider/模型；`modelRoutes` 支持 `*` 通配符并可通过 `providerId:*` 透传原始模型名。

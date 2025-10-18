@@ -3,6 +3,18 @@ import type { GatewayEndpoint, ModelRouteMap, ProviderConfig } from '../config/t
 import { estimateTokens } from '../protocol/tokenizer.js'
 import type { NormalizedPayload } from '../protocol/types.js'
 
+const MODEL_ALIASES: Record<string, string> = {
+  // Claude aliases: map marketing friendly IDs to current Anthropic model identifiers
+  'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
+  'claude-sonnet-4-5-preview': 'claude-sonnet-4-5-20250929',
+  'claude-sonnet-latest': 'claude-sonnet-4-5-20250929',
+  'claude-3-5-sonnet-latest': 'claude-3-5-sonnet-20241022',
+  'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+  'claude-haiku-4-5-20250929': 'claude-haiku-4-5-20251001',
+  'claude-haiku-latest': 'claude-haiku-4-5-20251001',
+  'claude-3-5-haiku-latest': 'claude-3-5-haiku-20241022'
+}
+
 export interface RouteContext {
   payload: NormalizedPayload
   requestedModel?: string
@@ -63,6 +75,31 @@ function findMappedIdentifier(modelId: string | null | undefined, routes: ModelR
   return bestTarget
 }
 
+function providerHasModel(provider: ProviderConfig, modelId: string | null | undefined): boolean {
+  if (!modelId) return false
+  if (provider.defaultModel === modelId) return true
+  if (Array.isArray(provider.models)) {
+    return provider.models.some((model) => model.id === modelId)
+  }
+  return false
+}
+
+function resolveProviderModel(
+  provider: ProviderConfig,
+  requestedModel: string | null | undefined
+): string | null {
+  if (!requestedModel) return null
+  if (providerHasModel(provider, requestedModel)) {
+    return requestedModel
+  }
+  const alias = applyModelAlias(requestedModel)
+  if (alias && alias !== requestedModel && providerHasModel(provider, alias)) {
+    console.info('[cc-gw][router]', 'model alias matched', requestedModel, '->', alias, '(provider:', provider.id, ')')
+    return alias
+  }
+  return null
+}
+
 function resolveByIdentifier(
   identifier: string | null | undefined,
   providers: ProviderConfig[],
@@ -70,29 +107,40 @@ function resolveByIdentifier(
 ): RouteTarget | null {
   if (!identifier) return null
   if (identifier.includes(':')) {
-    const [providerId, modelId] = identifier.split(':', 2)
+    const [providerId, rawModelId] = identifier.split(':', 2)
     const provider = providers.find((p) => p.id === providerId)
     if (!provider) {
       return null
     }
-    if (modelId === '*') {
+    if (rawModelId === '*') {
       const passthrough = derivePassthroughModel(requestedModel)
       if (passthrough) {
         return { providerId, modelId: passthrough, provider, tokenEstimate: 0 }
       }
       return null
     }
-    if (provider.defaultModel === modelId || provider.models?.some((m) => m.id === modelId)) {
-      return { providerId, modelId, provider, tokenEstimate: 0 }
+    const resolvedModel = resolveProviderModel(provider, rawModelId)
+    if (resolvedModel) {
+      return { providerId, modelId: resolvedModel, provider, tokenEstimate: 0 }
     }
   } else {
     for (const provider of providers) {
-      if (provider.defaultModel === identifier || provider.models?.some((m) => m.id === identifier)) {
-        return { providerId: provider.id, modelId: identifier, provider, tokenEstimate: 0 }
+      const resolvedModel = resolveProviderModel(provider, identifier)
+      if (resolvedModel) {
+        return { providerId: provider.id, modelId: resolvedModel, provider, tokenEstimate: 0 }
       }
     }
   }
   return null
+}
+
+function applyModelAlias(model: string | null | undefined): string | undefined {
+  if (!model) return undefined
+  const trimmed = model.trim()
+  if (!trimmed) return undefined
+  const lower = trimmed.toLowerCase()
+  const resolved = MODEL_ALIASES[lower]
+  return resolved && resolved !== trimmed ? resolved : undefined
 }
 
 export function resolveRoute(ctx: RouteContext): RouteTarget {
@@ -106,16 +154,19 @@ export function resolveRoute(ctx: RouteContext): RouteTarget {
     throw new Error('未配置任何模型提供商，请先在 Web UI 中添加 Provider。')
   }
 
-  const requestedModel = ctx.requestedModel?.trim()
-  const mappedIdentifier = requestedModel ? findMappedIdentifier(requestedModel, endpointConfig.modelRoutes) : null
-  const mapped = mappedIdentifier ? resolveByIdentifier(mappedIdentifier, providers, requestedModel) : null
+  const requestedModelRaw = ctx.requestedModel?.trim()
+  const requestedModelAlias = applyModelAlias(requestedModelRaw)
+  const mappedIdentifier =
+    (requestedModelRaw ? findMappedIdentifier(requestedModelRaw, endpointConfig.modelRoutes) : null) ??
+    (requestedModelAlias ? findMappedIdentifier(requestedModelAlias, endpointConfig.modelRoutes) : null)
+  const mapped = mappedIdentifier ? resolveByIdentifier(mappedIdentifier, providers, requestedModelRaw) : null
   if (mappedIdentifier && !mapped) {
     console.warn(`modelRoutes 映射目标无效: ${mappedIdentifier}`)
   }
   const fallbackModelId = providers[0].defaultModel ?? providers[0].models?.[0]?.id ?? 'gpt-4o'
   const tokenEstimate = estimateTokens(
     ctx.payload,
-    mapped?.modelId ?? requestedModel ?? fallbackModelId
+    mapped?.modelId ?? requestedModelRaw ?? requestedModelAlias ?? fallbackModelId
   )
 
   const strategy = ctx.payload
@@ -125,7 +176,7 @@ export function resolveRoute(ctx: RouteContext): RouteTarget {
     return { ...mapped, tokenEstimate }
   }
 
-  const fromRequest = resolveByIdentifier(requestedModel, providers, requestedModel)
+  const fromRequest = resolveByIdentifier(requestedModelRaw, providers, requestedModelRaw)
   if (fromRequest) {
     return { ...fromRequest, tokenEstimate }
   }

@@ -150,6 +150,7 @@ export interface AnthropicRequestBody {
   }>
   tool_choice?: any
   metadata?: Record<string, unknown>
+  stream?: boolean
 }
 
 function buildAnthropicContentFromText(text: string | undefined): AnthropicContentBlock[] {
@@ -213,7 +214,8 @@ export function buildAnthropicBody(payload: NormalizedPayload, options: Provider
 
   const body: AnthropicRequestBody = {
     system: payload.system ?? undefined,
-    messages
+    messages,
+    stream: payload.stream
   }
 
   if (options.maxTokens) {

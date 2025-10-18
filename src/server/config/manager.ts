@@ -134,13 +134,9 @@ function resolveEndpointRouting(
   source: unknown,
   fallback: EndpointRoutingConfig
 ): EndpointRoutingConfig {
-  const defaultsRaw = (typeof source === 'object' && source !== null)
-    ? (source as any).defaults
-    : undefined
-  const routesRaw = (typeof source === 'object' && source !== null)
-    ? (source as any).modelRoutes
-    : undefined
-
+  const sourceObject = (typeof source === 'object' && source !== null) ? (source as Record<string, unknown>) : undefined
+  const defaultsRaw = sourceObject?.defaults
+  const routesRaw = sourceObject?.modelRoutes
   return {
     defaults: sanitizeDefaults(defaultsRaw ?? fallback.defaults),
     modelRoutes: sanitizeModelRoutes(routesRaw ?? fallback.modelRoutes)

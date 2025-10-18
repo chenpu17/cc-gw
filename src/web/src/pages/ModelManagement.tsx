@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { apiClient, type ApiError } from '@/services/api'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
-import type { GatewayConfig, ProviderConfig, ProviderModelConfig, RoutingPreset } from '@/types/providers'
+import type { EndpointRoutingConfig, GatewayConfig, ProviderConfig, ProviderModelConfig, RoutingPreset } from '@/types/providers'
 import { ProviderDrawer } from './providers/ProviderDrawer'
 import { pageHeaderShellClass, surfaceCardClass, primaryButtonClass, subtleButtonClass, dangerButtonClass, inputClass, selectClass, badgeClass, statusBadgeClass } from '@/styles/theme'
 
@@ -124,102 +124,6 @@ export default function ModelManagementPage() {
       value: 'claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14',
       label: t('providers.testDialog.options.beta.label'),
       description: t('providers.testDialog.options.beta.description')
-    },
-    {
-      key: 'anthropic-dangerous-direct-browser-access',
-      value: 'true',
-      label: t('providers.testDialog.options.browser.label'),
-      description: t('providers.testDialog.options.browser.description')
-    },
-    {
-      key: 'x-app',
-      value: 'cli',
-      label: t('providers.testDialog.options.xApp.label'),
-      description: t('providers.testDialog.options.xApp.description')
-    },
-    {
-      key: 'user-agent',
-      value: 'claude-cli/2.0.14 (external, cli)',
-      label: t('providers.testDialog.options.userAgent.label'),
-      description: t('providers.testDialog.options.userAgent.description')
-    },
-    {
-      key: 'accept',
-      value: 'application/json',
-      label: t('providers.testDialog.options.accept.label'),
-      description: t('providers.testDialog.options.accept.description')
-    },
-    {
-      key: 'accept-language',
-      value: '*',
-      label: t('providers.testDialog.options.acceptLanguage.label'),
-      description: t('providers.testDialog.options.acceptLanguage.description')
-    },
-    {
-      key: 'sec-fetch-mode',
-      value: 'cors',
-      label: t('providers.testDialog.options.secFetchMode.label'),
-      description: t('providers.testDialog.options.secFetchMode.description')
-    },
-    {
-      key: 'accept-encoding',
-      value: 'gzip, deflate',
-      label: t('providers.testDialog.options.acceptEncoding.label'),
-      description: t('providers.testDialog.options.acceptEncoding.description')
-    },
-    {
-      key: 'x-stainless-helper-method',
-      value: 'stream',
-      label: t('providers.testDialog.options.stainlessHelper.label'),
-      description: t('providers.testDialog.options.stainlessHelper.description')
-    },
-    {
-      key: 'x-stainless-retry-count',
-      value: '0',
-      label: t('providers.testDialog.options.stainlessRetry.label'),
-      description: t('providers.testDialog.options.stainlessRetry.description')
-    },
-    {
-      key: 'x-stainless-timeout',
-      value: '600',
-      label: t('providers.testDialog.options.stainlessTimeout.label'),
-      description: t('providers.testDialog.options.stainlessTimeout.description')
-    },
-    {
-      key: 'x-stainless-lang',
-      value: 'js',
-      label: t('providers.testDialog.options.stainlessLang.label'),
-      description: t('providers.testDialog.options.stainlessLang.description')
-    },
-    {
-      key: 'x-stainless-package-version',
-      value: '0.60.0',
-      label: t('providers.testDialog.options.stainlessPackage.label'),
-      description: t('providers.testDialog.options.stainlessPackage.description')
-    },
-    {
-      key: 'x-stainless-os',
-      value: 'MacOS',
-      label: t('providers.testDialog.options.stainlessOs.label'),
-      description: t('providers.testDialog.options.stainlessOs.description')
-    },
-    {
-      key: 'x-stainless-arch',
-      value: 'arm64',
-      label: t('providers.testDialog.options.stainlessArch.label'),
-      description: t('providers.testDialog.options.stainlessArch.description')
-    },
-    {
-      key: 'x-stainless-runtime',
-      value: 'node',
-      label: t('providers.testDialog.options.stainlessRuntime.label'),
-      description: t('providers.testDialog.options.stainlessRuntime.description')
-    },
-    {
-      key: 'x-stainless-runtime-version',
-      value: 'v22.14.0',
-      label: t('providers.testDialog.options.stainlessRuntimeVersion.label'),
-      description: t('providers.testDialog.options.stainlessRuntimeVersion.description')
     }
   ], [t])
 
@@ -744,23 +648,22 @@ export default function ModelManagementPage() {
     setRouteError((prev) => ({ ...prev, [endpoint]: null }))
     setSavingRouteFor(endpoint)
     try {
-      const routing = config!.endpointRouting ?? {
-        anthropic: {
-          defaults: config!.defaults,
-          modelRoutes: config!.modelRoutes ?? {}
-        },
-        openai: {
-          defaults: config!.endpointRouting?.openai?.defaults ?? config!.defaults,
-          modelRoutes: config!.endpointRouting?.openai?.modelRoutes ?? {}
-        }
+      const routing = config!.endpointRouting ? { ...config!.endpointRouting } : {}
+
+      const existingEndpointRouting = routing[endpoint] ?? {
+        defaults: config!.defaults,
+        modelRoutes: endpoint === 'anthropic' ? config!.modelRoutes ?? {} : {}
+      }
+
+      const updatedEndpointRouting: EndpointRoutingConfig = {
+        ...existingEndpointRouting,
+        defaults: existingEndpointRouting.defaults ?? config!.defaults,
+        modelRoutes: sanitizedRoutes
       }
 
       const nextRouting: GatewayConfig['endpointRouting'] = {
         ...routing,
-        [endpoint]: {
-          defaults: routing[endpoint]?.defaults ?? config!.defaults,
-          modelRoutes: sanitizedRoutes
-        }
+        [endpoint]: updatedEndpointRouting
       }
 
       const nextConfig: GatewayConfig = {

@@ -262,10 +262,15 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       querySuffix = (request as any).querystring || null
     }
 
-    if (querySuffix !== null) {
-      const displaySuffix = querySuffix.length > 0 ? `?${querySuffix}` : '?'
-      console.info(`[cc-gw] inbound url ${rawUrl} query ${displaySuffix}`)
-    }
+    request.log.info(
+      {
+        event: 'anthropic.inbound_request',
+        rawUrl,
+        query: querySuffix,
+        headers: request.headers
+      },
+      'received anthropic message request'
+    )
 
     const normalized = normalizeClaudePayload(payload)
 
@@ -540,6 +545,19 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       reply.raw.writeHead(200)
 
       if (providerType === 'anthropic') {
+        type StreamedContentBlockState = {
+          type: string
+          text?: string
+          thinking?: string
+          id?: string
+          name?: string
+          input?: Record<string, unknown>
+          inputBuffer?: string
+          tool_use_id?: string
+          content?: unknown
+          cache_control?: unknown
+        }
+
         const reader = upstream.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
@@ -550,6 +568,34 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         let accumulatedContent = ''
         let firstTokenAt: number | null = null
         let lastUsagePayload: any = null
+        let stopReason: string | null = null
+        let stopSequence: string | null = null
+        const contentBlocks = new Map<number, StreamedContentBlockState>()
+
+        const coerceText = (value: unknown): string => {
+          if (typeof value === 'string') {
+            return value
+          }
+          if (Array.isArray(value)) {
+            return value
+              .map((item) => (typeof item === 'string' ? item : typeof item?.text === 'string' ? item.text : ''))
+              .filter((item) => item.length > 0)
+              .join('')
+          }
+          if (value && typeof value === 'object' && typeof (value as any).text === 'string') {
+            return (value as any).text
+          }
+          return ''
+        }
+
+        const ensureTextBlock = (): StreamedContentBlockState => {
+          let block = contentBlocks.get(0)
+          if (!block || block.type !== 'text') {
+            block = { type: 'text', text: '' }
+            contentBlocks.set(0, block)
+          }
+          return block
+        }
 
         while (true) {
           const { value, done } = await reader.read()
@@ -567,48 +613,160 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             if (trimmed.startsWith('event:')) {
               currentEvent = trimmed.slice(6).trim()
             } else if (trimmed.startsWith('data:')) {
-              if (
-                currentEvent === 'message_delta' ||
-                currentEvent === 'message_stop' ||
-                currentEvent === 'content_block_delta'
-              ) {
+              const dataStr = trimmed.slice(5).trim()
+              if (dataStr !== '[DONE]' && currentEvent) {
                 try {
-                  const payload = JSON.parse(trimmed.slice(5).trim())
-                  if (payload?.usage) {
-                    usagePrompt = payload.usage.input_tokens ?? usagePrompt
-                    usageCompletion = payload.usage.output_tokens ?? usageCompletion
-                    const maybeCached = resolveCachedTokens(payload.usage)
-                    if (maybeCached !== null) {
-                      usageCached = maybeCached
-                    }
-                    lastUsagePayload = payload.usage
-                  }
-
-                  let deltaText: string | null = null
-                  if (currentEvent === 'content_block_delta') {
-                    const delta = payload?.delta
-                    if (delta && typeof delta === 'object') {
-                      const maybeText = (delta as any).text
-                      if (typeof maybeText === 'string') {
-                        deltaText = maybeText
-                      } else if (Array.isArray(maybeText)) {
-                        deltaText = maybeText.filter((item) => typeof item === 'string').join('')
+                  const payload = JSON.parse(dataStr)
+                  switch (currentEvent) {
+                    case 'content_block_start': {
+                      const index = typeof payload?.index === 'number' ? payload.index : null
+                      const block = payload?.content_block
+                      if (index != null && block && typeof block === 'object') {
+                        const base: StreamedContentBlockState = {
+                          type: typeof block.type === 'string' ? block.type : 'text'
+                        }
+                        if (typeof block.id === 'string') {
+                          base.id = block.id
+                        }
+                        if (typeof block.name === 'string') {
+                          base.name = block.name
+                        }
+                        if (block.cache_control !== undefined) {
+                          base.cache_control = block.cache_control
+                        }
+                        if (base.type === 'text') {
+                          const initialText = coerceText(block.text ?? block.content)
+                          if (initialText) {
+                            base.text = initialText
+                            accumulatedContent += initialText
+                            if (!firstTokenAt && initialText.trim().length > 0) {
+                              firstTokenAt = Date.now()
+                            }
+                          } else {
+                            base.text = ''
+                          }
+                        } else if (base.type === 'thinking') {
+                          base.thinking = coerceText(block.thinking ?? block.text)
+                        } else if (base.type === 'tool_use') {
+                          base.input =
+                            block.input && typeof block.input === 'object'
+                              ? { ...(block.input as Record<string, unknown>) }
+                              : {}
+                          base.inputBuffer = ''
+                          if (!base.id) {
+                            base.id = `tool_${Date.now()}_${index}`
+                          }
+                        } else if (base.type === 'tool_result') {
+                          base.tool_use_id = typeof block.tool_use_id === 'string' ? block.tool_use_id : undefined
+                          base.content = block.content ?? null
+                        }
+                        contentBlocks.set(index, base)
                       }
+                      break
                     }
-                  } else {
-                    const maybeText = payload?.delta?.text
-                    if (typeof maybeText === 'string') {
-                      deltaText = maybeText
-                    } else if (Array.isArray(maybeText)) {
-                      deltaText = maybeText.filter((item) => typeof item === 'string').join('')
+                    case 'content_block_delta': {
+                      const index = typeof payload?.index === 'number' ? payload.index : null
+                      const block = index != null ? contentBlocks.get(index) : undefined
+                      if (!block || typeof payload?.delta !== 'object') {
+                        break
+                      }
+                      if (block.type === 'text') {
+                        const deltaText = coerceText((payload.delta as any).text)
+                        if (deltaText) {
+                          block.text = (block.text ?? '') + deltaText
+                          accumulatedContent += deltaText
+                          if (!firstTokenAt) {
+                            firstTokenAt = Date.now()
+                          }
+                        }
+                      } else if (block.type === 'thinking') {
+                        const thinkingDelta = coerceText((payload.delta as any).thinking ?? (payload.delta as any).text)
+                        if (thinkingDelta) {
+                          block.thinking = (block.thinking ?? '') + thinkingDelta
+                        }
+                      } else if (block.type === 'tool_use') {
+                        const deltaInput = (payload.delta as any).input
+                        if (deltaInput && typeof deltaInput === 'object') {
+                          block.input = {
+                            ...(block.input ?? {}),
+                            ...(deltaInput as Record<string, unknown>)
+                          }
+                        }
+                        const partialJson = (payload.delta as any).partial_json ?? (payload.delta as any).input_json
+                        if (typeof partialJson === 'string' && partialJson.length > 0) {
+                          block.inputBuffer = (block.inputBuffer ?? '') + partialJson
+                        }
+                      } else if (block.type === 'tool_result') {
+                        const deltaContent = (payload.delta as any).content
+                        if (deltaContent !== undefined) {
+                          block.content = deltaContent
+                        }
+                      }
+                      break
                     }
-                  }
-
-                  if (deltaText && deltaText.length > 0) {
-                    if (!firstTokenAt) {
-                      firstTokenAt = Date.now()
+                    case 'message_delta': {
+                      if (payload?.usage) {
+                        usagePrompt = payload.usage.input_tokens ?? usagePrompt
+                        usageCompletion = payload.usage.output_tokens ?? usageCompletion
+                        const maybeCached = resolveCachedTokens(payload.usage)
+                        if (maybeCached !== null) {
+                          usageCached = maybeCached
+                        }
+                        lastUsagePayload = payload.usage
+                      }
+                      if (payload?.delta) {
+                        if (payload.delta.stop_reason) {
+                          stopReason = payload.delta.stop_reason
+                        }
+                        if (payload.delta.stop_sequence) {
+                          stopSequence = payload.delta.stop_sequence
+                        }
+                        const deltaText = coerceText(payload.delta.text)
+                        if (deltaText) {
+                          const block = ensureTextBlock()
+                          block.text = (block.text ?? '') + deltaText
+                          accumulatedContent += deltaText
+                          if (!firstTokenAt) {
+                            firstTokenAt = Date.now()
+                          }
+                        }
+                      }
+                      break
                     }
-                    accumulatedContent += deltaText
+                    case 'message_stop': {
+                      if (payload?.usage) {
+                        usagePrompt = payload.usage.input_tokens ?? usagePrompt
+                        usageCompletion = payload.usage.output_tokens ?? usageCompletion
+                        const maybeCached = resolveCachedTokens(payload.usage)
+                        if (maybeCached !== null) {
+                          usageCached = maybeCached
+                        }
+                        lastUsagePayload = payload.usage
+                      }
+                      if (payload?.stop_reason) {
+                        stopReason = payload.stop_reason
+                      }
+                      if (payload?.stop_sequence) {
+                        stopSequence = payload.stop_sequence
+                      }
+                      break
+                    }
+                    case 'content_block_stop': {
+                      const index = typeof payload?.index === 'number' ? payload.index : null
+                      const block = index != null ? contentBlocks.get(index) : undefined
+                      if (block?.type === 'tool_use' && block.inputBuffer) {
+                        const buffered = block.inputBuffer
+                        delete block.inputBuffer
+                        try {
+                          block.input = JSON.parse(buffered)
+                        } catch {
+                          block.input = { raw_arguments: buffered }
+                        }
+                      }
+                      break
+                    }
+                    default:
+                      break
                   }
                 } catch (error) {
                   request.log.warn({ error }, 'Failed to parse Anthropic SSE data')
@@ -668,22 +826,71 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads) {
-          await upsertLogPayload(logId, {
-            response: (() => {
-              try {
-                return JSON.stringify({
-                  content: accumulatedContent,
-                  usage: {
-                    input: usagePrompt,
-                    output: usageCompletion,
-                    cached: usageCached
-                  }
-                })
-              } catch {
-                return accumulatedContent
+          try {
+            for (const block of contentBlocks.values()) {
+              if (block.type === 'tool_use' && block.inputBuffer) {
+                const buffered = block.inputBuffer
+                delete block.inputBuffer
+                try {
+                  block.input = JSON.parse(buffered)
+                } catch {
+                  block.input = { raw_arguments: buffered }
+                }
               }
-            })()
-          })
+            }
+
+            const blocksSummary = Array.from(contentBlocks.entries())
+              .sort((a, b) => a[0] - b[0])
+              .map(([, block]) => {
+                const entry: Record<string, unknown> = {
+                  type: block.type
+                }
+                if (block.id) {
+                  entry.id = block.id
+                }
+                if (block.name) {
+                  entry.name = block.name
+                }
+                if (block.text !== undefined) {
+                  entry.text = block.text
+                }
+                if (block.thinking !== undefined) {
+                  entry.thinking = block.thinking
+                }
+                if (block.input && Object.keys(block.input).length > 0) {
+                  entry.input = block.input
+                }
+                if (block.tool_use_id) {
+                  entry.tool_use_id = block.tool_use_id
+                }
+                if (block.content !== undefined) {
+                  entry.content = block.content
+                }
+                if (block.cache_control !== undefined) {
+                  entry.cache_control = block.cache_control
+                }
+                return entry
+              })
+
+            const responseSummary: Record<string, unknown> = {
+              content: accumulatedContent,
+              blocks: blocksSummary,
+              usage: {
+                input_tokens: usagePrompt,
+                output_tokens: usageCompletion,
+                cache_read_input_tokens: usageCached
+              },
+              stop_reason: stopReason ?? 'end_turn',
+              stop_sequence: stopSequence ?? null,
+              model: target.modelId
+            }
+
+            await upsertLogPayload(logId, {
+              response: JSON.stringify(responseSummary)
+            })
+          } catch (error) {
+            request.log.warn({ error }, 'Failed to persist Anthropic streamed response summary')
+          }
         }
         await finalize(200, null)
 
@@ -704,7 +911,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       let firstTokenAt: number | null = null
 
       const encode = (event: string, data: any) => {
-        reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+        const chunk = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+        reply.raw.write(chunk)
       }
 
       encode('message_start', {
@@ -793,23 +1001,26 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
               latencyMs: totalLatencyMs
             })
             if (storeResponsePayloads) {
-              await upsertLogPayload(logId, {
-                response: (() => {
-                  try {
-                    return JSON.stringify({
-                      content: accumulatedContent,
-                      toolCalls: Object.keys(toolAccum).length > 0 ? toolAccum : undefined,
-                      usage: {
-                        input: finalPromptTokens,
-                        output: finalCompletionTokens,
-                        cached: usageCached
-                      }
-                    })
-                  } catch {
-                    return accumulatedContent
-                  }
-                })()
-              })
+              try {
+                await upsertLogPayload(logId, {
+                  response: JSON.stringify({
+                    content: accumulatedContent,
+                    tool_calls: Object.keys(toolAccum).length > 0 ? Object.values(toolAccum).map((args, idx) => ({
+                      index: idx,
+                      arguments: args
+                    })) : undefined,
+                    usage: {
+                      input_tokens: finalPromptTokens,
+                      output_tokens: finalCompletionTokens,
+                      cache_read_input_tokens: usageCached
+                    },
+                    stop_reason: encounteredToolCall ? 'tool_use' : 'end_turn',
+                    model: target.modelId
+                  })
+                })
+              } catch (error) {
+                request.log.warn({ error }, 'Failed to persist OpenAI streamed response summary')
+              }
             }
             await finalize(200, null)
             completed = true
@@ -959,22 +1170,22 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads) {
-          await upsertLogPayload(logId, {
-            response: (() => {
-              try {
-                return JSON.stringify({
-                  content: accumulatedContent,
-                  usage: {
-                    input: fallbackPrompt,
-                    output: fallbackCompletion,
-                    cached: usageCached
-                  }
-                })
-              } catch {
-                return accumulatedContent
-              }
-            })()
-          })
+          try {
+            await upsertLogPayload(logId, {
+              response: JSON.stringify({
+                content: accumulatedContent,
+                usage: {
+                  input_tokens: fallbackPrompt,
+                  output_tokens: fallbackCompletion,
+                  cache_read_input_tokens: usageCached
+                },
+                stop_reason: 'end_turn',
+                model: target.modelId
+              })
+            })
+          } catch (error) {
+            request.log.warn({ error }, 'Failed to persist OpenAI streamed response summary (fallback)')
+          }
         }
         await finalize(200, null)
         return reply

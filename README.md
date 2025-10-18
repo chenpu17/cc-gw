@@ -8,6 +8,9 @@ cc-gw 是一个面向 Claude Code 与同类客户端的本地多模型网关，�
 - 复刻 Claude API 的流式与工具调用语义
 - 记录请求日志、Token（含缓存命中）、TTFT/TPOT 等运行指标
 - 提供可视化 Web 管理台与守护进程 CLI
+- 在同一个 OpenAI 接入点聚合多 Provider / 多模型，兼容 Responses 与 Chat Completions 双协议
+
+> **提示（2025-10）**：OpenAI 接入点仍为实验特性，我们会尝试将请求转换为 Anthropic `/v1/messages` 并推断所需 beta 头，但部分专为 Claude Code 适配的代理可能仍返回“暂不支持”。此类模型请直接使用 `/anthropic/v1/messages` 端点。
 
 核心组件：
 
@@ -51,6 +54,7 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
      API Key: sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
      默认模型: claude-3-5-sonnet-20241022
      ```
+    Roo Code / Claude CLI 可通过 OpenAI 接入点访问 Anthropic 模型，但部分第三方代理可能拒绝该路径；若收到“暂不支持”或类似错误，请改用 `/anthropic/v1/messages`。
    - **Moonshot Kimi**：
      ```
      Base URL: https://api.moonshot.cn/v1
@@ -82,10 +86,14 @@ pnpm --filter @cc-gw/cli exec tsx index.ts start --daemon --port 4100
 export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
 export ANTHROPIC_API_KEY=sk-gw-ide-xxxxxxxxxxxxxxxx
 
-# Codex CLI
+# Codex CLI（Responses API）
 export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
 export OPENAI_API_KEY=sk-gw-codex-xxxxxxxxxxxxxxxx
 export CC_GW_KEY=sk-gw-codex-xxxxxxxxxxxxxxxx
+
+# Roo Code / 旧式 OpenAI Chat Completions
+export OPENAI_CHAT_BASE_URL=http://127.0.0.1:4100/openai/v1
+export OPENAI_CHAT_PATH=/chat/completions
 ```
 
 更新完毕后执行 `source ~/.bashrc`（或 `source ~/.zshrc`）让环境变量立即生效。完成后可以马上做一次快速连通性测试：
@@ -117,6 +125,14 @@ codex ask "你好，请介绍一下自己"
 
 配置完成后，建议运行 `codex status` 或 `codex chat "测试"` 再确认一次终端输出。
 
+##### 5.1 OpenAI 接入点接入说明
+
+- **Responses API**：推荐给支持新版 OpenAI Responses（例如 Codex CLI、最新 Agent 工具）的客户端，直接指向 `http://127.0.0.1:4100/openai/v1/responses`，即可自动在下游 Provider 间路由并返回标准 `response` 结构。
+- **Chat Completions API**：针对 Roo Code、OpenAI CLI 等仍使用传统 `POST /v1/chat/completions` 的客户端，现可通过 `http://127.0.0.1:4100/openai/v1/chat/completions` 接入；工具仅需设置 Base URL（例如 Roo Code 的 “OpenAI Compatible” 配置）和 API Key 即可。
+- **注意兼容性**：OpenAI 入口为实验性最佳实践。若下游服务只支持 Claude Code 专用头部，可能仍返回“暂不支持”，此时改用 `/anthropic/v1/messages`。
+- **Anthropic Beta Header**：若上游模型需要 beta 头（例如 Claude 4.5 预览），可设置环境变量 `CC_GW_ANTHROPIC_BETA_<MODEL>`（如 `CC_GW_ANTHROPIC_BETA_CLAUDE_SONNET_4_5_20250929`）或全局 `CC_GW_ANTHROPIC_BETA_ALL`；网关会在转发至 Anthropic 时尝试附加，也会针对 4.5 系列模型进行默认推断。
+- **多模型聚合**：无论使用 Responses 还是 Chat Completions，两种接口都会按配置聚合所有 Provider 模型，`GET /openai/v1/models` 将返回当前可用模型列表及默认 Provider。
+
 #### 步骤 6: 高级配置（可选）
 
 ##### 6.1 模型路由配置
@@ -139,9 +155,18 @@ export ANTHROPIC_API_KEY=sk-gw-ide-xxxxxxxxxxxxxxxx
 export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
 export OPENAI_API_KEY=sk-gw-codex-xxxxxxxxxxxxxxxx
 export CC_GW_KEY=sk-gw-codex-xxxxxxxxxxxxxxxx
+# 若需兼容旧版 Chat Completions，可继续暴露聊天端点
+export OPENAI_CHAT_BASE_URL=http://127.0.0.1:4100/openai/v1
+export OPENAI_CHAT_PATH=/chat/completions
+# 针对 Anthropic 新模型可设置 Beta Header（示例）
+export CC_GW_ANTHROPIC_BETA_CLAUDE_SONNET_4_5_20250929=claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14
+export CC_GW_ANTHROPIC_BETA_ALL=claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14
+
 ```
 
 然后运行 `direnv allow` 自动加载。
+
+> ⚠️ 如果 OpenAI 接入点仍返回“暂不支持”，请将客户端改用 `/anthropic/v1/messages` 端点并直接配置 Anthropic Provider。
 
 #### 常见问题排查
 
