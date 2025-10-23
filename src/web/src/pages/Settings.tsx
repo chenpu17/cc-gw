@@ -32,6 +32,7 @@ interface FormState {
   requestLogging: boolean
   responseLogging: boolean
   bodyLimitMb: string
+  enableRoutingFallback: boolean
 }
 
 interface FormErrors {
@@ -88,7 +89,8 @@ export default function SettingsPage() {
     logLevel: 'info',
     requestLogging: true,
     responseLogging: true,
-    bodyLimitMb: '10'
+    bodyLimitMb: '10',
+    enableRoutingFallback: false
   })
   const [errors, setErrors] = useState<FormErrors>({})
   const [saving, setSaving] = useState(false)
@@ -143,7 +145,8 @@ export default function SettingsPage() {
             return String(Math.max(1, Math.round(raw / (1024 * 1024))))
           }
           return '10'
-        })()
+        })(),
+        enableRoutingFallback: configQuery.data.config.enableRoutingFallback === true
       })
     }
   }, [configQuery.data])
@@ -252,7 +255,8 @@ export default function SettingsPage() {
         logLevel: form.logLevel,
         requestLogging: form.requestLogging,
         responseLogging: form.responseLogging,
-        bodyLimit: Math.max(1, Math.floor(bodyLimitValue * 1024 * 1024))
+        bodyLimit: Math.max(1, Math.floor(bodyLimitValue * 1024 * 1024)),
+        enableRoutingFallback: form.enableRoutingFallback
       }
       const { webAuth: _ignored, ...payload } = nextConfig as GatewayConfig & { webAuth?: never }
       await apiClient.put('/api/config', payload)
@@ -296,7 +300,8 @@ export default function SettingsPage() {
           return String(Math.max(1, Math.round(raw / (1024 * 1024))))
         }
         return '10'
-      })()
+      })(),
+      enableRoutingFallback: config.enableRoutingFallback === true
     })
     setErrors({})
   }
@@ -606,6 +611,25 @@ export default function SettingsPage() {
                     {t('settings.fields.responseLogging')}
                   </span>
                   <p className={cn(mutedTextClass, 'text-xs')}>{t('settings.fields.responseLoggingHint')}</p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/80 px-4 py-3 shadow-sm shadow-amber-200/60 transition hover:border-amber-300 dark:border-amber-700/60 dark:bg-amber-900/30 dark:hover:border-amber-500/60">
+                <input
+                  type="checkbox"
+                  checked={form.enableRoutingFallback}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, enableRoutingFallback: event.target.checked }))
+                  }
+                  className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-400 dark:border-amber-500"
+                />
+                <div className="space-y-1">
+                  <span className="text-sm font-semibold text-amber-700 dark:text-amber-200">
+                    {t('settings.fields.enableRoutingFallback')}
+                  </span>
+                  <p className={cn(mutedTextClass, 'text-xs text-amber-800/80 dark:text-amber-200/80')}>
+                    {t('settings.fields.enableRoutingFallbackHint')}
+                  </p>
                 </div>
               </label>
             </div>

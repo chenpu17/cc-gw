@@ -40,6 +40,7 @@ export interface GatewayConfig {
   host?: string
   providers: ProviderConfig[]
   defaults: DefaultsConfig
+  enableRoutingFallback?: boolean
   logRetentionDays?: number
   modelRoutes?: Record<string, string>
   endpointRouting?: Partial<Record<GatewayEndpoint, EndpointRoutingConfig>>

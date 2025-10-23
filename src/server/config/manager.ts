@@ -267,6 +267,8 @@ function parseConfig(raw: string): GatewayConfig {
     data.webAuth = webAuth
   }
 
+  data.enableRoutingFallback = data.enableRoutingFallback === true
+
   return data as GatewayConfig
 }
 

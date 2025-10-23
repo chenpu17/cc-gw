@@ -65,33 +65,13 @@ const PROVIDER_TYPE_PRESETS: Record<Exclude<ProviderConfig['type'], undefined> |
     baseUrl: 'https://api.moonshot.cn/v1'
   },
   anthropic: {
-    baseUrl: 'https://api.anthropic.com/v1',
-    defaultModel: 'claude-sonnet-4-5-20250929',
-    models: [
-      {
-        id: 'claude-sonnet-4-5-20250929',
-        label: 'Claude Sonnet 4.5 (2025-09-29)'
-      },
-      {
-        id: 'claude-sonnet-4-20250514',
-        label: 'Claude Sonnet 4 (2025-05-14)'
-      },
-      {
-        id: 'claude-opus-4-1-20250805',
-        label: 'Claude Opus 4.1 (2025-08-05)'
-      },
-      {
-        id: 'claude-3-5-haiku-20241022',
-        label: 'Claude 3.5 Haiku (2024-10-22)'
-      }
-    ]
+    baseUrl: 'https://api.anthropic.com/v1'
   },
   custom: {}
 }
 
 function buildInitialState(provider?: ProviderConfig): FormState {
   if (!provider) {
-    const emptyModel = createEmptyModel()
     return {
       id: '',
       label: '',
@@ -99,7 +79,7 @@ function buildInitialState(provider?: ProviderConfig): FormState {
       apiKey: '',
       type: 'custom',
       defaultModel: '',
-      models: [emptyModel],
+      models: [],
       authMode: 'apiKey'
     }
   }
@@ -252,11 +232,11 @@ export function ProviderDrawer({
 
   const handleRemoveModel = (index: number) => {
     setForm((prev) => {
-      if (prev.models.length <= 1) return prev
+      if (index < 0 || index >= prev.models.length) return prev
       const nextModels = prev.models.filter((_, idx) => idx !== index)
       let nextDefault = prev.defaultModel
       if (!nextModels.some((model) => model.id === nextDefault)) {
-        nextDefault = nextModels[0]?.id ?? ''
+        nextDefault = ''
       }
       return { ...prev, models: nextModels, defaultModel: nextDefault }
     })
@@ -304,25 +284,23 @@ export function ProviderDrawer({
       }
     }
 
-    const modelIds = new Set<string>()
-    const invalidModel = form.models.some((model) => {
-      const id = model.id.trim()
-      if (id.length === 0) {
-        return true
-      }
-      if (modelIds.has(id)) {
-        return true
-      }
-      modelIds.add(id)
-      return false
-    })
+    if (form.models.length > 0) {
+      const modelIds = new Set<string>()
+      const invalidModel = form.models.some((model) => {
+        const id = model.id.trim()
+        if (id.length === 0) {
+          return true
+        }
+        if (modelIds.has(id)) {
+          return true
+        }
+        modelIds.add(id)
+        return false
+      })
 
-    if (invalidModel) {
-      nextErrors.models = t('providers.drawer.errors.modelInvalid')
-    }
-
-    if (form.models.length === 0) {
-      nextErrors.models = t('providers.drawer.errors.modelsRequired')
+      if (invalidModel) {
+        nextErrors.models = t('providers.drawer.errors.modelInvalid')
+      }
     }
 
     if (form.defaultModel && !form.models.some((model) => model.id === form.defaultModel)) {
@@ -334,10 +312,12 @@ export function ProviderDrawer({
   }
 
   const serialize = (): ProviderConfig => {
-    const trimmedModels: ProviderModelConfig[] = form.models.map((model) => ({
-      id: model.id.trim(),
-      label: model.label?.trim() ? model.label.trim() : undefined
-    }))
+    const trimmedModels: ProviderModelConfig[] = form.models
+      .map((model) => ({
+        id: model.id.trim(),
+        label: model.label?.trim() ? model.label.trim() : undefined
+      }))
+      .filter((model) => model.id.length > 0)
 
     const extraHeaders = provider?.extraHeaders && Object.keys(provider.extraHeaders).length > 0 ? provider.extraHeaders : undefined
     const authMode = form.type === 'anthropic' ? form.authMode : undefined
@@ -349,7 +329,7 @@ export function ProviderDrawer({
       apiKey: form.apiKey.trim() || undefined,
       type: form.type ?? 'custom',
       defaultModel: form.defaultModel || undefined,
-      models: trimmedModels,
+      models: trimmedModels.length > 0 ? trimmedModels : undefined,
       extraHeaders,
       authMode,
     }
@@ -538,59 +518,82 @@ export function ProviderDrawer({
 
             {errors.models ? <p className="text-xs text-red-500">{errors.models}</p> : null}
 
-              <div className="space-y-4">
-                {form.models.map((model, index) => (
-                  <div
-                    key={model._key}
-                    className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/40"
-                  >
-                    <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
+              {form.models.map((model, index) => (
+                <div
+                  key={model._key}
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/40"
+                >
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="flex flex-col gap-2 text-sm">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.modelId')}</span>
+                      <input
+                        value={model.id}
+                        onChange={(event) => handleModelIdChange(index, event.target.value)}
+                        placeholder={t('providers.drawer.fields.modelIdPlaceholder')}
+                        className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
+                      />
+                    </label>
+                    {showAdvanced ? (
                       <label className="flex flex-col gap-2 text-sm">
-                        <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.modelId')}</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.modelLabel')}</span>
                         <input
-                          value={model.id}
-                          onChange={(event) => handleModelIdChange(index, event.target.value)}
-                          placeholder={t('providers.drawer.fields.modelIdPlaceholder')}
+                          value={model.label ?? ''}
+                          onChange={(event) => handleModelChange(index, { label: event.target.value })}
+                          placeholder={t('providers.drawer.fields.modelLabelPlaceholder')}
                           className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
                         />
                       </label>
-                      {showAdvanced ? (
-                        <label className="flex flex-col gap-2 text-sm">
-                          <span className="text-xs text-slate-500 dark:text-slate-400">{t('providers.drawer.fields.modelLabel')}</span>
-                          <input
-                            value={model.label ?? ''}
-                            onChange={(event) => handleModelChange(index, { label: event.target.value })}
-                            placeholder={t('providers.drawer.fields.modelLabelPlaceholder')}
-                            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-blue-400 dark:focus:ring-blue-400/40 dark:disabled:bg-slate-800/60"
-                          />
-                        </label>
-                      ) : null}
-                    </div>
+                    ) : null}
+                  </div>
 
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-                    <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
-                      <input
-                        type="radio"
-                        name="defaultModel"
-                        value={model.id}
-                        checked={form.defaultModel === model.id}
-                        onChange={() => setForm((prev) => ({ ...prev, defaultModel: model.id }))}
-                        disabled={model.id.trim().length === 0}
-                      />
-                      {t('providers.drawer.fields.setDefault')}
-                    </label>
-                    <button
-                      type="button"
-                      className="text-red-500 transition hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
-                      onClick={() => handleRemoveModel(index)}
-                      disabled={form.models.length <= 1}
-                    >
-                      {t('providers.drawer.fields.removeModel')}
-                    </button>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                    <input
+                      type="radio"
+                      name="defaultModel"
+                      value={model.id}
+                      checked={form.defaultModel === model.id}
+                      onChange={() => setForm((prev) => ({ ...prev, defaultModel: model.id }))}
+                      disabled={model.id.trim().length === 0}
+                    />
+                    {t('providers.drawer.fields.setDefault')}
+                  </label>
+                  <button
+                    type="button"
+                    className="text-red-500 transition hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => handleRemoveModel(index)}
+                    disabled={form.models.length === 0}
+                  >
+                    {t('providers.drawer.fields.removeModel')}
+                  </button>
+                </div>
+              </div>
+            ))}
+            {form.models.length === 0 ? (
+              <div className="rounded-xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-5 shadow-md dark:border-amber-600/60 dark:from-amber-900/20 dark:to-yellow-900/20">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 text-2xl">💡</div>
+                  <div className="flex-1 space-y-2">
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                      {t('providers.drawer.noModelsTitle')}
+                    </p>
+                    <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-300">
+                      {t('providers.drawer.noModelsHint', { providerId: form.id || 'provider-id' })}
+                    </p>
+                    <div className="rounded-md bg-amber-100/80 p-2.5 dark:bg-amber-800/40">
+                      <p className="mb-1.5 text-xs font-medium text-amber-900 dark:text-amber-200">
+                        {t('providers.drawer.routeExample')}
+                      </p>
+                      <code className="block rounded bg-white px-2.5 py-1.5 font-mono text-xs text-amber-900 shadow-sm dark:bg-slate-900 dark:text-amber-100">
+                        &quot;claude-*&quot;: &quot;{(form.id || 'provider-id').trim() || 'provider-id'}:*&quot;
+                      </code>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : null}
+          </div>
 
             {availableDefaultModels.length > 1 ? (
               <div className="text-xs text-slate-500 dark:text-slate-400">

@@ -495,7 +495,10 @@ const resources = {
           },
           toast: {
             saveFailure: '保存失败：{{message}}'
-          }
+          },
+          noModelsTitle: '透传模式已启用',
+          noModelsHint: '当前未配置模型列表。该 Provider 将以"透传"模式使用，可在模型路由中映射，或在请求中直接指定模型。',
+          routeExample: '路由映射示例：'
         },
         confirm: {
           delete: '确认删除 Provider「{{name}}」？'
@@ -597,7 +600,9 @@ const resources = {
           requestLogging: '输出访问日志',
           requestLoggingHint: '控制是否在终端打印“incoming request …”日志，方便观察访问来源。',
           responseLogging: '输出响应日志',
-          responseLoggingHint: '控制是否输出“request completed …”日志（含状态码与耗时），关闭后终端更安静。'
+          responseLoggingHint: '控制是否输出“request completed …”日志（含状态码与耗时），关闭后终端更安静。',
+          enableRoutingFallback: '启用模型回退策略',
+          enableRoutingFallbackHint: '无匹配模型时自动落到首个可用模型。默认关闭，建议仅在明确需要时开启。'
         },
         auth: {
           description: '开启 Web UI 登录后，所有管理接口仅对已登录用户开放，模型代理端点仍保持兼容。',
@@ -1374,7 +1379,10 @@ const resources = {
           },
           toast: {
             saveFailure: 'Save failed: {{message}}'
-          }
+          },
+          noModelsTitle: 'Pass-through Mode Enabled',
+          noModelsHint: 'No models are defined. This provider will run in pass-through mode—map routes in model routing or specify models directly in requests.',
+          routeExample: 'Route Mapping Example:'
         },
         confirm: {
           delete: 'Remove provider “{{name}}”?'
@@ -1476,7 +1484,9 @@ const resources = {
           requestLogging: 'Emit request logs',
           requestLoggingHint: 'Controls the “incoming request …” lines printed to the console. Helpful for tracing traffic.',
           responseLogging: 'Emit response logs',
-          responseLoggingHint: 'Controls the “request completed …” entries (status + latency). Disable for quieter output.'
+          responseLoggingHint: 'Controls the “request completed …” entries (status + latency). Disable for quieter output.',
+          enableRoutingFallback: 'Enable routing fallback',
+          enableRoutingFallbackHint: 'Automatically fall back to the first available model when no mapping matches. Disabled by default; enable only if you need legacy behavior.'
         },
         auth: {
           description: 'Require a username and password before accessing the Web UI. Model relay endpoints (/anthropic, /openai) remain publicly accessible.',

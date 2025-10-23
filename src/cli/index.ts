@@ -110,6 +110,7 @@ async function ensureConfigTemplate(port?: string): Promise<boolean> {
       defaults: { ...baseDefaults },
       storeRequestPayloads: true,
       storeResponsePayloads: true,
+      enableRoutingFallback: false,
       endpointRouting: {
         anthropic: {
           defaults: { ...baseDefaults },

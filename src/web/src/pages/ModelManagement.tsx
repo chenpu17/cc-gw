@@ -104,12 +104,21 @@ export default function ModelManagementPage() {
     openai: null
   })
   const [savingRouteFor, setSavingRouteFor] = useState<Endpoint | null>(null)
-  const [anthropicPresets, setAnthropicPresets] = useState<RoutingPreset[]>([])
-  const [presetName, setPresetName] = useState('')
-  const [presetError, setPresetError] = useState<string | null>(null)
-  const [savingPreset, setSavingPreset] = useState(false)
-  const [applyingPreset, setApplyingPreset] = useState<string | null>(null)
-  const [deletingPreset, setDeletingPreset] = useState<string | null>(null)
+  const [presetsByEndpoint, setPresetsByEndpoint] = useState<Record<Endpoint, RoutingPreset[]>>({
+    anthropic: [],
+    openai: []
+  })
+  const [presetNameByEndpoint, setPresetNameByEndpoint] = useState<Record<Endpoint, string>>({
+    anthropic: '',
+    openai: ''
+  })
+  const [presetErrorByEndpoint, setPresetErrorByEndpoint] = useState<Record<Endpoint, string | null>>({
+    anthropic: null,
+    openai: null
+  })
+  const [savingPresetFor, setSavingPresetFor] = useState<Endpoint | null>(null)
+  const [applyingPreset, setApplyingPreset] = useState<{ endpoint: Endpoint; name: string } | null>(null)
+  const [deletingPreset, setDeletingPreset] = useState<{ endpoint: Endpoint; name: string } | null>(null)
   const [testDialogOpen, setTestDialogOpen] = useState(false)
   const [testDialogProvider, setTestDialogProvider] = useState<ProviderConfig | null>(null)
   const [testDialogUsePreset, setTestDialogUsePreset] = useState(true)
@@ -134,7 +143,10 @@ export default function ModelManagementPage() {
 
       setRoutesByEndpoint(deriveRoutesFromConfig(incoming))
       setRouteError({ anthropic: null, openai: null })
-      setAnthropicPresets(incoming.routingPresets?.anthropic ?? [])
+      setPresetsByEndpoint({
+        anthropic: incoming.routingPresets?.anthropic ?? [],
+        openai: incoming.routingPresets?.openai ?? []
+      })
     }
   }, [configQuery.data])
 
@@ -208,15 +220,18 @@ export default function ModelManagementPage() {
     return options
   }, [providers, routesByEndpoint, t])
 
-  const syncAnthropicPresets = (presets: RoutingPreset[]) => {
-    setAnthropicPresets(presets)
+  const syncPresets = (endpoint: Endpoint, presets: RoutingPreset[]) => {
+    setPresetsByEndpoint((prev) => ({
+      ...prev,
+      [endpoint]: presets
+    }))
     setConfig((prev) => {
       if (!prev) return prev
       return {
         ...prev,
         routingPresets: {
           ...prev.routingPresets,
-          anthropic: presets
+          [endpoint]: presets
         }
       }
     })
@@ -242,35 +257,53 @@ export default function ModelManagementPage() {
     return candidate
   }
 
-  const handlePresetNameChange = (value: string) => {
-    setPresetName(value)
+  const handlePresetNameChange = (endpoint: Endpoint, value: string) => {
+    setPresetNameByEndpoint((prev) => ({
+      ...prev,
+      [endpoint]: value
+    }))
     if (value.trim()) {
-      setPresetError(null)
+      setPresetErrorByEndpoint((prev) => ({
+        ...prev,
+        [endpoint]: null
+      }))
     }
   }
 
-  const handleSavePreset = async () => {
+  const handleSavePreset = async (endpoint: Endpoint) => {
     if (!ensureConfig()) return
-    const trimmed = presetName.trim()
+    const trimmed = presetNameByEndpoint[endpoint].trim()
     if (!trimmed) {
-      setPresetError(t('modelManagement.validation.presetName'))
+      setPresetErrorByEndpoint((prev) => ({
+        ...prev,
+        [endpoint]: t('modelManagement.validation.presetName')
+      }))
       return
     }
-    if (anthropicPresets.some((preset) => preset.name.toLowerCase() === trimmed.toLowerCase())) {
-      setPresetError(t('modelManagement.validation.presetDuplicate', { name: trimmed }))
+    if (presetsByEndpoint[endpoint].some((preset) => preset.name.toLowerCase() === trimmed.toLowerCase())) {
+      setPresetErrorByEndpoint((prev) => ({
+        ...prev,
+        [endpoint]: t('modelManagement.validation.presetDuplicate', { name: trimmed })
+      }))
       return
     }
 
-    setSavingPreset(true)
+    setSavingPresetFor(endpoint)
     try {
       const response = await apiClient.post<{ success: boolean; presets: RoutingPreset[] }>(
-        '/api/routing-presets/anthropic',
+        `/api/routing-presets/${endpoint}`,
         { name: trimmed }
       )
       const presets = response.data.presets ?? []
-      syncAnthropicPresets(presets)
-      setPresetName('')
-      setPresetError(null)
+      syncPresets(endpoint, presets)
+      setPresetNameByEndpoint((prev) => ({
+        ...prev,
+        [endpoint]: ''
+      }))
+      setPresetErrorByEndpoint((prev) => ({
+        ...prev,
+        [endpoint]: null
+      }))
       pushToast({ title: t('modelManagement.toast.presetSaved', { name: trimmed }), variant: 'success' })
     } catch (error) {
       pushToast({
@@ -280,28 +313,31 @@ export default function ModelManagementPage() {
         variant: 'error'
       })
     } finally {
-      setSavingPreset(false)
+      setSavingPresetFor(null)
       void configQuery.refetch()
     }
   }
 
-  const handleApplyPreset = async (preset: RoutingPreset) => {
+  const handleApplyPreset = async (endpoint: Endpoint, preset: RoutingPreset) => {
     if (!ensureConfig()) return
-    setApplyingPreset(preset.name)
+    setApplyingPreset({ endpoint, name: preset.name })
     try {
       const response = await apiClient.post<{ success: boolean; config: GatewayConfig }>(
-        '/api/routing-presets/anthropic/apply',
+        `/api/routing-presets/${endpoint}/apply`,
         { name: preset.name }
       )
       const updatedConfig = response.data.config
       if (updatedConfig) {
         setConfig(updatedConfig)
         setRoutesByEndpoint(deriveRoutesFromConfig(updatedConfig))
-        setAnthropicPresets(updatedConfig.routingPresets?.anthropic ?? [])
+        setPresetsByEndpoint({
+          anthropic: updatedConfig.routingPresets?.anthropic ?? [],
+          openai: updatedConfig.routingPresets?.openai ?? []
+        })
       } else {
         setRoutesByEndpoint((prev) => ({
           ...prev,
-          anthropic: mapRoutesToEntries(preset.modelRoutes)
+          [endpoint]: mapRoutesToEntries(preset.modelRoutes)
         }))
       }
       pushToast({ title: t('modelManagement.toast.presetApplySuccess', { name: preset.name }), variant: 'success' })
@@ -318,18 +354,18 @@ export default function ModelManagementPage() {
     }
   }
 
-  const handleDeletePreset = async (preset: RoutingPreset) => {
+  const handleDeletePreset = async (endpoint: Endpoint, preset: RoutingPreset) => {
     if (!ensureConfig()) return
     const confirmed = window.confirm(t('modelManagement.confirm.deletePreset', { name: preset.name }))
     if (!confirmed) return
 
-    setDeletingPreset(preset.name)
+    setDeletingPreset({ endpoint, name: preset.name })
     try {
       const response = await apiClient.delete<{ success: boolean; presets: RoutingPreset[] }>(
-        `/api/routing-presets/anthropic/${encodeURIComponent(preset.name)}`
+        `/api/routing-presets/${endpoint}/${encodeURIComponent(preset.name)}`
       )
       const presets = response.data.presets ?? []
-      syncAnthropicPresets(presets)
+      syncPresets(endpoint, presets)
       pushToast({ title: t('modelManagement.toast.presetDeleteSuccess', { name: preset.name }), variant: 'success' })
     } catch (error) {
       pushToast({
@@ -843,94 +879,101 @@ export default function ModelManagementPage() {
     </section>
   )
 
-  const renderAnthropicPresets = () => (
-    <div className="rounded-2xl border border-dashed border-slate-300/60 bg-gradient-to-br from-slate-50/80 to-white/70 p-6 dark:border-slate-600/60 dark:from-slate-800/60 dark:to-slate-900/70 backdrop-blur-sm">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-2">
-          <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
-            {t('modelManagement.presets.title')}
-          </h3>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            {t('modelManagement.presets.description')}
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <input
-            type="text"
-            value={presetName}
-            onChange={(event) => handlePresetNameChange(event.target.value)}
-            placeholder={t('modelManagement.presets.namePlaceholder')}
-            className={inputClass}
-            disabled={savingPreset}
-          />
-          <button
-            type="button"
-            onClick={handleSavePreset}
-            className={primaryButtonClass}
-            disabled={savingPreset}
-          >
-            {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
-          </button>
-        </div>
-      </div>
-      {presetError ? (
-        <div className="rounded-xl bg-red-50/80 border border-red-200/50 p-3 text-xs text-red-700 dark:bg-red-900/40 dark:border-red-800/50 dark:text-red-300 backdrop-blur-sm">
-          {presetError}
-        </div>
-      ) : null}
-      {anthropicPresets.length === 0 ? (
-        <div className="rounded-xl border border-slate-200/40 bg-slate-50/60 p-6 text-center text-sm text-slate-600 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-400 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-3">
-            <div className="rounded-xl bg-slate-200/50 p-3 dark:bg-slate-700/50">
-              <svg className="h-6 w-6 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <p className="font-medium text-slate-700 dark:text-slate-300">{t('modelManagement.presets.empty')}</p>
+  const renderPresetsSection = (endpoint: Endpoint) => {
+    const presets = presetsByEndpoint[endpoint]
+    const presetName = presetNameByEndpoint[endpoint]
+    const presetError = presetErrorByEndpoint[endpoint]
+    const savingPreset = savingPresetFor === endpoint
+
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300/60 bg-gradient-to-br from-slate-50/80 to-white/70 p-6 dark:border-slate-600/60 dark:from-slate-800/60 dark:to-slate-900/70 backdrop-blur-sm">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-2">
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
+              {t('modelManagement.presets.title')}
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              {t('modelManagement.presets.description')}
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <input
+              type="text"
+              value={presetName}
+              onChange={(event) => handlePresetNameChange(endpoint, event.target.value)}
+              placeholder={t('modelManagement.presets.namePlaceholder')}
+              className={inputClass}
+              disabled={savingPreset}
+            />
+            <button
+              type="button"
+              onClick={() => handleSavePreset(endpoint)}
+              className={primaryButtonClass}
+              disabled={savingPreset}
+            >
+              {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
+            </button>
           </div>
         </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {anthropicPresets.map((preset) => {
-            const isApplying = applyingPreset === preset.name
-            const isDeleting = deletingPreset === preset.name
-            return (
-              <div
-                key={preset.name}
-                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/50 bg-gradient-to-r from-white/90 to-white/80 px-4 py-3 text-sm shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-slate-300/70 hover:bg-white/95 hover:shadow-md dark:border-slate-700/50 dark:from-slate-900/90 dark:to-slate-900/80 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/95"
-              >
-                <span className="truncate font-medium text-slate-700 dark:text-slate-200">{preset.name}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPreset(preset)}
-                    className={isApplying || isDeleting ?
-                      `${subtleButtonClass} opacity-60 cursor-not-allowed text-xs px-2 py-1` :
-                      `${primaryButtonClass} text-xs px-2 py-1`
-                    }
-                    disabled={isApplying || isDeleting}
-                  >
-                    {isApplying ? t('modelManagement.presets.applying') : t('modelManagement.presets.apply')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeletePreset(preset)}
-                    className={isDeleting || isApplying ?
-                      `${subtleButtonClass} opacity-60 cursor-not-allowed text-xs px-2 py-1` :
-                      `${dangerButtonClass} text-xs px-2 py-1`
-                    }
-                    disabled={isDeleting || isApplying}
-                  >
-                    {isDeleting ? t('modelManagement.presets.deleting') : t('modelManagement.presets.delete')}
-                  </button>
-                </div>
+        {presetError ? (
+          <div className="rounded-xl bg-red-50/80 border border-red-200/50 p-3 text-xs text-red-700 dark:bg-red-900/40 dark:border-red-800/50 dark:text-red-300 backdrop-blur-sm">
+            {presetError}
+          </div>
+        ) : null}
+        {presets.length === 0 ? (
+          <div className="rounded-xl border border-slate-200/40 bg-slate-50/60 p-6 text-center text-sm text-slate-600 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-400 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-3">
+              <div className="rounded-xl bg-slate-200/50 p-3 dark:bg-slate-700/50">
+                <svg className="h-6 w-6 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
               </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
+              <p className="font-medium text-slate-700 dark:text-slate-300">{t('modelManagement.presets.empty')}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {presets.map((preset) => {
+              const isApplying = applyingPreset?.endpoint === endpoint && applyingPreset?.name === preset.name
+              const isDeleting = deletingPreset?.endpoint === endpoint && deletingPreset?.name === preset.name
+              return (
+                <div
+                  key={preset.name}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/50 bg-gradient-to-r from-white/90 to-white/80 px-4 py-3 text-sm shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-slate-300/70 hover:bg-white/95 hover:shadow-md dark:border-slate-700/50 dark:from-slate-900/90 dark:to-slate-900/80 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/95"
+                >
+                  <span className="truncate font-medium text-slate-700 dark:text-slate-200">{preset.name}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset(endpoint, preset)}
+                      className={isApplying || isDeleting ?
+                        `${subtleButtonClass} opacity-60 cursor-not-allowed text-xs px-2 py-1` :
+                        `${primaryButtonClass} text-xs px-2 py-1`
+                      }
+                      disabled={isApplying || isDeleting}
+                    >
+                      {isApplying ? t('modelManagement.presets.applying') : t('modelManagement.presets.apply')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePreset(endpoint, preset)}
+                      className={isDeleting || isApplying ?
+                        `${subtleButtonClass} opacity-60 cursor-not-allowed text-xs px-2 py-1` :
+                        `${dangerButtonClass} text-xs px-2 py-1`
+                      }
+                      disabled={isDeleting || isApplying}
+                    >
+                      {isDeleting ? t('modelManagement.presets.deleting') : t('modelManagement.presets.delete')}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const renderRoutesSection = (endpoint: Endpoint) => {
     const entries = routesByEndpoint[endpoint]
@@ -983,7 +1026,7 @@ export default function ModelManagementPage() {
           </div>
         </div>
 
-        {endpoint === 'anthropic' ? renderAnthropicPresets() : null}
+        {renderPresetsSection(endpoint)}
 
         {error ? (
           <div className="rounded-xl bg-red-50/80 border border-red-200/50 p-4 text-sm text-red-700 dark:bg-red-900/40 dark:border-red-800/50 dark:text-red-300 backdrop-blur-sm">

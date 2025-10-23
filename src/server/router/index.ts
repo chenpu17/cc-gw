@@ -196,15 +196,39 @@ export function resolveRoute(ctx: RouteContext): RouteTarget {
     if (target) return { ...target, tokenEstimate }
   }
 
-  const firstProvider = providers[0]
-  const modelId = firstProvider.defaultModel || firstProvider.models?.[0]?.id
-  if (!modelId) {
-    throw new Error(`Provider ${firstProvider.id} 未配置任何模型`)
+  if (config.enableRoutingFallback !== true) {
+    throw new Error('未找到匹配模型，请在请求中指定模型或在配置中启用回退策略。')
   }
+
+  const fallbackProvider = providers.find((provider) => {
+    if (provider.defaultModel && provider.defaultModel.trim().length > 0) {
+      return true
+    }
+    if (Array.isArray(provider.models)) {
+      return provider.models.some((model) => typeof model.id === 'string' && model.id.trim().length > 0)
+    }
+    return false
+  })
+  if (!fallbackProvider) {
+    throw new Error('未配置任何模型，请在 Web UI 中为至少一个 Provider 添加模型。')
+  }
+
+  const fallbackModelIdRaw =
+    (fallbackProvider.defaultModel && fallbackProvider.defaultModel.trim().length > 0
+      ? fallbackProvider.defaultModel.trim()
+      : undefined) ??
+    fallbackProvider.models
+      ?.map((model) => (typeof model.id === 'string' ? model.id.trim() : ''))
+      .find((modelId) => modelId.length > 0)
+
+  if (!fallbackModelIdRaw) {
+    throw new Error(`Provider ${fallbackProvider.id} 未配置任何模型`)
+  }
+
   return {
-    providerId: firstProvider.id,
-    modelId,
-    provider: firstProvider,
+    providerId: fallbackProvider.id,
+    modelId: fallbackModelIdRaw,
+    provider: fallbackProvider,
     tokenEstimate
   }
 }
