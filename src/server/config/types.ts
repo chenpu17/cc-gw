@@ -26,9 +26,29 @@ export type ModelRouteMap = Record<string, string>
 
 export type GatewayEndpoint = 'anthropic' | 'openai'
 
+export type EndpointProtocol = 'anthropic' | 'openai-chat' | 'openai-responses' | 'openai-auto'
+
 export interface EndpointRoutingConfig {
   defaults: DefaultsConfig
   modelRoutes: ModelRouteMap
+}
+
+export interface EndpointPathConfig {
+  path: string
+  protocol: EndpointProtocol
+}
+
+export interface CustomEndpointConfig {
+  id: string
+  label: string
+  // 新格式：支持多个路径
+  paths?: EndpointPathConfig[]
+  // 旧格式：向后兼容（已弃用）
+  path?: string
+  protocol?: EndpointProtocol
+  enabled?: boolean
+  routing?: EndpointRoutingConfig
+  routingPresets?: RoutingPreset[]
 }
 
 export interface RoutingPreset {
@@ -46,6 +66,7 @@ export interface GatewayConfig {
   logRetentionDays?: number
   modelRoutes?: ModelRouteMap
   endpointRouting?: Partial<Record<GatewayEndpoint, EndpointRoutingConfig>>
+  customEndpoints?: CustomEndpointConfig[]
   routingPresets?: Partial<Record<GatewayEndpoint, RoutingPreset[]>>
   storeRequestPayloads?: boolean
   storeResponsePayloads?: boolean

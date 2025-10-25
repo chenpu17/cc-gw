@@ -10,15 +10,88 @@ import { registerMessagesRoute } from './routes/messages.js'
 import { registerOpenAiRoutes } from './routes/openai.js'
 import { registerAdminRoutes } from './routes/admin.js'
 import { registerAuthRoutes } from './routes/auth.js'
+import { registerCustomEndpoint, getRegisteredEndpointIds, getRegisteredPaths } from './routes/custom-endpoint.js'
 import { startMaintenanceTimers } from './tasks/maintenance.js'
 import { readSession } from './security/webAuth.js'
+import type { GatewayConfig, CustomEndpointConfig, EndpointProtocol } from './config/types.js'
 
 const DEFAULT_PORT = 4100
 const DEFAULT_HOST = '127.0.0.1'
 
+/**
+ * 根据协议类型生成需要注册的路径列表
+ */
+function getPathsForProtocol(basePath: string, protocol: EndpointProtocol): string[] {
+  switch (protocol) {
+    case 'anthropic':
+      return [
+        `${basePath}/v1/messages`,
+        `${basePath}/v1/v1/messages`
+      ]
+    case 'openai-auto':
+      return [
+        `${basePath}/v1/chat/completions`,
+        `${basePath}/v1/responses`
+      ]
+    case 'openai-chat':
+      return [
+        `${basePath}/v1/chat/completions`
+      ]
+    case 'openai-responses':
+      return [
+        `${basePath}/v1/responses`
+      ]
+    default:
+      return [basePath]
+  }
+}
+
+/**
+ * 获取endpoint的所有路径（支持新旧两种格式）
+ * 返回编码后的路径，与 Fastify 路由注册保持一致
+ */
+function getEndpointPaths(endpoint: CustomEndpointConfig): string[] {
+  const paths: string[] = []
+
+  // 新格式：使用 paths 数组
+  if (endpoint.paths && Array.isArray(endpoint.paths) && endpoint.paths.length > 0) {
+    for (const p of endpoint.paths) {
+      const basePath = p.path.startsWith('/') ? p.path : `/${p.path}`
+      // 根据协议生成实际路径
+      const actualPaths = getPathsForProtocol(basePath, p.protocol)
+      // URL 编码
+      paths.push(...actualPaths.map(path =>
+        path.split('/').map(segment => encodeURIComponent(segment)).join('/')
+      ))
+    }
+  }
+  // 旧格式：使用 path
+  else if (endpoint.path) {
+    const basePath = endpoint.path.startsWith('/') ? endpoint.path : `/${endpoint.path}`
+    const protocol = endpoint.protocol || 'anthropic'
+    // 根据协议生成实际路径
+    const actualPaths = getPathsForProtocol(basePath, protocol)
+    // URL 编码
+    paths.push(...actualPaths.map(path =>
+      path.split('/').map(segment => encodeURIComponent(segment)).join('/')
+    ))
+  }
+
+  return paths
+}
+
 let cachedConfig = loadConfig()
+let appInstance: FastifyInstance | null = null
+
 onConfigChange((config) => {
   cachedConfig = config
+
+  // 动态注册/更新自定义端点
+  if (appInstance) {
+    syncCustomEndpoints(appInstance, config).catch((error) => {
+      appInstance?.log.error({ error }, 'Failed to sync custom endpoints after config change')
+    })
+  }
 })
 
 function resolveWebDist(): string | null {
@@ -41,6 +114,78 @@ function resolveWebDist(): string | null {
   }
   return null
 }
+
+/**
+ * 同步自定义端点配置
+ *
+ * 工作原理：
+ * - Handler内部实时读取配置，因此修改routing/enabled立即生效
+ * - 检测path变化时，为新path注册路由（旧path继续存在但返回404）
+ * - 新增endpoint时立即注册
+ * - 删除endpoint时旧路由继续存在但返回404，需重启清理
+ */
+async function syncCustomEndpoints(app: FastifyInstance, config: GatewayConfig): Promise<void> {
+  const configuredEndpoints = config.customEndpoints ?? []
+  const registeredIds = new Set(getRegisteredEndpointIds())
+
+  for (const endpoint of configuredEndpoints) {
+    // 跳过禁用的
+    if (endpoint.enabled === false) {
+      continue
+    }
+
+    const endpointId = endpoint.id
+    const newPaths = getEndpointPaths(endpoint)
+
+    // 新增的endpoint
+    if (!registeredIds.has(endpointId)) {
+      try {
+        await registerCustomEndpoint(app, endpoint)
+        app.log.info(`Dynamically registered new custom endpoint: ${endpointId} at ${newPaths.join(', ')}`)
+      } catch (error) {
+        app.log.error(
+          { error, endpointId },
+          `Failed to register custom endpoint: ${endpointId}`
+        )
+      }
+      continue
+    }
+
+    // 已存在的endpoint，检查path是否有变化
+    const registeredPaths = getRegisteredPaths(endpointId)
+    const hasNewPaths = newPaths.some(path => !registeredPaths.includes(path))
+
+    if (hasNewPaths) {
+      // Path变化了，为新path注册路由
+      try {
+        await registerCustomEndpoint(app, endpoint)
+        app.log.info(
+          `Detected path change for endpoint "${endpointId}". ` +
+            `New paths: ${newPaths.join(', ')}. ` +
+            `Old paths [${registeredPaths.join(', ')}] will return 404 but remain until restart.`
+        )
+      } catch (error) {
+        app.log.error(
+          { error, endpointId, newPaths },
+          `Failed to register new paths for endpoint: ${endpointId}`
+        )
+      }
+    }
+    // 如果path没变，跳过（handler会实时读取最新配置，无需重新注册）
+  }
+
+  // 检测已删除的endpoint（提示用户重启以清理路由）
+  const configuredIds = new Set(configuredEndpoints.map((ep) => ep.id))
+  const deletedIds = Array.from(registeredIds).filter((id) => !configuredIds.has(id))
+
+  if (deletedIds.length > 0) {
+    app.log.warn(
+      `Custom endpoints [${deletedIds.join(', ')}] have been deleted from config. ` +
+        `Their routes will return 404 but remain registered until server restart.`
+    )
+  }
+}
+
 
 export async function createServer(): Promise<FastifyInstance> {
   const config = cachedConfig ?? loadConfig()
@@ -67,16 +212,32 @@ export async function createServer(): Promise<FastifyInstance> {
     const rawUrl = request.raw?.url ?? request.url ?? ''
     if (!rawUrl) return
 
-    if (
-      rawUrl.startsWith('/auth/') ||
-      rawUrl.startsWith('/anthropic') ||
-      rawUrl.startsWith('/openai') ||
-      rawUrl.startsWith('/assets/') ||
-      rawUrl.startsWith('/favicon.ico') ||
-      rawUrl === '/' ||
-      rawUrl.startsWith('/ui') ||
-      rawUrl.startsWith('/health')
-    ) {
+    // 公开访问的路径
+    const publicPaths = [
+      '/auth/',
+      '/anthropic',
+      '/openai',
+      '/assets/',
+      '/favicon.ico',
+      '/',
+      '/ui',
+      '/health'
+    ]
+
+    // 检查是否是公开路径
+    if (publicPaths.some((path) => rawUrl === path || rawUrl.startsWith(path))) {
+      return
+    }
+
+    // 检查是否是自定义端点路径（也应该公开访问）
+    const customEndpoints = (cachedConfig ?? getConfig()).customEndpoints ?? []
+    const isCustomEndpoint = customEndpoints.some((endpoint) => {
+      if (endpoint.enabled === false) return false
+      const paths = getEndpointPaths(endpoint)
+      return paths.some(path => rawUrl === path || rawUrl.startsWith(path))
+    })
+
+    if (isCustomEndpoint) {
       return
     }
 
@@ -190,8 +351,15 @@ export async function createServer(): Promise<FastifyInstance> {
   await registerAuthRoutes(app)
   await registerMessagesRoute(app)
   await registerOpenAiRoutes(app)
+
+  // 初始注册自定义端点
+  await syncCustomEndpoints(app, config)
+
   await registerAdminRoutes(app)
   startMaintenanceTimers()
+
+  // 存储 app 实例以便 onConfigChange 回调使用
+  appInstance = app
 
   app.get('/health', async () => {
     return {

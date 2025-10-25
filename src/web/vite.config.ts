@@ -9,6 +9,10 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
+  define: {
+    'import.meta.env.VITE_BUILD_TIME': JSON.stringify(new Date().toISOString()),
+    'import.meta.env.VITE_NODE_VERSION': JSON.stringify(process.version)
+  },
   server: {
     port: 5173,
     open: false,

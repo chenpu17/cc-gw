@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { apiClient, type ApiError } from '@/services/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiClient, customEndpointsApi, toApiError, type ApiError } from '@/services/api'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import type { EndpointRoutingConfig, GatewayConfig, ProviderConfig, ProviderModelConfig, RoutingPreset } from '@/types/providers'
+import type { CustomEndpoint, EndpointProtocol } from '@/types/endpoints'
 import { ProviderDrawer } from './providers/ProviderDrawer'
 import { pageHeaderShellClass, surfaceCardClass, primaryButtonClass, subtleButtonClass, dangerButtonClass, inputClass, selectClass, badgeClass, statusBadgeClass } from '@/styles/theme'
 
@@ -30,8 +32,12 @@ interface AnthropicHeaderOption {
 
 const CLAUDE_MODEL_SUGGESTIONS = [
   'claude-sonnet-4-5-20250929',
+  'claude-sonnet-4-5-20250929-thinking',
   'claude-sonnet-4-20250514',
   'claude-opus-4-1-20250805',
+  'claude-opus-4-1-20250805-thinking',
+  'claude-haiku-4-5-20251001',
+  'claude-haiku-4-5-20251001-thinking',
   'claude-3-5-haiku-20241022'
 ]
 
@@ -59,66 +65,114 @@ function mapRoutesToEntries(routes: Record<string, string> | undefined): ModelRo
   }))
 }
 
-function deriveRoutesFromConfig(config: GatewayConfig | null): Record<'anthropic' | 'openai', ModelRouteEntry[]> {
-  if (!config) {
-    return {
-      anthropic: [],
-      openai: []
+function deriveRoutesFromConfig(
+  config: GatewayConfig | null,
+  customEndpoints: CustomEndpoint[]
+): Record<string, ModelRouteEntry[]> {
+  if (!config) return {}
+
+  const result: Record<string, ModelRouteEntry[]> = {}
+  const routing = config.endpointRouting ?? {}
+
+  // System endpoints
+  result.anthropic = mapRoutesToEntries(routing.anthropic?.modelRoutes ?? config.modelRoutes ?? {})
+  result.openai = mapRoutesToEntries(routing.openai?.modelRoutes ?? {})
+
+  // Custom endpoints
+  for (const endpoint of customEndpoints) {
+    if (endpoint.routing?.modelRoutes) {
+      result[endpoint.id] = mapRoutesToEntries(endpoint.routing.modelRoutes)
+    } else {
+      result[endpoint.id] = []
     }
   }
-  const routing = config.endpointRouting ?? {}
-  return {
-    anthropic: mapRoutesToEntries(routing.anthropic?.modelRoutes ?? config.modelRoutes ?? {}),
-    openai: mapRoutesToEntries(routing.openai?.modelRoutes ?? {})
-  }
+
+  return result
 }
 
 export default function ModelManagementPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
+  const queryClient = useQueryClient()
 
   const configQuery = useApiQuery<GatewayConfig, ApiError>(
     ['config', 'full'],
     { url: '/api/config', method: 'GET' }
   )
 
-  type Endpoint = 'anthropic' | 'openai'
-  const tabs: Array<{ key: 'providers' | Endpoint; label: string; description: string }> = [
-    { key: 'providers', label: t('modelManagement.tabs.providers'), description: t('modelManagement.tabs.providersDesc') },
-    { key: 'anthropic', label: t('modelManagement.tabs.anthropic'), description: t('modelManagement.tabs.anthropicDesc') },
-    { key: 'openai', label: t('modelManagement.tabs.openai'), description: t('modelManagement.tabs.openaiDesc') }
-  ]
+  // Fetch custom endpoints
+  const { data: customEndpointsData } = useQuery({
+    queryKey: ['custom-endpoints'],
+    queryFn: customEndpointsApi.list,
+    refetchInterval: 10000
+  })
 
-  const [activeTab, setActiveTab] = useState<'providers' | Endpoint>('providers')
+  const customEndpoints = customEndpointsData?.endpoints ?? []
+
+  type Endpoint = string // Can be 'anthropic', 'openai', or custom endpoint ID
+
+  // Generate tabs dynamically
+  const tabs = useMemo(() => {
+    const baseTabs: Array<{ key: string; label: string; description: string; isSystem: boolean; canDelete: boolean; protocols?: string[] }> = [
+      { key: 'providers', label: t('modelManagement.tabs.providers'), description: t('modelManagement.tabs.providersDesc'), isSystem: true, canDelete: false },
+      { key: 'anthropic', label: t('modelManagement.tabs.anthropic'), description: t('modelManagement.tabs.anthropicDesc'), isSystem: true, canDelete: false, protocols: ['anthropic'] },
+      { key: 'openai', label: t('modelManagement.tabs.openai'), description: t('modelManagement.tabs.openaiDesc'), isSystem: true, canDelete: false, protocols: ['openai-auto', 'openai-chat', 'openai-responses'] }
+    ]
+
+    const customTabs = customEndpoints.map((endpoint) => {
+      // 支持新旧两种格式
+      let pathsText: string
+      let protocols: string[] = []
+
+      if (endpoint.paths && endpoint.paths.length > 0) {
+        // 新格式：显示所有路径
+        const pathsList = endpoint.paths.map(p => `${p.path} (${p.protocol})`).join(', ')
+        pathsText = `${t('modelManagement.tabs.customEndpoint')}: ${pathsList}`
+        // 收集所有协议
+        protocols = [...new Set(endpoint.paths.map(p => p.protocol))]
+      } else if (endpoint.path) {
+        // 旧格式：单个路径
+        const protocol = endpoint.protocol || 'anthropic'
+        pathsText = `${t('modelManagement.tabs.customEndpoint')}: ${endpoint.path} (${protocol})`
+        protocols = [protocol]
+      } else {
+        pathsText = t('modelManagement.tabs.customEndpoint')
+      }
+
+      return {
+        key: endpoint.id,
+        label: endpoint.label,
+        description: pathsText,
+        isSystem: false,
+        canDelete: true,
+        protocols
+      }
+    })
+
+    return [...baseTabs, ...customTabs]
+  }, [t, customEndpoints])
+
+  const [activeTab, setActiveTab] = useState<string>('providers')
   const [config, setConfig] = useState<GatewayConfig | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [editingProvider, setEditingProvider] = useState<ProviderConfig | undefined>(undefined)
   const [testingProviderId, setTestingProviderId] = useState<string | null>(null)
-  const [routesByEndpoint, setRoutesByEndpoint] = useState<Record<Endpoint, ModelRouteEntry[]>>({
-    anthropic: [],
-    openai: []
-  })
-  const [routeError, setRouteError] = useState<Record<Endpoint, string | null>>({
-    anthropic: null,
-    openai: null
-  })
-  const [savingRouteFor, setSavingRouteFor] = useState<Endpoint | null>(null)
-  const [presetsByEndpoint, setPresetsByEndpoint] = useState<Record<Endpoint, RoutingPreset[]>>({
-    anthropic: [],
-    openai: []
-  })
-  const [presetNameByEndpoint, setPresetNameByEndpoint] = useState<Record<Endpoint, string>>({
-    anthropic: '',
-    openai: ''
-  })
-  const [presetErrorByEndpoint, setPresetErrorByEndpoint] = useState<Record<Endpoint, string | null>>({
-    anthropic: null,
-    openai: null
-  })
-  const [savingPresetFor, setSavingPresetFor] = useState<Endpoint | null>(null)
-  const [applyingPreset, setApplyingPreset] = useState<{ endpoint: Endpoint; name: string } | null>(null)
-  const [deletingPreset, setDeletingPreset] = useState<{ endpoint: Endpoint; name: string } | null>(null)
+
+  // Endpoint drawer for adding custom endpoints
+  const [endpointDrawerOpen, setEndpointDrawerOpen] = useState(false)
+  const [editingEndpoint, setEditingEndpoint] = useState<CustomEndpoint | undefined>(undefined)
+
+  // Store routes for all endpoints (including custom ones)
+  const [routesByEndpoint, setRoutesByEndpoint] = useState<Record<string, ModelRouteEntry[]>>({})
+  const [routeError, setRouteError] = useState<Record<string, string | null>>({})
+  const [savingRouteFor, setSavingRouteFor] = useState<string | null>(null)
+  const [presetsByEndpoint, setPresetsByEndpoint] = useState<Record<string, RoutingPreset[]>>({})
+  const [presetNameByEndpoint, setPresetNameByEndpoint] = useState<Record<string, string>>({})
+  const [presetErrorByEndpoint, setPresetErrorByEndpoint] = useState<Record<string, string | null>>({})
+  const [savingPresetFor, setSavingPresetFor] = useState<string | null>(null)
+  const [applyingPreset, setApplyingPreset] = useState<{ endpoint: string; name: string } | null>(null)
+  const [deletingPreset, setDeletingPreset] = useState<{ endpoint: string; name: string } | null>(null)
   const [testDialogOpen, setTestDialogOpen] = useState(false)
   const [testDialogProvider, setTestDialogProvider] = useState<ProviderConfig | null>(null)
   const [testDialogUsePreset, setTestDialogUsePreset] = useState(true)
@@ -141,14 +195,23 @@ export default function ModelManagementPage() {
       const incoming = configQuery.data
       setConfig(incoming)
 
-      setRoutesByEndpoint(deriveRoutesFromConfig(incoming))
-      setRouteError({ anthropic: null, openai: null })
-      setPresetsByEndpoint({
+      setRoutesByEndpoint(deriveRoutesFromConfig(incoming, customEndpoints))
+      setRouteError({})
+
+      // Load presets for system endpoints
+      const presetsMap: Record<string, RoutingPreset[]> = {
         anthropic: incoming.routingPresets?.anthropic ?? [],
         openai: incoming.routingPresets?.openai ?? []
-      })
+      }
+
+      // Load presets for custom endpoints
+      for (const endpoint of customEndpoints) {
+        presetsMap[endpoint.id] = endpoint.routingPresets ?? []
+      }
+
+      setPresetsByEndpoint(presetsMap)
     }
-  }, [configQuery.data])
+  }, [configQuery.data, customEndpoints])
 
   useEffect(() => {
     if (configQuery.isError && configQuery.error) {
@@ -207,7 +270,10 @@ export default function ModelManagementPage() {
       }
     }
 
-    const combinedEntries = [...routesByEndpoint.anthropic, ...routesByEndpoint.openai]
+    const combinedEntries = [
+      ...(routesByEndpoint.anthropic || []),
+      ...(routesByEndpoint.openai || [])
+    ]
 
     for (const entry of combinedEntries) {
       const trimmed = entry.target.trim()
@@ -227,12 +293,32 @@ export default function ModelManagementPage() {
     }))
     setConfig((prev) => {
       if (!prev) return prev
+
+      // 系统端点：保存到 config.routingPresets
+      if (endpoint === 'anthropic' || endpoint === 'openai') {
+        return {
+          ...prev,
+          routingPresets: {
+            ...prev.routingPresets,
+            [endpoint]: presets
+          }
+        }
+      }
+
+      // 自定义端点：保存到 customEndpoints[i].routingPresets
+      const customEndpoints = prev.customEndpoints ?? []
+      const endpointIndex = customEndpoints.findIndex((e) => e.id === endpoint)
+      if (endpointIndex === -1) return prev
+
+      const updatedEndpoints = [...customEndpoints]
+      updatedEndpoints[endpointIndex] = {
+        ...updatedEndpoints[endpointIndex],
+        routingPresets: presets
+      }
+
       return {
         ...prev,
-        routingPresets: {
-          ...prev.routingPresets,
-          [endpoint]: presets
-        }
+        customEndpoints: updatedEndpoints
       }
     })
   }
@@ -329,11 +415,18 @@ export default function ModelManagementPage() {
       const updatedConfig = response.data.config
       if (updatedConfig) {
         setConfig(updatedConfig)
-        setRoutesByEndpoint(deriveRoutesFromConfig(updatedConfig))
-        setPresetsByEndpoint({
+        setRoutesByEndpoint(deriveRoutesFromConfig(updatedConfig, customEndpoints))
+
+        // Update presets for all endpoints
+        const presetsMap: Record<string, RoutingPreset[]> = {
           anthropic: updatedConfig.routingPresets?.anthropic ?? [],
           openai: updatedConfig.routingPresets?.openai ?? []
-        })
+        }
+        for (const ep of customEndpoints) {
+          const updatedEndpoint = updatedConfig.customEndpoints?.find((e) => e.id === ep.id)
+          presetsMap[ep.id] = updatedEndpoint?.routingPresets ?? []
+        }
+        setPresetsByEndpoint(presetsMap)
       } else {
         setRoutesByEndpoint((prev) => ({
           ...prev,
@@ -411,7 +504,7 @@ export default function ModelManagementPage() {
 
     await apiClient.put('/api/config', nextConfig)
     setConfig(nextConfig)
-    setRoutesByEndpoint(deriveRoutesFromConfig(nextConfig))
+    setRoutesByEndpoint(deriveRoutesFromConfig(nextConfig, customEndpoints))
     void configQuery.refetch()
 
     const toastMessage = drawerMode === 'create'
@@ -419,6 +512,34 @@ export default function ModelManagementPage() {
       : t('providers.toast.updateSuccess', { name: payload.label || payload.id })
 
     pushToast({ title: toastMessage, variant: 'success' })
+  }
+
+  const handleDeleteEndpoint = async (endpointId: string) => {
+    const endpoint = customEndpoints.find((e) => e.id === endpointId)
+    if (!endpoint) return
+
+    if (!confirm(t('modelManagement.deleteEndpointConfirm', { label: endpoint.label }))) {
+      return
+    }
+
+    try {
+      await customEndpointsApi.delete(endpointId)
+      queryClient.invalidateQueries({ queryKey: ['custom-endpoints'] })
+      pushToast({
+        title: t('modelManagement.deleteEndpointSuccess'),
+        variant: 'success'
+      })
+      // Switch to providers tab if deleted endpoint was active
+      if (activeTab === endpointId) {
+        setActiveTab('providers')
+      }
+    } catch (error) {
+      const apiError = toApiError(error)
+      pushToast({
+        title: t('modelManagement.deleteEndpointError', { error: apiError.message }),
+        variant: 'error'
+      })
+    }
   }
 
   const handleTestConnection = async (
@@ -610,19 +731,20 @@ export default function ModelManagementPage() {
   const handleAddRoute = (endpoint: Endpoint) => {
     setRoutesByEndpoint((prev) => ({
       ...prev,
-      [endpoint]: [...prev[endpoint], { id: createEntryId(), source: '', target: '' }]
+      [endpoint]: [...(prev[endpoint] || []), { id: createEntryId(), source: '', target: '' }]
     }))
     setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
   const handleAddSuggestion = (endpoint: Endpoint, model: string) => {
     setRoutesByEndpoint((prev) => {
-      if (prev[endpoint].some((entry) => entry.source.trim() === model.trim())) {
+      const currentRoutes = prev[endpoint] || []
+      if (currentRoutes.some((entry) => entry.source.trim() === model.trim())) {
         return prev
       }
       return {
         ...prev,
-        [endpoint]: [...prev[endpoint], { id: createEntryId(), source: model, target: '' }]
+        [endpoint]: [...currentRoutes, { id: createEntryId(), source: model, target: '' }]
       }
     })
     setRouteError((prev) => ({ ...prev, [endpoint]: null }))
@@ -631,7 +753,7 @@ export default function ModelManagementPage() {
   const handleRouteChange = (endpoint: Endpoint, id: string, field: 'source' | 'target', value: string) => {
     setRoutesByEndpoint((prev) => ({
       ...prev,
-      [endpoint]: prev[endpoint].map((entry) => (entry.id === id ? { ...entry, [field]: value } : entry))
+      [endpoint]: (prev[endpoint] || []).map((entry) => (entry.id === id ? { ...entry, [field]: value } : entry))
     }))
     setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
@@ -639,27 +761,43 @@ export default function ModelManagementPage() {
   const handleRemoveRoute = (endpoint: Endpoint, id: string) => {
     setRoutesByEndpoint((prev) => ({
       ...prev,
-      [endpoint]: prev[endpoint].filter((entry) => entry.id !== id)
+      [endpoint]: (prev[endpoint] || []).filter((entry) => entry.id !== id)
     }))
     setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
-  const handleResetRoutes = (endpoint: Endpoint) => {
+  const handleResetRoutes = (endpoint: string) => {
     if (!config) return
-    const routing = config.endpointRouting ?? {}
-    const fallback = endpoint === 'anthropic' ? config.modelRoutes ?? {} : {}
-    const routes = routing[endpoint]?.modelRoutes ?? fallback
-    setRoutesByEndpoint((prev) => ({
-      ...prev,
-      [endpoint]: mapRoutesToEntries(routes)
-    }))
+
+    // Check if this is a custom endpoint
+    const customEndpoint = customEndpoints.find((e) => e.id === endpoint)
+
+    if (customEndpoint) {
+      // Reset to custom endpoint's routing config
+      const routes = customEndpoint.routing?.modelRoutes ?? {}
+      setRoutesByEndpoint((prev) => ({
+        ...prev,
+        [endpoint]: mapRoutesToEntries(routes)
+      }))
+    } else {
+      // System endpoint
+      const routing = config.endpointRouting ?? {}
+      const systemEndpoint = endpoint as 'anthropic' | 'openai'
+      const fallback = systemEndpoint === 'anthropic' ? config.modelRoutes ?? {} : {}
+      const routes = routing[systemEndpoint]?.modelRoutes ?? fallback
+      setRoutesByEndpoint((prev) => ({
+        ...prev,
+        [endpoint]: mapRoutesToEntries(routes)
+      }))
+    }
+
     setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
-  const handleSaveRoutes = async (endpoint: Endpoint) => {
+  const handleSaveRoutes = async (endpoint: string) => {
     if (!ensureConfig()) return
 
-    const currentEntries = routesByEndpoint[endpoint]
+    const currentEntries = routesByEndpoint[endpoint] || []
     const sanitizedRoutes: Record<string, string> = {}
     for (const entry of currentEntries) {
       const source = entry.source.trim()
@@ -683,39 +821,62 @@ export default function ModelManagementPage() {
 
     setRouteError((prev) => ({ ...prev, [endpoint]: null }))
     setSavingRouteFor(endpoint)
+
     try {
-      const routing = config!.endpointRouting ? { ...config!.endpointRouting } : {}
+      // Check if this is a custom endpoint
+      const customEndpoint = customEndpoints.find((e) => e.id === endpoint)
 
-      const existingEndpointRouting = routing[endpoint] ?? {
-        defaults: config!.defaults,
-        modelRoutes: endpoint === 'anthropic' ? config!.modelRoutes ?? {} : {}
+      if (customEndpoint) {
+        // Save to custom endpoint's routing config
+        const updatedRouting = {
+          ...(customEndpoint.routing || {}),
+          modelRoutes: sanitizedRoutes,
+          defaults: customEndpoint.routing?.defaults || config!.defaults
+        }
+
+        await customEndpointsApi.update(endpoint, {
+          routing: updatedRouting
+        })
+
+        queryClient.invalidateQueries({ queryKey: ['custom-endpoints'] })
+        pushToast({ title: t('modelManagement.toast.routesSaved'), variant: 'success' })
+      } else {
+        // System endpoint - save to config.endpointRouting
+        const routing = config!.endpointRouting ? { ...config!.endpointRouting } : {}
+        const systemEndpoint = endpoint as 'anthropic' | 'openai'
+
+        const existingEndpointRouting = routing[systemEndpoint] ?? {
+          defaults: config!.defaults,
+          modelRoutes: systemEndpoint === 'anthropic' ? config!.modelRoutes ?? {} : {}
+        }
+
+        const updatedEndpointRouting: EndpointRoutingConfig = {
+          ...existingEndpointRouting,
+          defaults: existingEndpointRouting.defaults ?? config!.defaults,
+          modelRoutes: sanitizedRoutes
+        }
+
+        const nextRouting: GatewayConfig['endpointRouting'] = {
+          ...routing,
+          [systemEndpoint]: updatedEndpointRouting
+        }
+
+        const nextConfig: GatewayConfig = {
+          ...config!,
+          endpointRouting: nextRouting,
+          modelRoutes: systemEndpoint === 'anthropic' ? sanitizedRoutes : config!.modelRoutes ?? {}
+        }
+
+        await apiClient.put('/api/config', nextConfig)
+        setConfig(nextConfig)
+        pushToast({ title: t('modelManagement.toast.routesSaved'), variant: 'success' })
+        void configQuery.refetch()
       }
 
-      const updatedEndpointRouting: EndpointRoutingConfig = {
-        ...existingEndpointRouting,
-        defaults: existingEndpointRouting.defaults ?? config!.defaults,
-        modelRoutes: sanitizedRoutes
-      }
-
-      const nextRouting: GatewayConfig['endpointRouting'] = {
-        ...routing,
-        [endpoint]: updatedEndpointRouting
-      }
-
-      const nextConfig: GatewayConfig = {
-        ...config!,
-        endpointRouting: nextRouting,
-        modelRoutes: endpoint === 'anthropic' ? sanitizedRoutes : config!.modelRoutes ?? {}
-      }
-
-      await apiClient.put('/api/config', nextConfig)
-      setConfig(nextConfig)
       setRoutesByEndpoint((prev) => ({
         ...prev,
         [endpoint]: mapRoutesToEntries(sanitizedRoutes)
       }))
-      pushToast({ title: t('modelManagement.toast.routesSaved'), variant: 'success' })
-      void configQuery.refetch()
     } catch (error) {
       pushToast({
         title: t('modelManagement.toast.routesSaveFailure', {
@@ -976,11 +1137,26 @@ export default function ModelManagementPage() {
   }
 
   const renderRoutesSection = (endpoint: Endpoint) => {
-    const entries = routesByEndpoint[endpoint]
+    const entries = routesByEndpoint[endpoint] || []
     const error = routeError[endpoint]
-    const suggestions = endpoint === 'anthropic' ? CLAUDE_MODEL_SUGGESTIONS : OPENAI_MODEL_SUGGESTIONS
+
+    // 查找 tab 信息以获取正确的标签和描述
+    const tabInfo = tabs.find((tab) => tab.key === endpoint)
+
+    // 根据协议确定模型建议
+    // 如果协议列表包含 'anthropic'，使用 Claude 模型；否则使用 OpenAI 模型
+    const hasAnthropicProtocol = tabInfo?.protocols?.includes('anthropic') ?? (endpoint === 'anthropic')
+    const suggestions = hasAnthropicProtocol ? CLAUDE_MODEL_SUGGESTIONS : OPENAI_MODEL_SUGGESTIONS
+
     const isSaving = savingRouteFor === endpoint
-    const endpointLabel = t(`modelManagement.tabs.${endpoint}`)
+
+    const endpointLabel = tabInfo?.label ?? t(`modelManagement.tabs.${endpoint}`)
+
+    // 对于自定义端点，使用 tab 的 description；对于系统端点，使用 i18n key
+    const endpointDescription = tabInfo?.isSystem === false
+      ? tabInfo.description
+      : t(`settings.routing.descriptionByEndpoint.${endpoint}`)
+
     const sourceListId = `route-source-${endpoint}`
     const targetListId = `route-target-${endpoint}`
 
@@ -992,7 +1168,7 @@ export default function ModelManagementPage() {
               {t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}
             </h2>
             <p className="max-w-3xl text-sm text-slate-600 dark:text-slate-400">
-              {t(`settings.routing.descriptionByEndpoint.${endpoint}`)}
+              {endpointDescription}
             </p>
             <p className="max-w-3xl text-xs text-slate-500 dark:text-slate-400">
               {t('settings.routing.wildcardHint')}
@@ -1168,11 +1344,22 @@ export default function ModelManagementPage() {
   return (
     <div className="flex flex-col gap-8">
       <div className={pageHeaderShellClass}>
-        <div className="flex flex-col gap-3">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent dark:from-slate-100 dark:to-slate-300">
-            {t('modelManagement.title')}
-          </h1>
-          <p className="text-base text-slate-600 dark:text-slate-400">{t('modelManagement.description')}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-3">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent dark:from-slate-100 dark:to-slate-300">
+              {t('modelManagement.title')}
+            </h1>
+            <p className="text-base text-slate-600 dark:text-slate-400">{t('modelManagement.description')}</p>
+          </div>
+          <button
+            onClick={() => {
+              setEditingEndpoint(undefined)
+              setEndpointDrawerOpen(true)
+            }}
+            className={primaryButtonClass}
+          >
+            + {t('modelManagement.addEndpoint')}
+          </button>
         </div>
       </div>
 
@@ -1180,24 +1367,37 @@ export default function ModelManagementPage() {
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key
           return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex min-w-[240px] flex-col gap-2 rounded-2xl border px-6 py-4 text-left transition-all duration-300 hover-lift ${
-                isActive
-                  ? 'border-blue-500/30 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-lg shadow-blue-200/40 ring-1 ring-blue-500/20 dark:border-blue-400/30 dark:from-blue-900/40 dark:to-indigo-900/30 dark:text-blue-100 dark:shadow-xl dark:shadow-blue-500/20 dark:ring-blue-400/20'
-                  : 'border-slate-200/50 bg-white/80 hover:bg-white/90 hover:shadow-md hover:shadow-slate-200/30 dark:border-slate-700/50 dark:bg-slate-900/80 dark:hover:bg-slate-900/90 dark:hover:shadow-lg dark:hover:shadow-slate-900/30'
-              }`}
-            >
-              <span className="text-base font-bold">{tab.label}</span>
-              <span className="text-sm text-slate-600 dark:text-slate-400">{tab.description}</span>
-            </button>
+            <div key={tab.key} className="relative">
+              <button
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex min-w-[240px] flex-col gap-2 rounded-2xl border px-6 py-4 text-left transition-all duration-300 hover-lift ${
+                  isActive
+                    ? 'border-blue-500/30 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-lg shadow-blue-200/40 ring-1 ring-blue-500/20 dark:border-blue-400/30 dark:from-blue-900/40 dark:to-indigo-900/30 dark:text-blue-100 dark:shadow-xl dark:shadow-blue-500/20 dark:ring-blue-400/20'
+                    : 'border-slate-200/50 bg-white/80 hover:bg-white/90 hover:shadow-md hover:shadow-slate-200/30 dark:border-slate-700/50 dark:bg-slate-900/80 dark:hover:bg-slate-900/90 dark:hover:shadow-lg dark:hover:shadow-slate-900/30'
+                }`}
+              >
+                <span className="text-base font-bold">{tab.label}</span>
+                <span className="text-sm text-slate-600 dark:text-slate-400">{tab.description}</span>
+              </button>
+              {tab.canDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDeleteEndpoint(tab.key)
+                  }}
+                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white hover:bg-red-600 flex items-center justify-center text-xs shadow-md"
+                  title={t('common.delete')}
+                >
+                  ×
+                </button>
+              )}
+            </div>
           )
         })}
       </div>
 
-      {activeTab === 'providers' ? renderProvidersSection() : renderRoutesSection(activeTab as Endpoint)}
+      {activeTab === 'providers' ? renderProvidersSection() : renderRoutesSection(activeTab)}
 
       <ProviderDrawer
         open={drawerOpen}
@@ -1212,6 +1412,18 @@ export default function ModelManagementPage() {
           setDrawerMode('create')
         }}
         onSubmit={handleSubmit}
+      />
+
+      <EndpointDrawer
+        open={endpointDrawerOpen}
+        endpoint={editingEndpoint}
+        onClose={() => {
+          setEndpointDrawerOpen(false)
+          setEditingEndpoint(undefined)
+        }}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['custom-endpoints'] })
+        }}
       />
 
       <TestConnectionDialog
@@ -1368,3 +1580,349 @@ function TypeBadge({ type }: { type: NonNullable<ProviderConfig['type']> }) {
     </span>
   )
 }
+
+function EndpointDrawer({
+  open,
+  endpoint,
+  onClose,
+  onSuccess
+}: {
+  open: boolean
+  endpoint?: CustomEndpoint
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const { t } = useTranslation()
+  const { pushToast } = useToast()
+
+  const [formData, setFormData] = useState({
+    id: '',
+    label: '',
+    paths: [{ path: '', protocol: 'openai-auto' as EndpointProtocol }],
+    enabled: true
+  })
+
+  useEffect(() => {
+    if (endpoint) {
+      // 支持新旧两种格式
+      let paths: Array<{ path: string; protocol: EndpointProtocol }>
+      if (endpoint.paths && endpoint.paths.length > 0) {
+        paths = endpoint.paths
+      } else if (endpoint.path && endpoint.protocol) {
+        paths = [{ path: endpoint.path, protocol: endpoint.protocol }]
+      } else {
+        paths = [{ path: '', protocol: 'openai-auto' }]
+      }
+
+      setFormData({
+        id: endpoint.id,
+        label: endpoint.label,
+        paths,
+        enabled: endpoint.enabled !== false
+      })
+    } else {
+      setFormData({
+        id: '',
+        label: '',
+        paths: [{ path: '', protocol: 'openai-auto' }],
+        enabled: true
+      })
+    }
+  }, [endpoint, open])
+
+  const createMutation = useMutation({
+    mutationFn: customEndpointsApi.create,
+    onSuccess: () => {
+      pushToast({
+        title: t('modelManagement.createEndpointSuccess'),
+        variant: 'success'
+      })
+      onSuccess()
+      onClose()
+    },
+    onError: (error) => {
+      const apiError = toApiError(error)
+      pushToast({
+        title: t('modelManagement.createEndpointError', { error: apiError.message }),
+        variant: 'error'
+      })
+    }
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { id: string; updates: any }) =>
+      customEndpointsApi.update(data.id, data.updates),
+    onSuccess: () => {
+      pushToast({
+        title: t('modelManagement.updateEndpointSuccess'),
+        variant: 'success'
+      })
+      onSuccess()
+      onClose()
+    },
+    onError: (error) => {
+      const apiError = toApiError(error)
+      pushToast({
+        title: t('modelManagement.updateEndpointError', { error: apiError.message }),
+        variant: 'error'
+      })
+    }
+  })
+
+  const handleAddPath = () => {
+    setFormData({
+      ...formData,
+      paths: [...formData.paths, { path: '', protocol: 'anthropic' }]
+    })
+  }
+
+  const handleRemovePath = (index: number) => {
+    if (formData.paths.length === 1) {
+      pushToast({
+        title: t('modelManagement.atLeastOnePath'),
+        variant: 'error'
+      })
+      return
+    }
+    const newPaths = formData.paths.filter((_, i) => i !== index)
+    setFormData({ ...formData, paths: newPaths })
+  }
+
+  const handlePathChange = (index: number, field: 'path' | 'protocol', value: string) => {
+    const newPaths = [...formData.paths]
+    newPaths[index] = { ...newPaths[index], [field]: value }
+    setFormData({ ...formData, paths: newPaths })
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!formData.id.trim() || !formData.label.trim()) {
+      pushToast({
+        title: t('modelManagement.endpointValidationError'),
+        variant: 'error'
+      })
+      return
+    }
+
+    // 验证所有路径
+    for (const pathItem of formData.paths) {
+      if (!pathItem.path.trim()) {
+        pushToast({
+          title: t('modelManagement.pathValidationError'),
+          variant: 'error'
+        })
+        return
+      }
+    }
+
+    const paths = formData.paths.map(p => ({
+      path: p.path.trim(),
+      protocol: p.protocol
+    }))
+
+    if (endpoint) {
+      updateMutation.mutate({
+        id: endpoint.id,
+        updates: {
+          label: formData.label.trim(),
+          paths,
+          enabled: formData.enabled
+        }
+      })
+    } else {
+      createMutation.mutate({
+        id: formData.id.trim(),
+        label: formData.label.trim(),
+        paths,
+        enabled: formData.enabled
+      })
+    }
+  }
+
+  const isSubmitting = createMutation.isPending || updateMutation.isPending
+
+  if (!open) return null
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-black/50 dark:bg-black/70 z-40 transition-opacity"
+        onClick={onClose}
+      />
+
+      <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white dark:bg-gray-900 shadow-xl z-50 overflow-y-auto">
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+              {endpoint ? t('modelManagement.editEndpoint') : t('modelManagement.createEndpoint')}
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                {t('modelManagement.endpointId')} <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.id}
+                onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+                className={inputClass}
+                placeholder={t('modelManagement.endpointIdPlaceholder')}
+                disabled={!!endpoint}
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {t('modelManagement.endpointIdHint')}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                {t('modelManagement.endpointLabel')} <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.label}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                className={inputClass}
+                placeholder={t('modelManagement.endpointLabelPlaceholder')}
+                required
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {t('modelManagement.endpointPaths')} <span className="text-red-500">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddPath}
+                  className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  + {t('modelManagement.addPath')}
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {formData.paths.map((pathItem, index) => (
+                  <div
+                    key={index}
+                    className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 space-y-2">
+                        <input
+                          type="text"
+                          value={pathItem.path}
+                          onChange={(e) => handlePathChange(index, 'path', e.target.value)}
+                          className={inputClass}
+                          placeholder={t('modelManagement.endpointPathPlaceholder')}
+                          required
+                        />
+                        <select
+                          value={pathItem.protocol}
+                          onChange={(e) =>
+                            handlePathChange(index, 'protocol', e.target.value)
+                          }
+                          className={selectClass}
+                          required
+                        >
+                          <option value="anthropic">{t('modelManagement.protocolAnthropic')}</option>
+                          <option value="openai-auto">{t('modelManagement.protocolOpenAI')}</option>
+                        </select>
+                      </div>
+
+                      {formData.paths.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePath(index)}
+                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 mt-1"
+                          title={t('modelManagement.removePath')}
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    {index === 0 && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {t('modelManagement.endpointPathHint')}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="enabled"
+                checked={formData.enabled}
+                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800"
+              />
+              <label htmlFor="enabled" className="text-sm text-gray-700 dark:text-gray-300">
+                {t('modelManagement.endpointEnabled')}
+              </label>
+            </div>
+
+            {!endpoint && (
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
+                <p className="text-sm text-blue-800 dark:text-blue-300">
+                  {t('modelManagement.endpointRoutingHint')}
+                </p>
+              </div>
+            )}
+          </form>
+
+          <div className="flex gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className={`${subtleButtonClass} flex-1`}
+              disabled={isSubmitting}
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="submit"
+              onClick={handleSubmit}
+              className={`${primaryButtonClass} flex-1`}
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? t('common.saving')
+                : endpoint
+                ? t('common.save')
+                : t('common.create')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+

@@ -35,6 +35,18 @@ export interface RoutingPreset {
   createdAt: number
 }
 
+// Import CustomEndpoint from endpoints (to avoid circular dependency, we'll define it here if needed)
+export interface CustomEndpointConfig {
+  id: string
+  label: string
+  paths?: Array<{ path: string; protocol: string }>
+  path?: string
+  protocol?: string
+  enabled?: boolean
+  routing?: EndpointRoutingConfig
+  routingPresets?: RoutingPreset[]
+}
+
 export interface GatewayConfig {
   port: number
   host?: string
@@ -44,6 +56,7 @@ export interface GatewayConfig {
   logRetentionDays?: number
   modelRoutes?: Record<string, string>
   endpointRouting?: Partial<Record<GatewayEndpoint, EndpointRoutingConfig>>
+  customEndpoints?: CustomEndpointConfig[]
   routingPresets?: Partial<Record<GatewayEndpoint, RoutingPreset[]>>
   storeRequestPayloads?: boolean
   storeResponsePayloads?: boolean

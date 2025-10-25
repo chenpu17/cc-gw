@@ -86,7 +86,7 @@ export default function AboutPage() {
     () => [
       {
         label: t('about.app.labels.name'),
-        value: <span className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">cc-local-gw</span>
+        value: <span className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">cc-gw</span>
       },
       {
         label: t('about.app.labels.version'),

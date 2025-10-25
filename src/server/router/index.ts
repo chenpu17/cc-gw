@@ -1,5 +1,5 @@
 import { getConfig } from '../config/manager.js'
-import type { GatewayEndpoint, ModelRouteMap, ProviderConfig } from '../config/types.js'
+import type { GatewayEndpoint, ModelRouteMap, ProviderConfig, EndpointRoutingConfig } from '../config/types.js'
 import { estimateTokens } from '../protocol/tokenizer.js'
 import type { NormalizedPayload } from '../protocol/types.js'
 
@@ -18,7 +18,8 @@ const MODEL_ALIASES: Record<string, string> = {
 export interface RouteContext {
   payload: NormalizedPayload
   requestedModel?: string
-  endpoint: GatewayEndpoint
+  endpoint?: GatewayEndpoint | string
+  customRouting?: EndpointRoutingConfig
 }
 
 export interface RouteTarget {
@@ -145,10 +146,25 @@ function applyModelAlias(model: string | null | undefined): string | undefined {
 
 export function resolveRoute(ctx: RouteContext): RouteTarget {
   const config = getConfig()
-  const endpointConfig = config.endpointRouting?.[ctx.endpoint] ?? config.endpointRouting?.anthropic
-  if (!endpointConfig) {
-    throw new Error(`未找到端点 ${ctx.endpoint} 的路由配置`)
+
+  // 优先使用自定义路由配置
+  let endpointConfig: EndpointRoutingConfig | undefined
+  if (ctx.customRouting) {
+    endpointConfig = ctx.customRouting
+  } else if (ctx.endpoint) {
+    // 尝试从标准端点配置中获取
+    endpointConfig = config.endpointRouting?.[ctx.endpoint as GatewayEndpoint]
   }
+
+  // 如果还没有配置，使用 anthropic 作为默认
+  if (!endpointConfig) {
+    endpointConfig = config.endpointRouting?.anthropic
+  }
+
+  if (!endpointConfig) {
+    throw new Error(`未找到端点 ${ctx.endpoint || 'default'} 的路由配置`)
+  }
+
   const providers = config.providers
   if (!providers.length) {
     throw new Error('未配置任何模型提供商，请先在 Web UI 中添加 Provider。')

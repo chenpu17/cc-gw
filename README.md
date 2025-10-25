@@ -166,6 +166,41 @@ export CC_GW_ANTHROPIC_BETA_ALL=claude-code-20250219,interleaved-thinking-2025-0
 
 然后运行 `direnv allow` 自动加载。
 
+##### 6.3 自定义接入点（Custom Endpoints）
+
+cc-gw 支持创建额外的自定义 API 端点，每个端点可以：
+- 使用不同的协议（Anthropic、OpenAI）
+- 配置独立的路由规则
+- 支持多路径注册（一个端点支持多种协议）
+- **自动路径扩展**：只需配置基础路径（如 `/my-endpoint`），系统会根据协议自动注册完整的 API 路径
+
+**快速示例**：
+
+通过 Web UI 或配置文件创建自定义端点：
+```json
+{
+  "customEndpoints": [
+    {
+      "id": "claude-api",
+      "label": "Claude 专用接入点",
+      "path": "/claude",
+      "protocol": "anthropic",
+      "enabled": true
+    }
+  ]
+}
+```
+
+配置后，客户端可以通过 `http://127.0.0.1:4100/claude/v1/messages` 访问（路径自动扩展）。
+
+**主要特性**：
+- **协议自动路径扩展**：配置 `/claude` + `anthropic` 协议，自动注册 `/claude/v1/messages`
+- **多协议支持**：同时支持 Anthropic 和 OpenAI（Chat Completions / Responses API）
+- **独立路由**：每个端点可以配置独立的模型路由规则
+- **路由模板**：支持保存和应用路由预设，快速切换不同的 Provider 配置
+
+**详细文档**：[docs/custom-endpoints.md](docs/custom-endpoints.md)
+
 > ⚠️ 如果 OpenAI 接入点仍返回“暂不支持”，请将客户端改用 `/anthropic/v1/messages` 端点并直接配置 Anthropic Provider。
 
 #### 常见问题排查

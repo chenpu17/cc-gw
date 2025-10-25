@@ -1,4 +1,10 @@
 import axios from 'axios'
+import type {
+  CustomEndpointsResponse,
+  CreateEndpointRequest,
+  UpdateEndpointRequest,
+  EndpointResponse
+} from '@/types/endpoints'
 
 export const apiClient = axios.create({
   baseURL: '/',
@@ -38,5 +44,28 @@ export function toApiError(error: unknown): ApiError {
   }
   return {
     message: error instanceof Error ? error.message : '请求失败，请稍后再试'
+  }
+}
+
+// Custom Endpoints API
+export const customEndpointsApi = {
+  list: async (): Promise<CustomEndpointsResponse> => {
+    const response = await apiClient.get<CustomEndpointsResponse>('/api/custom-endpoints')
+    return response.data
+  },
+
+  create: async (data: CreateEndpointRequest): Promise<EndpointResponse> => {
+    const response = await apiClient.post<EndpointResponse>('/api/custom-endpoints', data)
+    return response.data
+  },
+
+  update: async (id: string, data: UpdateEndpointRequest): Promise<EndpointResponse> => {
+    const response = await apiClient.put<EndpointResponse>(`/api/custom-endpoints/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: string): Promise<{ success: boolean }> => {
+    const response = await apiClient.delete<{ success: boolean }>(`/api/custom-endpoints/${id}`)
+    return response.data
   }
 }

@@ -132,7 +132,7 @@ export default function SettingsPage() {
         typeof value === 'boolean' ? value : typeof legacyStore === 'boolean' ? legacyStore : true
       setForm({
         port: String(configQuery.data.config.port ?? ''),
-        host: configQuery.data.config.host ?? '',
+        host: configQuery.data.config.host ?? '127.0.0.1',
         logRetentionDays: String(configQuery.data.config.logRetentionDays ?? 30),
         storeRequestPayloads: deriveStoreFlag(configQuery.data.config.storeRequestPayloads),
         storeResponsePayloads: deriveStoreFlag(configQuery.data.config.storeResponsePayloads),

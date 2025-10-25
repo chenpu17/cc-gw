@@ -4,7 +4,7 @@ import { normalizeClaudePayload } from '../protocol/normalize.js'
 import { buildProviderBody, buildAnthropicBody } from '../protocol/toProvider.js'
 import { getConnector } from '../providers/registry.js'
 import { CONFIG_PATH, getConfig, updateConfig } from '../config/manager.js'
-import type { GatewayConfig, GatewayEndpoint } from '../config/types.js'
+import type { GatewayConfig, GatewayEndpoint, CustomEndpointConfig, EndpointPathConfig } from '../config/types.js'
 import {
   getLogDetail,
   getLogPayload,
@@ -314,11 +314,28 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     return { success: true }
   })
 
-  const parseEndpoint = (value: string): GatewayEndpoint | null => {
+  /**
+   * 解析端点标识符
+   * @returns 系统端点 (GatewayEndpoint) 或自定义端点 ID (string) 或 null
+   */
+  const parseEndpoint = (value: string): string | null => {
     if (value === 'anthropic' || value === 'openai') {
       return value
     }
+    // 检查是否是自定义端点
+    const config = getConfig()
+    const customEndpoint = config.customEndpoints?.find((e) => e.id === value)
+    if (customEndpoint) {
+      return value
+    }
     return null
+  }
+
+  /**
+   * 检查端点是否是系统端点
+   */
+  const isSystemEndpoint = (endpoint: string): endpoint is GatewayEndpoint => {
+    return endpoint === 'anthropic' || endpoint === 'openai'
   }
 
   const cloneRoutes = (routes: Record<string, string> | undefined): Record<string, string> => {
@@ -351,38 +368,88 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const config = getConfig()
-    const routingConfig = config.endpointRouting?.[endpoint]
-    const baseRoutes = endpoint === 'anthropic'
-      ? routingConfig?.modelRoutes ?? config.modelRoutes ?? {}
-      : routingConfig?.modelRoutes ?? {}
 
-    const currentPresets = config.routingPresets?.[endpoint] ?? []
-    const duplicate = currentPresets.some((preset) => preset.name.toLowerCase() === name.toLowerCase())
-    if (duplicate) {
-      reply.code(409)
-      return { error: 'Preset name already exists' }
-    }
+    if (isSystemEndpoint(endpoint)) {
+      // 系统端点：保存到 config.routingPresets
+      const routingConfig = config.endpointRouting?.[endpoint]
+      const baseRoutes = endpoint === 'anthropic'
+        ? routingConfig?.modelRoutes ?? config.modelRoutes ?? {}
+        : routingConfig?.modelRoutes ?? {}
 
-    const nextPresets = [...currentPresets, {
-      name,
-      modelRoutes: cloneRoutes(baseRoutes),
-      createdAt: Date.now()
-    }]
-    nextPresets.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-
-    const nextConfig: GatewayConfig = {
-      ...config,
-      routingPresets: {
-        ...config.routingPresets,
-        [endpoint]: nextPresets
+      const currentPresets = config.routingPresets?.[endpoint] ?? []
+      const duplicate = currentPresets.some((preset) => preset.name.toLowerCase() === name.toLowerCase())
+      if (duplicate) {
+        reply.code(409)
+        return { error: 'Preset name already exists' }
       }
-    }
 
-    updateConfig(nextConfig)
-    const updated = getConfig()
-    return {
-      success: true,
-      presets: updated.routingPresets?.[endpoint] ?? []
+      const nextPresets = [...currentPresets, {
+        name,
+        modelRoutes: cloneRoutes(baseRoutes),
+        createdAt: Date.now()
+      }]
+      nextPresets.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+
+      const nextConfig: GatewayConfig = {
+        ...config,
+        routingPresets: {
+          ...config.routingPresets,
+          [endpoint]: nextPresets
+        }
+      }
+
+      updateConfig(nextConfig)
+      const updated = getConfig()
+      return {
+        success: true,
+        presets: updated.routingPresets?.[endpoint] ?? []
+      }
+    } else {
+      // 自定义端点：保存到 customEndpoints[i].routingPresets
+      const customEndpoints = config.customEndpoints ?? []
+      const endpointIndex = customEndpoints.findIndex((e) => e.id === endpoint)
+      if (endpointIndex === -1) {
+        reply.code(404)
+        return { error: 'Custom endpoint not found' }
+      }
+
+      const customEndpoint = customEndpoints[endpointIndex]
+      const baseRoutes = customEndpoint.routing?.modelRoutes ?? {}
+      const currentPresets = customEndpoint.routingPresets ?? []
+
+      const duplicate = currentPresets.some((preset) => preset.name.toLowerCase() === name.toLowerCase())
+      if (duplicate) {
+        reply.code(409)
+        return { error: 'Preset name already exists' }
+      }
+
+      const nextPresets = [...currentPresets, {
+        name,
+        modelRoutes: cloneRoutes(baseRoutes),
+        createdAt: Date.now()
+      }]
+      nextPresets.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+
+      const updatedEndpoint: CustomEndpointConfig = {
+        ...customEndpoint,
+        routingPresets: nextPresets
+      }
+
+      const updatedCustomEndpoints = [...customEndpoints]
+      updatedCustomEndpoints[endpointIndex] = updatedEndpoint
+
+      const nextConfig: GatewayConfig = {
+        ...config,
+        customEndpoints: updatedCustomEndpoints
+      }
+
+      updateConfig(nextConfig)
+      const updated = getConfig()
+      const updatedEndpointAfterSave = updated.customEndpoints?.find((e) => e.id === endpoint)
+      return {
+        success: true,
+        presets: updatedEndpointAfterSave?.routingPresets ?? []
+      }
     }
   })
 
@@ -405,41 +472,86 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const config = getConfig()
-    const presets = config.routingPresets?.[endpoint] ?? []
-    const preset = presets.find((item) => item.name.toLowerCase() === name.toLowerCase())
-    if (!preset) {
-      reply.code(404)
-      return { error: 'Preset not found' }
-    }
 
-    const routing = config.endpointRouting ?? {
-      anthropic: {
-        defaults: config.defaults,
-        modelRoutes: config.modelRoutes ?? {}
+    if (isSystemEndpoint(endpoint)) {
+      // 系统端点：从 config.routingPresets 读取并应用到 config.endpointRouting
+      const presets = config.routingPresets?.[endpoint] ?? []
+      const preset = presets.find((item) => item.name.toLowerCase() === name.toLowerCase())
+      if (!preset) {
+        reply.code(404)
+        return { error: 'Preset not found' }
       }
-    }
 
-    const nextRouting: NonNullable<GatewayConfig['endpointRouting']> = {
-      ...routing,
-      [endpoint]: {
-        defaults: routing[endpoint]?.defaults ?? config.defaults,
-        modelRoutes: cloneRoutes(preset.modelRoutes)
+      const routing = config.endpointRouting ?? {
+        anthropic: {
+          defaults: config.defaults,
+          modelRoutes: config.modelRoutes ?? {}
+        }
       }
-    }
 
-    const nextConfig: GatewayConfig = {
-      ...config,
-      endpointRouting: nextRouting,
-      modelRoutes: endpoint === 'anthropic' ? cloneRoutes(preset.modelRoutes) : config.modelRoutes,
-      routingPresets: config.routingPresets
-    }
+      const nextRouting: NonNullable<GatewayConfig['endpointRouting']> = {
+        ...routing,
+        [endpoint]: {
+          defaults: routing[endpoint]?.defaults ?? config.defaults,
+          modelRoutes: cloneRoutes(preset.modelRoutes)
+        }
+      }
 
-    updateConfig(nextConfig)
-    const updated = getConfig()
-    return {
-      success: true,
-      routes: updated.endpointRouting?.[endpoint]?.modelRoutes ?? {},
-      config: updated
+      const nextConfig: GatewayConfig = {
+        ...config,
+        endpointRouting: nextRouting,
+        modelRoutes: endpoint === 'anthropic' ? cloneRoutes(preset.modelRoutes) : config.modelRoutes,
+        routingPresets: config.routingPresets
+      }
+
+      updateConfig(nextConfig)
+      const updated = getConfig()
+      return {
+        success: true,
+        routes: updated.endpointRouting?.[endpoint]?.modelRoutes ?? {},
+        config: updated
+      }
+    } else {
+      // 自定义端点：从 customEndpoints[i].routingPresets 读取并应用到 customEndpoints[i].routing
+      const customEndpoints = config.customEndpoints ?? []
+      const endpointIndex = customEndpoints.findIndex((e) => e.id === endpoint)
+      if (endpointIndex === -1) {
+        reply.code(404)
+        return { error: 'Custom endpoint not found' }
+      }
+
+      const customEndpoint = customEndpoints[endpointIndex]
+      const presets = customEndpoint.routingPresets ?? []
+      const preset = presets.find((item) => item.name.toLowerCase() === name.toLowerCase())
+      if (!preset) {
+        reply.code(404)
+        return { error: 'Preset not found' }
+      }
+
+      const updatedEndpoint: CustomEndpointConfig = {
+        ...customEndpoint,
+        routing: {
+          defaults: customEndpoint.routing?.defaults ?? config.defaults,
+          modelRoutes: cloneRoutes(preset.modelRoutes)
+        }
+      }
+
+      const updatedCustomEndpoints = [...customEndpoints]
+      updatedCustomEndpoints[endpointIndex] = updatedEndpoint
+
+      const nextConfig: GatewayConfig = {
+        ...config,
+        customEndpoints: updatedCustomEndpoints
+      }
+
+      updateConfig(nextConfig)
+      const updated = getConfig()
+      const updatedEndpointAfterSave = updated.customEndpoints?.find((e) => e.id === endpoint)
+      return {
+        success: true,
+        routes: updatedEndpointAfterSave?.routing?.modelRoutes ?? {},
+        config: updated
+      }
     }
   })
 
@@ -458,26 +570,67 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const config = getConfig()
-    const presets = config.routingPresets?.[endpoint] ?? []
-    const filtered = presets.filter((item) => item.name.toLowerCase() !== name.toLowerCase())
-    if (filtered.length === presets.length) {
-      reply.code(404)
-      return { error: 'Preset not found' }
-    }
 
-    const nextConfig: GatewayConfig = {
-      ...config,
-      routingPresets: {
-        ...config.routingPresets,
-        [endpoint]: filtered
+    if (isSystemEndpoint(endpoint)) {
+      // 系统端点：从 config.routingPresets 删除
+      const presets = config.routingPresets?.[endpoint] ?? []
+      const filtered = presets.filter((item) => item.name.toLowerCase() !== name.toLowerCase())
+      if (filtered.length === presets.length) {
+        reply.code(404)
+        return { error: 'Preset not found' }
       }
-    }
 
-    updateConfig(nextConfig)
-    const updated = getConfig()
-    return {
-      success: true,
-      presets: updated.routingPresets?.[endpoint] ?? []
+      const nextConfig: GatewayConfig = {
+        ...config,
+        routingPresets: {
+          ...config.routingPresets,
+          [endpoint]: filtered
+        }
+      }
+
+      updateConfig(nextConfig)
+      const updated = getConfig()
+      return {
+        success: true,
+        presets: updated.routingPresets?.[endpoint] ?? []
+      }
+    } else {
+      // 自定义端点：从 customEndpoints[i].routingPresets 删除
+      const customEndpoints = config.customEndpoints ?? []
+      const endpointIndex = customEndpoints.findIndex((e) => e.id === endpoint)
+      if (endpointIndex === -1) {
+        reply.code(404)
+        return { error: 'Custom endpoint not found' }
+      }
+
+      const customEndpoint = customEndpoints[endpointIndex]
+      const presets = customEndpoint.routingPresets ?? []
+      const filtered = presets.filter((item) => item.name.toLowerCase() !== name.toLowerCase())
+      if (filtered.length === presets.length) {
+        reply.code(404)
+        return { error: 'Preset not found' }
+      }
+
+      const updatedEndpoint: CustomEndpointConfig = {
+        ...customEndpoint,
+        routingPresets: filtered
+      }
+
+      const updatedCustomEndpoints = [...customEndpoints]
+      updatedCustomEndpoints[endpointIndex] = updatedEndpoint
+
+      const nextConfig: GatewayConfig = {
+        ...config,
+        customEndpoints: updatedCustomEndpoints
+      }
+
+      updateConfig(nextConfig)
+      const updated = getConfig()
+      const updatedEndpointAfterSave = updated.customEndpoints?.find((e) => e.id === endpoint)
+      return {
+        success: true,
+        presets: updatedEndpointAfterSave?.routingPresets ?? []
+      }
     }
   })
 
@@ -909,6 +1062,285 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         reply.code(400)
       }
       return { error: error instanceof Error ? error.message : 'Failed to delete API key' }
+    }
+  })
+
+  // 标准化路径：确保以 / 开头
+  const normalizePath = (path: string): string => {
+    const trimmed = path.trim()
+    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  }
+
+  // 获取自定义端点列表
+  app.get('/api/custom-endpoints', async () => {
+    const config = getConfig()
+    return { endpoints: config.customEndpoints ?? [] }
+  })
+
+  // 创建自定义端点
+  app.post('/api/custom-endpoints', async (request, reply) => {
+    const body = request.body as any
+    if (!body || typeof body !== 'object') {
+      reply.code(400)
+      return { error: 'Invalid request body' }
+    }
+
+    const { id, label, paths, path, protocol, enabled, routing } = body
+
+    if (!id || typeof id !== 'string' || id.trim().length === 0) {
+      reply.code(400)
+      return { error: 'Invalid endpoint id' }
+    }
+
+    if (!label || typeof label !== 'string' || label.trim().length === 0) {
+      reply.code(400)
+      return { error: 'Invalid endpoint label' }
+    }
+
+    // 支持新格式（paths数组）和旧格式（path + protocol）
+    let pathsArray: EndpointPathConfig[]
+
+    if (paths && Array.isArray(paths) && paths.length > 0) {
+      // 新格式：paths 数组
+      pathsArray = paths
+    } else if (path && protocol) {
+      // 旧格式：单个 path + protocol
+      pathsArray = [{ path, protocol }]
+    } else {
+      reply.code(400)
+      return { error: 'Must provide either "paths" array or "path" and "protocol"' }
+    }
+
+    // 验证所有路径和协议
+    for (const item of pathsArray) {
+      if (!item.path || typeof item.path !== 'string' || item.path.trim().length === 0) {
+        reply.code(400)
+        return { error: 'Invalid path in paths array' }
+      }
+      if (!item.protocol || !['anthropic', 'openai-chat', 'openai-responses', 'openai-auto'].includes(item.protocol)) {
+        reply.code(400)
+        return { error: `Invalid protocol "${item.protocol}". Must be one of: anthropic, openai-chat, openai-responses, openai-auto` }
+      }
+    }
+
+    const config = getConfig()
+    const customEndpoints = config.customEndpoints ?? []
+
+    // 检查是否已存在相同 ID
+    if (customEndpoints.some((e) => e.id === id)) {
+      reply.code(409)
+      return { error: 'Endpoint with this id already exists' }
+    }
+
+    // 标准化所有路径并检查冲突
+    const normalizedPaths = pathsArray.map((item) => ({
+      path: normalizePath(item.path),
+      protocol: item.protocol
+    }))
+
+    // 检查同一端点内部是否有重复路径
+    const pathSet = new Set<string>()
+    for (const item of normalizedPaths) {
+      if (pathSet.has(item.path)) {
+        reply.code(400)
+        return { error: `Duplicate path "${item.path}" within the same endpoint` }
+      }
+      pathSet.add(item.path)
+    }
+
+    // 收集所有已存在的路径
+    const existingPaths = new Set<string>()
+    for (const e of customEndpoints) {
+      if (e.paths && Array.isArray(e.paths)) {
+        for (const p of e.paths) {
+          existingPaths.add(normalizePath(p.path))
+        }
+      } else if (e.path) {
+        existingPaths.add(normalizePath(e.path))
+      }
+    }
+
+    // 检查新路径是否与已存在的路径冲突
+    for (const item of normalizedPaths) {
+      if (existingPaths.has(item.path)) {
+        reply.code(409)
+        return { error: `Path "${item.path}" already exists` }
+      }
+    }
+
+    const newEndpoint: CustomEndpointConfig = {
+      id: id.trim(),
+      label: label.trim(),
+      paths: normalizedPaths,
+      enabled: enabled !== false,
+      routing: routing || undefined
+    }
+
+    try {
+      await updateConfig({
+        ...config,
+        customEndpoints: [...customEndpoints, newEndpoint]
+      })
+      return { success: true, endpoint: newEndpoint }
+    } catch (error) {
+      reply.code(500)
+      return { error: error instanceof Error ? error.message : 'Failed to create endpoint' }
+    }
+  })
+
+  // 更新自定义端点
+  app.put('/api/custom-endpoints/:id', async (request, reply) => {
+    const params = request.params as { id: string }
+    const body = request.body as any
+
+    if (!params.id) {
+      reply.code(400)
+      return { error: 'Missing endpoint id' }
+    }
+
+    const config = getConfig()
+    const customEndpoints = config.customEndpoints ?? []
+    const index = customEndpoints.findIndex((e) => e.id === params.id)
+
+    if (index === -1) {
+      reply.code(404)
+      return { error: 'Endpoint not found' }
+    }
+
+    const existing = customEndpoints[index]
+
+    // 支持更新 paths 数组或单个 path/protocol
+    let newPaths: EndpointPathConfig[] | undefined
+
+    if (body.paths !== undefined) {
+      // 更新为新格式
+      if (!Array.isArray(body.paths) || body.paths.length === 0) {
+        reply.code(400)
+        return { error: 'paths must be a non-empty array' }
+      }
+
+      // 验证所有路径和协议
+      for (const item of body.paths) {
+        if (!item.path || typeof item.path !== 'string') {
+          reply.code(400)
+          return { error: 'Invalid path in paths array' }
+        }
+        if (!item.protocol || !['anthropic', 'openai-chat', 'openai-responses', 'openai-auto'].includes(item.protocol)) {
+          reply.code(400)
+          return { error: `Invalid protocol "${item.protocol}"` }
+        }
+      }
+
+      newPaths = body.paths.map((item: any) => ({
+        path: normalizePath(item.path),
+        protocol: item.protocol
+      }))
+    } else if (body.path !== undefined || body.protocol !== undefined) {
+      // 更新单个 path/protocol（向后兼容）
+      const existingPaths = existing.paths || (existing.path ? [{ path: existing.path, protocol: existing.protocol }] : [])
+      const updatedPath = body.path ? normalizePath(body.path) : (existing.path ? normalizePath(existing.path) : null)
+      const updatedProtocol = body.protocol ?? existing.protocol
+
+      if (!updatedPath) {
+        reply.code(400)
+        return { error: 'Invalid path' }
+      }
+
+      if (!['anthropic', 'openai-chat', 'openai-responses', 'openai-auto'].includes(updatedProtocol)) {
+        reply.code(400)
+        return { error: 'Invalid protocol' }
+      }
+
+      newPaths = [{ path: updatedPath, protocol: updatedProtocol }]
+    }
+
+    // 检查同一端点内部是否有重复路径
+    if (newPaths) {
+      const pathSet = new Set<string>()
+      for (const item of newPaths) {
+        if (pathSet.has(item.path)) {
+          reply.code(400)
+          return { error: `Duplicate path "${item.path}" within the same endpoint` }
+        }
+        pathSet.add(item.path)
+      }
+    }
+
+    const updated: CustomEndpointConfig = {
+      ...existing,
+      label: body.label ?? existing.label,
+      enabled: body.enabled !== undefined ? body.enabled : existing.enabled,
+      routing: body.routing !== undefined ? body.routing : existing.routing,
+      ...(newPaths ? { paths: newPaths, path: undefined, protocol: undefined } : {})
+    }
+
+    // 检查路径冲突
+    if (newPaths) {
+      // 收集所有其他端点的路径
+      const otherEndpointsPaths = new Set<string>()
+      for (let i = 0; i < customEndpoints.length; i++) {
+        if (i === index) continue // 跳过当前端点
+        const e = customEndpoints[i]
+        if (e.paths && Array.isArray(e.paths)) {
+          for (const p of e.paths) {
+            otherEndpointsPaths.add(normalizePath(p.path))
+          }
+        } else if (e.path) {
+          otherEndpointsPaths.add(normalizePath(e.path))
+        }
+      }
+
+      // 检查新路径是否与其他端点冲突
+      for (const item of newPaths) {
+        if (otherEndpointsPaths.has(item.path)) {
+          reply.code(409)
+          return { error: `Path "${item.path}" already in use by another endpoint` }
+        }
+      }
+    }
+
+    try {
+      const newEndpoints = [...customEndpoints]
+      newEndpoints[index] = updated
+
+      await updateConfig({
+        ...config,
+        customEndpoints: newEndpoints
+      })
+      return { success: true, endpoint: updated }
+    } catch (error) {
+      reply.code(500)
+      return { error: error instanceof Error ? error.message : 'Failed to update endpoint' }
+    }
+  })
+
+  // 删除自定义端点
+  app.delete('/api/custom-endpoints/:id', async (request, reply) => {
+    const params = request.params as { id: string }
+
+    if (!params.id) {
+      reply.code(400)
+      return { error: 'Missing endpoint id' }
+    }
+
+    const config = getConfig()
+    const customEndpoints = config.customEndpoints ?? []
+    const filtered = customEndpoints.filter((e) => e.id !== params.id)
+
+    if (filtered.length === customEndpoints.length) {
+      reply.code(404)
+      return { error: 'Endpoint not found' }
+    }
+
+    try {
+      await updateConfig({
+        ...config,
+        customEndpoints: filtered
+      })
+      return { success: true }
+    } catch (error) {
+      reply.code(500)
+      return { error: error instanceof Error ? error.message : 'Failed to delete endpoint' }
     }
   })
 }

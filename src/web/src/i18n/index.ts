@@ -11,7 +11,7 @@ const resources = {
       nav: {
         dashboard: '仪表盘',
         logs: '请求日志',
-        models: '模型管理',
+        models: '模型与路由管理',
         apiKeys: 'API 密钥',
         settings: '设置',
         help: '使用指南',
@@ -26,6 +26,13 @@ const resources = {
         loadingShort: '加载中...',
         noData: '暂无数据',
         languageSelector: '语言选择',
+        yes: '是',
+        edit: '编辑',
+        delete: '删除',
+        create: '创建',
+        save: '保存',
+        saving: '保存中...',
+        cancel: '取消',
         actions: {
           refresh: '刷新',
           refreshing: '刷新中...',
@@ -506,15 +513,53 @@ const resources = {
       },
 
       modelManagement: {
-        title: '模型管理',
-        description: '统一维护模型提供商配置与模型路由映射。',
+        title: '模型与路由管理',
+        description: '统一维护模型提供商配置、模型路由映射与自定义端点。',
         tabs: {
           providers: '模型提供商',
           providersDesc: '配置上游模型提供商以及认证信息。',
           anthropic: 'Anthropic 路由',
           anthropicDesc: '管理 /anthropic 端点的模型映射和默认配置。',
           openai: 'OpenAI 路由',
-          openaiDesc: '管理 /openai 端点的模型映射和默认配置。'
+          openaiDesc: '管理 /openai 端点的模型映射和默认配置。',
+          customEndpoint: '自定义端点'
+        },
+        addEndpoint: '添加端点',
+        createEndpoint: '创建端点',
+        editEndpoint: '编辑端点',
+        deleteEndpointConfirm: '确定要删除端点 "{{label}}" 吗？此操作无法撤销。',
+        deleteEndpointSuccess: '端点删除成功',
+        deleteEndpointError: '删除失败：{{error}}',
+        createEndpointSuccess: '端点创建成功',
+        createEndpointError: '创建失败：{{error}}',
+        updateEndpointSuccess: '端点更新成功',
+        updateEndpointError: '更新失败：{{error}}',
+        endpointValidationError: '请填写所有必填字段',
+        pathValidationError: '请填写所有路径信息',
+        atLeastOnePath: '至少需要一个路径',
+        endpointId: '端点 ID',
+        endpointIdPlaceholder: '如 custom-api',
+        endpointIdHint: 'ID 创建后不可修改，用于内部标识。',
+        endpointLabel: '显示名称',
+        endpointLabelPlaceholder: '如 我的自定义 API',
+        endpointPath: '访问路径',
+        endpointPaths: '访问路径',
+        endpointPathPlaceholder: '如 /custom/api',
+        endpointPathHint: '路径需以 / 开头，修改后立即生效。',
+        endpointProtocol: '协议类型',
+        endpointEnabled: '启用此端点',
+        endpointRoutingHint: '创建后，您可以在此端点的路由配置 Tab 中设置模型路由规则。',
+        addPath: '添加路径',
+        removePath: '删除路径',
+        protocolAnthropic: 'Anthropic 协议',
+        protocolOpenAI: 'OpenAI',
+        protocolOpenAIChat: 'OpenAI Chat',
+        protocolOpenAIResponses: 'OpenAI Responses',
+        protocolHint: {
+          anthropic: 'Anthropic Messages API 协议（/v1/messages）',
+          'openai-auto': 'OpenAI 协议（支持 Chat Completions 和 Responses API）。请确保路径以 /v1/chat/completions 或 /v1/responses 结尾。',
+          'openai-chat': 'OpenAI Chat Completions API 协议（/v1/chat/completions）',
+          'openai-responses': 'OpenAI Responses API 协议（/v1/responses）'
         },
         actions: {
           saveRoutes: '保存路由'
@@ -525,11 +570,11 @@ const resources = {
         toast: {
           routesSaved: '模型路由已更新。',
           routesSaveFailure: '保存模型路由失败：{{message}}',
-          presetSaved: '已保存模板 “{{name}}”。',
+          presetSaved: '已保存模板 "{{name}}"。',
           presetSaveFailure: '保存模板失败：{{message}}',
-          presetApplySuccess: '已应用模板 “{{name}}”。',
+          presetApplySuccess: '已应用模板 "{{name}}"。',
           presetApplyFailure: '应用模板失败：{{message}}',
-          presetDeleteSuccess: '模板 “{{name}}” 已删除。',
+          presetDeleteSuccess: '模板 "{{name}}" 已删除。',
           presetDeleteFailure: '删除模板失败：{{message}}'
         },
         presets: {
@@ -549,7 +594,7 @@ const resources = {
           presetDuplicate: '模板 {{name}} 已存在，请使用其他名称。'
         },
         confirm: {
-          deletePreset: '确定要删除模板 “{{name}}” 吗？'
+          deletePreset: '确定要删除模板 "{{name}}" 吗？'
         }
       },
       settings: {
@@ -579,7 +624,7 @@ const resources = {
         fields: {
           port: '监听端口',
           host: '监听地址（可选）',
-          hostPlaceholder: '默认 0.0.0.0',
+          hostPlaceholder: '默认 127.0.0.1',
           retention: '日志保留天数',
           bodyLimit: '请求体大小上限 (MB)',
           bodyLimitHint: '默认 10 MB；如 Claude Code 的 /compact 遇到 413，可适当调大。',
@@ -657,6 +702,8 @@ const resources = {
           wildcardHint: '来源模型支持使用 * 通配符（如 claude-*），匹配度更高的规则优先；若目标写成 providerId:*，会将请求里的模型名原样转发给对应 Provider。',
           add: '新增映射',
           empty: '尚未配置映射，系统将使用默认模型策略。',
+          source: '来源模型',
+          target: '目标 Provider:模型',
           sourceLabel: '来源模型',
           sourcePlaceholder: '如 claude-sonnet-4-5-20250929',
           targetLabel: '目标 Provider:模型',
@@ -728,6 +775,7 @@ const resources = {
             title: '💡 高级技巧与最佳实践',
             items: [
               '📦 **环境变量管理**：推荐使用 direnv 管理环境变量，创建 .envrc 文件自动加载配置',
+              '🔌 **自定义接入点**：创建额外的 API 端点以支持不同的协议和独立路由配置。在"模型管理"页面可以创建和管理自定义接入点。\n\n**主要特性**：\n• 只需配置基础路径（如 `/my-endpoint`），系统会根据协议自动注册完整 API 路径\n• 支持 Anthropic 和 OpenAI 协议（Chat Completions / Responses API）\n• 每个端点可配置独立的模型路由规则\n• 一个端点可注册多个路径，支持多种协议\n\n**示例配置**：\n```json\n{\n  "id": "claude-api",\n  "label": "Claude 专用接入点",\n  "path": "/claude",\n  "protocol": "anthropic"\n}\n```\n配置后，客户端通过 `http://127.0.0.1:4100/claude/v1/messages` 访问（路径自动扩展）。',
               '🗃️ **数据备份**：定期备份 ~/.cc-gw/ 目录（包含配置、日志和数据库）',
               '🧹 **日志清理**：根据需要调整日志保留天数，或使用"日志清理"功能手动清理',
               '🔍 **问题排查**：开启"保存请求/响应内容"以便调试客户端兼容性问题',
@@ -745,12 +793,16 @@ const resources = {
               a: '1) 检查 cc-gw 服务状态：`cc-gw status`\n2) 验证环境变量：`echo $ANTHROPIC_BASE_URL`\n3) 确认 API Key 正确性\n4) 在"请求日志"中查看详细错误信息'
             },
             {
+              q: '如何使用自定义接入点？',
+              a: '在"模型管理"页面创建自定义接入点，配置基础路径（如 `/my-endpoint`）和协议类型。系统会自动根据协议注册完整的 API 路径。例如，配置 `/claude` + `anthropic` 协议后，客户端通过 `http://127.0.0.1:4100/claude/v1/messages` 访问。\n\n如果遇到 404 错误，检查：\n1) 端点是否已启用\n2) 客户端使用的是完整路径（包括协议子路径）\n3) 查看服务器日志确认路由是否注册成功'
+            },
+            {
               q: '为什么没有缓存命中数据？',
               a: '需要上游 Provider 返回 cached_tokens 或 input_tokens_details.cached_tokens 字段。确认 Provider 支持缓存功能并已正确配置。'
             },
             {
               q: '如何配置多个客户端使用不同模型？',
-              a: '为每个客户端创建独立的 API Key，在"模型管理 → 路由配置"中设置不同的路由规则，或使用不同的环境变量配置。'
+              a: '为每个客户端创建独立的 API Key，在"模型管理 → 路由配置"中设置不同的路由规则，或使用不同的环境变量配置。也可以为不同客户端创建专用的自定义接入点。'
             },
             {
               q: 'Codex CLI 如何连接到 cc-gw？',
@@ -883,6 +935,65 @@ const resources = {
           updateFailure: '更新失败：{{message}}',
           deleteFailure: '删除失败：{{message}}'
         }
+      },
+      endpoints: {
+        title: '自定义端点',
+        description: '管理自定义 API 端点，支持多种协议类型。',
+        createButton: '新增端点',
+        createTitle: '创建端点',
+        editTitle: '编辑端点',
+        emptyTitle: '暂无自定义端点',
+        emptyDescription: '点击"新增端点"按钮创建您的第一个自定义端点。',
+        loadError: '加载端点列表失败',
+        id: 'ID',
+        path: '路径',
+        disabled: '已禁用',
+        hasRouting: '已配置路由',
+        protocols: {
+          anthropic: 'Anthropic 协议',
+          'openai-chat': 'OpenAI Chat',
+          'openai-responses': 'OpenAI Responses'
+        },
+        protocolHints: {
+          anthropic: 'Anthropic Messages API 协议（/v1/messages）',
+          'openai-chat': 'OpenAI Chat Completions API 协议（/v1/chat/completions）',
+          'openai-responses': 'OpenAI Responses API 协议（/v1/responses）'
+        },
+        form: {
+          id: '端点 ID',
+          idPlaceholder: '如 custom-api',
+          idHint: 'ID 创建后不可修改，用于内部标识。',
+          label: '显示名称',
+          labelPlaceholder: '如 我的自定义 API',
+          path: '访问路径',
+          pathPlaceholder: '如 /custom/api',
+          pathHint: '路径需以 / 开头，修改后立即生效。',
+          protocol: '协议类型',
+          enabled: '启用此端点'
+        },
+        routing: {
+          title: '路由配置（可选）',
+          modelRoutes: '模型路由规则',
+          addRoute: '添加规则',
+          noRoutes: '暂无路由规则',
+          sourceModelPlaceholder: '源模型（如 claude-3-5-sonnet-20241022）',
+          targetPlaceholder: '目标（如 anthropic:claude-3-5-sonnet-20241022）',
+          modelRoutesHint: '格式：源模型 → provider:model，支持通配符（如 gpt-* → openai:*）',
+          defaults: '默认模型配置',
+          defaultCompletion: '常规对话默认模型',
+          defaultReasoning: '推理任务默认模型',
+          defaultBackground: '后台任务默认模型',
+          longContextThreshold: '长上下文阈值（tokens）',
+          defaultPlaceholder: '如 anthropic:claude-3-5-sonnet-20241022'
+        },
+        createSuccess: '端点创建成功',
+        createError: '创建失败：{{error}}',
+        updateSuccess: '端点更新成功',
+        updateError: '更新失败：{{error}}',
+        deleteSuccess: '端点删除成功',
+        deleteError: '删除失败：{{error}}',
+        deleteConfirm: '确定要删除端点 "{{label}}" 吗？此操作无法撤销。',
+        validationError: '请填写所有必填字段'
       }
     }
   },
@@ -895,7 +1006,7 @@ const resources = {
       nav: {
         dashboard: 'Dashboard',
         logs: 'Logs',
-        models: 'Model Management',
+        models: 'Models & Routing',
         apiKeys: 'API Keys',
         settings: 'Settings',
         help: 'Help',
@@ -910,6 +1021,13 @@ const resources = {
         loadingShort: 'Loading...',
         noData: 'No data available',
         languageSelector: 'Language selector',
+        yes: 'Yes',
+        edit: 'Edit',
+        delete: 'Delete',
+        create: 'Create',
+        save: 'Save',
+        saving: 'Saving...',
+        cancel: 'Cancel',
         actions: {
           refresh: 'Refresh',
           refreshing: 'Refreshing...',
@@ -1390,15 +1508,53 @@ const resources = {
       },
 
       modelManagement: {
-        title: 'Model Management',
-        description: 'Configure providers and maintain model routing rules in one place.',
+        title: 'Models & Routing',
+        description: 'Configure providers, routing rules, and custom endpoints.',
         tabs: {
           providers: 'Providers',
           providersDesc: 'Manage upstream providers and authentication.',
           anthropic: 'Anthropic Routing',
           anthropicDesc: 'Control mappings for the /anthropic endpoint.',
           openai: 'OpenAI Routing',
-          openaiDesc: 'Control mappings for the /openai endpoint.'
+          openaiDesc: 'Control mappings for the /openai endpoint.',
+          customEndpoint: 'Custom Endpoint'
+        },
+        addEndpoint: 'Add Endpoint',
+        createEndpoint: 'Create Endpoint',
+        editEndpoint: 'Edit Endpoint',
+        deleteEndpointConfirm: 'Are you sure you want to delete endpoint "{{label}}"? This action cannot be undone.',
+        deleteEndpointSuccess: 'Endpoint deleted successfully',
+        deleteEndpointError: 'Failed to delete: {{error}}',
+        createEndpointSuccess: 'Endpoint created successfully',
+        createEndpointError: 'Failed to create: {{error}}',
+        updateEndpointSuccess: 'Endpoint updated successfully',
+        updateEndpointError: 'Failed to update: {{error}}',
+        endpointValidationError: 'Please fill in all required fields',
+        pathValidationError: 'Please fill in all path information',
+        atLeastOnePath: 'At least one path is required',
+        endpointId: 'Endpoint ID',
+        endpointIdPlaceholder: 'e.g. custom-api',
+        endpointIdHint: 'ID cannot be changed after creation, used for internal identification.',
+        endpointLabel: 'Display Name',
+        endpointLabelPlaceholder: 'e.g. My Custom API',
+        endpointPath: 'Access Path',
+        endpointPaths: 'Access Paths',
+        endpointPathPlaceholder: 'e.g. /custom/api',
+        endpointPathHint: 'Path must start with /. Changes take effect immediately.',
+        endpointProtocol: 'Protocol Type',
+        endpointEnabled: 'Enable this endpoint',
+        endpointRoutingHint: 'After creation, you can configure routing rules in this endpoint\'s routing tab.',
+        addPath: 'Add Path',
+        removePath: 'Remove Path',
+        protocolAnthropic: 'Anthropic Protocol',
+        protocolOpenAI: 'OpenAI',
+        protocolOpenAIChat: 'OpenAI Chat',
+        protocolOpenAIResponses: 'OpenAI Responses',
+        protocolHint: {
+          anthropic: 'Anthropic Messages API protocol (/v1/messages)',
+          'openai-auto': 'OpenAI protocol (supports Chat Completions and Responses APIs). Path must end with /v1/chat/completions or /v1/responses.',
+          'openai-chat': 'OpenAI Chat Completions API protocol (/v1/chat/completions)',
+          'openai-responses': 'OpenAI Responses API protocol (/v1/responses)'
         },
         actions: {
           saveRoutes: 'Save routes'
@@ -1409,11 +1565,11 @@ const resources = {
         toast: {
           routesSaved: 'Model routes updated successfully.',
           routesSaveFailure: 'Failed to save model routes: {{message}}',
-          presetSaved: 'Preset “{{name}}” saved.',
+          presetSaved: 'Preset "{{name}}" saved.',
           presetSaveFailure: 'Failed to save preset: {{message}}',
-          presetApplySuccess: 'Applied preset “{{name}}”.',
+          presetApplySuccess: 'Applied preset "{{name}}".',
           presetApplyFailure: 'Failed to apply preset: {{message}}',
-          presetDeleteSuccess: 'Preset “{{name}}” deleted.',
+          presetDeleteSuccess: 'Preset "{{name}}" deleted.',
           presetDeleteFailure: 'Failed to delete preset: {{message}}'
         },
         presets: {
@@ -1433,7 +1589,7 @@ const resources = {
           presetDuplicate: 'Preset {{name}} already exists.'
         },
         confirm: {
-          deletePreset: 'Delete preset “{{name}}”?' 
+          deletePreset: 'Delete preset "{{name}}"?'
         }
       },
       settings: {
@@ -1463,7 +1619,7 @@ const resources = {
         fields: {
           port: 'Listen port',
           host: 'Listen host (optional)',
-          hostPlaceholder: 'Defaults to 0.0.0.0',
+          hostPlaceholder: 'Defaults to 127.0.0.1',
           retention: 'Log retention days',
           bodyLimit: 'Request body limit (MB)',
           bodyLimitHint: 'Default is 10 MB. Increase this value if Claude Code /compact returns 413 errors.',
@@ -1541,6 +1697,8 @@ const resources = {
           wildcardHint: "Source model ids accept '*' wildcards (e.g. claude-*); the most specific match wins, and targets defined as providerId:* forward the original requested model name upstream.",
           add: 'Add route',
           empty: 'No custom routes configured. Default strategy will be used.',
+          source: 'Source model',
+          target: 'Target provider:model',
           sourceLabel: 'Source model',
           sourcePlaceholder: 'e.g. claude-sonnet-4-5-20250929',
           targetLabel: 'Target provider:model',
@@ -1610,8 +1768,11 @@ const resources = {
           tips: {
             title: '5. Practical Tips',
             items: [
-              'Enable “Store request/response bodies” to copy raw payloads from the log drawer when troubleshooting.',
+              'Use **direnv** to manage environment variables — create a .envrc file for automatic configuration loading.',
+              '🔌 **Custom Endpoints**: Create additional API endpoints with different protocols and independent routing. Manage them in the "Model Management" page.\n\n**Key Features**:\n• Configure only the base path (e.g., `/my-endpoint`), the system automatically registers full API paths based on protocol\n• Support for Anthropic and OpenAI protocols (Chat Completions / Responses API)\n• Each endpoint can have independent model routing rules\n• One endpoint can register multiple paths with different protocols\n\n**Example Configuration**:\n```json\n{\n  "id": "claude-api",\n  "label": "Claude Dedicated Endpoint",\n  "path": "/claude",\n  "protocol": "anthropic"\n}\n```\nAfter configuration, clients access via `http://127.0.0.1:4100/claude/v1/messages` (path auto-expansion).',
+              'Enable "Store request/response bodies" to copy raw payloads from the log drawer when troubleshooting.',
               'Turn off request or response logs individually to keep the console quiet while preserving metrics and database records.',
+              'Use **routing presets** to save common routing configurations and quickly switch between different provider setups.',
               'If you edit ~/.cc-gw/config.json manually, refresh the Settings page or restart cc-gw so the UI reflects the latest configuration.'
             ]
           }
@@ -1621,11 +1782,19 @@ const resources = {
           items: [
             {
               q: 'How can I change the default model for each endpoint?',
-              a: 'Go to “Model Management → Routing” and choose defaults for /anthropic and /openai. Saving applies the change right away.'
+              a: 'Go to "Model Management → Routing" and choose defaults for /anthropic and /openai. Saving applies the change right away.'
+            },
+            {
+              q: 'How do I use custom endpoints?',
+              a: 'Create a custom endpoint in the "Model Management" page by configuring a base path (e.g., `/my-endpoint`) and protocol type. The system automatically registers full API paths based on the protocol. For example, after configuring `/claude` + `anthropic` protocol, clients access via `http://127.0.0.1:4100/claude/v1/messages`.\n\nIf you encounter 404 errors, check:\n1) Is the endpoint enabled?\n2) Are clients using the complete path (including protocol subpath)?\n3) Check server logs to confirm route registration'
             },
             {
               q: 'Why are cached token numbers missing?',
               a: 'Upstream providers must return cached_tokens or input_tokens_details.cached_tokens. Enable cache metrics on the provider if supported.'
+            },
+            {
+              q: 'How can I use different models for different clients?',
+              a: 'Create separate API keys for each client and configure different routing rules in "Model Management → Routing". You can also create dedicated custom endpoints for different clients.'
             }
           ]
         }
@@ -1747,6 +1916,65 @@ const resources = {
           },
           updatesPlanned: 'Update checks will arrive in a future release.'
         }
+      },
+      endpoints: {
+        title: 'Custom Endpoints',
+        description: 'Manage custom API endpoints with multiple protocol support.',
+        createButton: 'Add Endpoint',
+        createTitle: 'Create Endpoint',
+        editTitle: 'Edit Endpoint',
+        emptyTitle: 'No custom endpoints',
+        emptyDescription: 'Click "Add Endpoint" to create your first custom endpoint.',
+        loadError: 'Failed to load endpoints',
+        id: 'ID',
+        path: 'Path',
+        disabled: 'Disabled',
+        hasRouting: 'Routing configured',
+        protocols: {
+          anthropic: 'Anthropic Protocol',
+          'openai-chat': 'OpenAI Chat',
+          'openai-responses': 'OpenAI Responses'
+        },
+        protocolHints: {
+          anthropic: 'Anthropic Messages API protocol (/v1/messages)',
+          'openai-chat': 'OpenAI Chat Completions API protocol (/v1/chat/completions)',
+          'openai-responses': 'OpenAI Responses API protocol (/v1/responses)'
+        },
+        form: {
+          id: 'Endpoint ID',
+          idPlaceholder: 'e.g. custom-api',
+          idHint: 'ID cannot be changed after creation, used for internal identification.',
+          label: 'Display Name',
+          labelPlaceholder: 'e.g. My Custom API',
+          path: 'Access Path',
+          pathPlaceholder: 'e.g. /custom/api',
+          pathHint: 'Path must start with /. Changes take effect immediately.',
+          protocol: 'Protocol Type',
+          enabled: 'Enable this endpoint'
+        },
+        routing: {
+          title: 'Routing Configuration (Optional)',
+          modelRoutes: 'Model Routing Rules',
+          addRoute: 'Add Rule',
+          noRoutes: 'No routing rules',
+          sourceModelPlaceholder: 'Source model (e.g. claude-3-5-sonnet-20241022)',
+          targetPlaceholder: 'Target (e.g. anthropic:claude-3-5-sonnet-20241022)',
+          modelRoutesHint: 'Format: source model → provider:model, wildcards supported (e.g. gpt-* → openai:*)',
+          defaults: 'Default Model Configuration',
+          defaultCompletion: 'Default for completion tasks',
+          defaultReasoning: 'Default for reasoning tasks',
+          defaultBackground: 'Default for background tasks',
+          longContextThreshold: 'Long context threshold (tokens)',
+          defaultPlaceholder: 'e.g. anthropic:claude-3-5-sonnet-20241022'
+        },
+        createSuccess: 'Endpoint created successfully',
+        createError: 'Failed to create: {{error}}',
+        updateSuccess: 'Endpoint updated successfully',
+        updateError: 'Failed to update: {{error}}',
+        deleteSuccess: 'Endpoint deleted successfully',
+        deleteError: 'Failed to delete: {{error}}',
+        deleteConfirm: 'Are you sure you want to delete endpoint "{{label}}"? This action cannot be undone.',
+        validationError: 'Please fill in all required fields'
       }
     }
   }
