@@ -600,6 +600,7 @@ async function handleAnthropicProtocol(
         requests: 1,
         inputTokens,
         outputTokens,
+        cachedTokens,
         latencyMs
       })
       if (storeResponsePayloads) {
@@ -707,6 +708,7 @@ async function handleAnthropicProtocol(
       requests: 1,
       inputTokens: usagePrompt,
       outputTokens: usageCompletion,
+      cachedTokens: usageCached,
       latencyMs: totalLatencyMs
     })
 
@@ -937,6 +939,7 @@ async function handleOpenAIChatProtocol(
         requests: 1,
         inputTokens,
         outputTokens,
+        cachedTokens,
         latencyMs
       })
 
@@ -1256,6 +1259,7 @@ async function handleOpenAIResponsesProtocol(
         requests: 1,
         inputTokens,
         outputTokens,
+        cachedTokens,
         latencyMs
       })
 
@@ -1679,6 +1683,7 @@ async function registerOpenAIChatHandler(
         requests: 1,
         inputTokens,
         outputTokens,
+        cachedTokens,
         latencyMs
       })
 
@@ -1997,6 +2002,7 @@ async function registerOpenAIResponsesHandler(
         requests: 1,
         inputTokens,
         outputTokens,
+        cachedTokens,
         latencyMs
       })
 

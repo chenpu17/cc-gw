@@ -778,6 +778,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             requests: 1,
             inputTokens,
             outputTokens,
+            cachedTokens,
             latencyMs
           })
           if (storeResponsePayloads) {
@@ -1255,6 +1256,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           requests: 1,
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
+          cachedTokens: usageCached,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads && capturedResponseChunks) {
@@ -1759,6 +1761,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             requests: 1,
             inputTokens,
             outputTokens,
+            cachedTokens,
             latencyMs
           })
           if (storeResponsePayloads) {
@@ -2281,6 +2284,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           requests: 1,
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
+          cachedTokens: usageCached,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads && capturedResponseChunks) {

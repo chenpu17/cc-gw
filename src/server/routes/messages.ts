@@ -463,6 +463,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             requests: 1,
             inputTokens,
             outputTokens,
+            cachedTokens,
             latencyMs
           })
           if (storeResponsePayloads) {
@@ -823,6 +824,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           requests: 1,
           inputTokens: usagePrompt,
           outputTokens: usageCompletion,
+          cachedTokens: usageCached,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads) {
@@ -998,6 +1000,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
               requests: 1,
               inputTokens: finalPromptTokens,
               outputTokens: finalCompletionTokens,
+              cachedTokens: usageCached,
               latencyMs: totalLatencyMs
             })
             if (storeResponsePayloads) {
@@ -1167,6 +1170,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           requests: 1,
           inputTokens: fallbackPrompt,
           outputTokens: fallbackCompletion,
+          cachedTokens: usageCached,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads) {

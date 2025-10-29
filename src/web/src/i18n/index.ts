@@ -131,6 +131,7 @@ const resources = {
           todayRequests: '今日请求数',
           todayInput: '今日输入 Tokens',
           todayOutput: '今日输出 Tokens',
+          todayCached: '今日缓存 Tokens',
           avgLatency: '平均响应耗时'
         },
         charts: {
@@ -141,6 +142,7 @@ const resources = {
           barRequests: '请求数',
           lineInput: '输入 Tokens',
           lineOutput: '输出 Tokens',
+          lineCached: '缓存 Tokens',
           axisTokens: 'Tokens',
           ttftLabel: 'TTFT(ms)',
           tpotLabel: 'TPOT(ms/Token)',
@@ -1126,6 +1128,7 @@ const resources = {
           todayRequests: 'Requests Today',
           todayInput: 'Input Tokens Today',
           todayOutput: 'Output Tokens Today',
+          todayCached: 'Cached Tokens Today',
           avgLatency: 'Average Latency'
         },
         charts: {
@@ -1136,6 +1139,7 @@ const resources = {
           barRequests: 'Requests',
           lineInput: 'Input tokens',
           lineOutput: 'Output tokens',
+          lineCached: 'Cached tokens',
           axisTokens: 'Tokens',
           ttftLabel: 'TTFT (ms)',
           tpotLabel: 'TPOT (ms/token)',

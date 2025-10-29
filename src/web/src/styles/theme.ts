@@ -110,9 +110,11 @@ export const chartContainerClass = 'rounded-xl overflow-hidden bg-white/50 dark:
 export const responsiveGridClass = {
   auto: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6',
   fixed: {
+    1: 'grid grid-cols-1 gap-4 sm:gap-6',
     2: 'grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6',
     3: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6',
-    4: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6'
+    4: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6',
+    5: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6'
   }
 } as const
 

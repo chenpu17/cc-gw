@@ -65,6 +65,11 @@ async function migrateDailyMetricsTable(db: BetterSqliteDatabase): Promise<void>
 
   if (!hasEndpointColumn || !hasCompositePrimaryKey) {
     const endpointSelector = hasEndpointColumn ? "COALESCE(endpoint, 'anthropic')" : "'anthropic'"
+
+    // Check if old table has total_cached_tokens column before migration
+    const hasCachedTokensColumn = columns.some((column) => column.name === 'total_cached_tokens')
+    const cachedTokensSelector = hasCachedTokensColumn ? 'COALESCE(total_cached_tokens, 0)' : '0'
+
     await exec(
       db,
       `ALTER TABLE daily_metrics RENAME TO daily_metrics_old;
@@ -74,15 +79,17 @@ async function migrateDailyMetricsTable(db: BetterSqliteDatabase): Promise<void>
          request_count INTEGER DEFAULT 0,
          total_input_tokens INTEGER DEFAULT 0,
          total_output_tokens INTEGER DEFAULT 0,
+         total_cached_tokens INTEGER DEFAULT 0,
          total_latency_ms INTEGER DEFAULT 0,
          PRIMARY KEY (date, endpoint)
        );
-       INSERT INTO daily_metrics (date, endpoint, request_count, total_input_tokens, total_output_tokens, total_latency_ms)
+       INSERT INTO daily_metrics (date, endpoint, request_count, total_input_tokens, total_output_tokens, total_cached_tokens, total_latency_ms)
          SELECT date,
                 ${endpointSelector},
                 request_count,
                 total_input_tokens,
                 total_output_tokens,
+                ${cachedTokensSelector},
                 total_latency_ms
            FROM daily_metrics_old;
        DROP TABLE daily_metrics_old;`
@@ -142,6 +149,7 @@ async function ensureSchema(db: BetterSqliteDatabase): Promise<void> {
       request_count INTEGER DEFAULT 0,
       total_input_tokens INTEGER DEFAULT 0,
       total_output_tokens INTEGER DEFAULT 0,
+      total_cached_tokens INTEGER DEFAULT 0,
       total_latency_ms INTEGER DEFAULT 0,
       PRIMARY KEY (date, endpoint)
     );
@@ -202,6 +210,7 @@ async function ensureSchema(db: BetterSqliteDatabase): Promise<void> {
   await maybeAddColumn(db, 'api_keys', 'total_output_tokens', 'INTEGER DEFAULT 0')
 
   await migrateDailyMetricsTable(db)
+  await maybeAddColumn(db, 'daily_metrics', 'total_cached_tokens', 'INTEGER DEFAULT 0')
 
   await run(db, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash) WHERE key_hash IS NOT NULL')
   await run(db, "UPDATE api_keys SET key_hash = '*' WHERE is_wildcard = 1 AND (key_hash IS NULL OR key_hash = '')")

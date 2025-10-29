@@ -251,6 +251,7 @@ export interface DailyMetric {
   requestCount: number
   inputTokens: number
   outputTokens: number
+  cachedTokens: number
   avgLatencyMs: number
 }
 
@@ -265,12 +266,14 @@ export async function getDailyMetrics(days = 7, endpoint?: string): Promise<Dail
     requestCount: number | null
     inputTokens: number | null
     outputTokens: number | null
+    cachedTokens: number | null
     totalLatency: number | null
   }>(
     `SELECT date,
             request_count AS requestCount,
             total_input_tokens AS inputTokens,
             total_output_tokens AS outputTokens,
+            total_cached_tokens AS cachedTokens,
             total_latency_ms AS totalLatency
        FROM daily_metrics
        ${whereClause}
@@ -285,6 +288,7 @@ export async function getDailyMetrics(days = 7, endpoint?: string): Promise<Dail
       requestCount: row.requestCount ?? 0,
       inputTokens: row.inputTokens ?? 0,
       outputTokens: row.outputTokens ?? 0,
+      cachedTokens: row.cachedTokens ?? 0,
       avgLatencyMs: row.requestCount ? Math.round((row.totalLatency ?? 0) / row.requestCount) : 0
     }))
     .reverse()
@@ -295,12 +299,14 @@ export interface MetricsOverview {
     requests: number
     inputTokens: number
     outputTokens: number
+    cachedTokens: number
     avgLatencyMs: number
   }
   today: {
     requests: number
     inputTokens: number
     outputTokens: number
+    cachedTokens: number
     avgLatencyMs: number
   }
 }
@@ -311,12 +317,14 @@ export async function getMetricsOverview(endpoint?: string): Promise<MetricsOver
     requests: number
     inputTokens: number
     outputTokens: number
+    cachedTokens: number
     totalLatency: number
   }>(
     `SELECT
        COALESCE(SUM(request_count), 0) AS requests,
        COALESCE(SUM(total_input_tokens), 0) AS inputTokens,
        COALESCE(SUM(total_output_tokens), 0) AS outputTokens,
+       COALESCE(SUM(total_cached_tokens), 0) AS cachedTokens,
        COALESCE(SUM(total_latency_ms), 0) AS totalLatency
      FROM daily_metrics
      ${totalsWhere}`,
@@ -328,11 +336,13 @@ export async function getMetricsOverview(endpoint?: string): Promise<MetricsOver
     requests: number | null
     inputTokens: number | null
     outputTokens: number | null
+    cachedTokens: number | null
     totalLatency: number | null
   }>(
     `SELECT request_count AS requests,
             total_input_tokens AS inputTokens,
             total_output_tokens AS outputTokens,
+            total_cached_tokens AS cachedTokens,
             total_latency_ms AS totalLatency
        FROM daily_metrics
        WHERE date = ?
@@ -353,12 +363,14 @@ export async function getMetricsOverview(endpoint?: string): Promise<MetricsOver
       requests: totalsRequests,
       inputTokens: totalsRow?.inputTokens ?? 0,
       outputTokens: totalsRow?.outputTokens ?? 0,
+      cachedTokens: totalsRow?.cachedTokens ?? 0,
       avgLatencyMs: resolveAvg(totalsLatency, totalsRequests)
     },
     today: {
       requests: todayRequests,
       inputTokens: todayRow?.inputTokens ?? 0,
       outputTokens: todayRow?.outputTokens ?? 0,
+      cachedTokens: todayRow?.cachedTokens ?? 0,
       avgLatencyMs: resolveAvg(todayLatency, todayRequests)
     }
   }

@@ -19,12 +19,14 @@ interface OverviewStats {
     requests: number
     inputTokens: number
     outputTokens: number
+    cachedTokens: number
     avgLatencyMs: number
   }
   today: {
     requests: number
     inputTokens: number
     outputTokens: number
+    cachedTokens: number
     avgLatencyMs: number
   }
 }
@@ -34,6 +36,7 @@ interface DailyMetric {
   requestCount: number
   inputTokens: number
   outputTokens: number
+  cachedTokens: number
   avgLatencyMs: number
 }
 
@@ -238,6 +241,7 @@ export default function DashboardPage() {
     const requestLabel = t('dashboard.charts.barRequests')
     const inputLabel = t('dashboard.charts.lineInput')
     const outputLabel = t('dashboard.charts.lineOutput')
+    const cachedLabel = t('dashboard.charts.lineCached')
     return {
       tooltip: {
         trigger: 'axis',
@@ -246,7 +250,7 @@ export default function DashboardPage() {
         textStyle: { color: '#e2e8f0' }
       },
       legend: {
-        data: [requestLabel, inputLabel, outputLabel],
+        data: [requestLabel, inputLabel, outputLabel, cachedLabel],
         textStyle: { color: '#64748b' }
       },
       grid: { left: 60, right: 40, top: 60, bottom: 60 },
@@ -295,6 +299,17 @@ export default function DashboardPage() {
           data: daily.map((item) => item.outputTokens),
           smooth: true,
           itemStyle: { color: '#f59e0b' },
+          lineStyle: { width: 3 },
+          symbol: 'circle',
+          symbolSize: 6
+        },
+        {
+          name: cachedLabel,
+          type: 'line',
+          yAxisIndex: 0,
+          data: daily.map((item) => item.cachedTokens),
+          smooth: true,
+          itemStyle: { color: '#8b5cf6' },
           lineStyle: { width: 3 },
           symbol: 'circle',
           symbolSize: 6
@@ -566,7 +581,7 @@ export default function DashboardPage() {
       ) : null}
 
       {/* Statistics Cards */}
-      <section className={cn(responsiveGridClass.fixed[4], 'gap-4 sm:gap-6')}>
+      <section className={cn(responsiveGridClass.fixed[5], 'gap-4 sm:gap-6')}>
         <StatCard
           icon={<Activity className="h-5 w-5" />}
           title={t('dashboard.cards.todayRequests')}
@@ -582,6 +597,12 @@ export default function DashboardPage() {
           suffix={t('common.units.token')}
           trend="+8%"
           trendDirection="up"
+        />
+        <StatCard
+          icon={<Activity className="h-5 w-5" />}
+          title={t('dashboard.cards.todayCached')}
+          value={overview?.today.cachedTokens ?? 0}
+          suffix={t('common.units.token')}
         />
         <StatCard
           icon={<BarChart3 className="h-5 w-5" />}
