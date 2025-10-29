@@ -93,6 +93,14 @@ function resolveCachedTokens(usage: any): number | null {
 
 const roundTwoDecimals = (value: number): number => Math.round(value * 100) / 100
 
+function cloneOriginalPayload<T>(value: T): T {
+  const structuredCloneFn = (globalThis as any).structuredClone as (<U>(input: U) => U) | undefined
+  if (structuredCloneFn) {
+    return structuredCloneFn(value)
+  }
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 function computeTpot(
   totalLatencyMs: number,
   outputTokens: number,
@@ -323,7 +331,9 @@ async function registerUnifiedHandler(
     if (endpoint.paths && Array.isArray(endpoint.paths) && endpoint.paths.length > 0) {
       const matchedPath = endpoint.paths.find(p => {
         const normalizedPath = p.path.startsWith('/') ? p.path : `/${p.path}`
-        return actualPath === normalizedPath
+        // 需要检查 actualPath 是否是根据 normalizedPath 和 protocol 生成的完整路径之一
+        const expandedPaths = getPathsToRegister(normalizedPath, p.protocol)
+        return expandedPaths.includes(actualPath)
       })
       protocol = matchedPath?.protocol
     }
@@ -377,6 +387,41 @@ async function handleAnthropicProtocol(
   if (!payload || typeof payload !== 'object') {
     reply.code(400)
     return { error: 'Invalid request body' }
+  }
+
+  // 提取 query 字符串
+  const rawUrl = typeof request.raw?.url === 'string' ? request.raw.url : request.url ?? ''
+  let querySuffix: string | null = null
+  if (typeof rawUrl === 'string') {
+    const questionIndex = rawUrl.indexOf('?')
+    if (questionIndex !== -1) {
+      querySuffix = rawUrl.slice(questionIndex + 1)
+    }
+  }
+  if (!querySuffix && typeof (request as any).querystring === 'string') {
+    querySuffix = (request as any).querystring || null
+  }
+
+  // 收集需要转发的 headers
+  const providerHeaders: Record<string, string> = {}
+  const headersToForward = [
+    'anthropic-version',
+    'anthropic-beta',
+    'x-stainless-arch',
+    'x-stainless-async',
+    'x-stainless-lang',
+    'x-stainless-os',
+    'x-stainless-package-version',
+    'x-stainless-runtime',
+    'x-stainless-runtime-version'
+  ]
+  for (const key of headersToForward) {
+    const value = request.headers[key]
+    if (typeof value === 'string' && value.length > 0) {
+      providerHeaders[key] = value
+    } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string') {
+      providerHeaders[key] = value[0]
+    }
   }
 
   const providedApiKey = extractApiKeyFromRequest(request)
@@ -472,9 +517,43 @@ async function handleAnthropicProtocol(
     const connector = getConnector(target.providerId)
 
     let providerBody: any
+    let finalHeaders: Record<string, string> | undefined = providerHeaders
+
     if (providerType === 'anthropic') {
-      providerBody = { ...payload }
+      // 对于 anthropic provider，完全透明转发（与标准端点对齐）
+      providerBody = cloneOriginalPayload(payload)
       providerBody.model = target.modelId
+      if (normalized.stream !== undefined) {
+        providerBody.stream = normalized.stream
+      }
+
+      // 收集所有原始 headers（与标准端点对齐）
+      const collected: Record<string, string> = {}
+      const skip = new Set(['content-length', 'host', 'connection', 'transfer-encoding'])
+      const sourceHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
+      for (const [headerKey, headerValue] of Object.entries(sourceHeaders)) {
+        const lower = headerKey.toLowerCase()
+        if (skip.has(lower)) continue
+
+        let value: string | undefined
+        if (typeof headerValue === 'string') {
+          value = headerValue
+        } else if (Array.isArray(headerValue)) {
+          value = headerValue.find((item): item is string => typeof item === 'string' && item.length > 0)
+        }
+
+        if (value && value.length > 0) {
+          collected[lower] = value
+        }
+      }
+
+      if (!('content-type' in collected)) {
+        collected['content-type'] = 'application/json'
+      }
+
+      if (Object.keys(collected).length > 0) {
+        finalHeaders = collected
+      }
     } else {
       providerBody = buildProviderBody(normalized, {
         maxTokens: payload.max_tokens,
@@ -485,7 +564,9 @@ async function handleAnthropicProtocol(
     const upstream = await connector.send({
       model: target.modelId,
       body: providerBody,
-      stream: normalized.stream
+      stream: normalized.stream,
+      query: querySuffix,
+      headers: finalHeaders
     })
 
     if (upstream.status >= 400) {
@@ -673,6 +754,41 @@ async function handleOpenAIChatProtocol(
     return { error: 'Invalid request body' }
   }
 
+  // 提取 query 字符串
+  const rawUrl = typeof request.raw?.url === 'string' ? request.raw.url : request.url ?? ''
+  let querySuffix: string | null = null
+  if (typeof rawUrl === 'string') {
+    const questionIndex = rawUrl.indexOf('?')
+    if (questionIndex !== -1) {
+      querySuffix = rawUrl.slice(questionIndex + 1)
+    }
+  }
+  if (!querySuffix && typeof (request as any).querystring === 'string') {
+    querySuffix = (request as any).querystring || null
+  }
+
+  // 收集需要转发的 headers
+  const providerHeaders: Record<string, string> = {}
+  const headersToForward = [
+    'anthropic-version',
+    'anthropic-beta',
+    'x-stainless-arch',
+    'x-stainless-async',
+    'x-stainless-lang',
+    'x-stainless-os',
+    'x-stainless-package-version',
+    'x-stainless-runtime',
+    'x-stainless-runtime-version'
+  ]
+  for (const key of headersToForward) {
+    const value = request.headers[key]
+    if (typeof value === 'string' && value.length > 0) {
+      providerHeaders[key] = value
+    } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string') {
+      providerHeaders[key] = value[0]
+    }
+  }
+
   const providedApiKey = extractApiKeyFromRequest(request)
   let apiKeyContext: Awaited<ReturnType<typeof resolveApiKey>>
   try {
@@ -777,7 +893,9 @@ async function handleOpenAIChatProtocol(
     const upstream = await connector.send({
       model: target.modelId,
       body: providerBody,
-      stream: normalized.stream
+      stream: normalized.stream,
+      query: querySuffix,
+      headers: providerHeaders
     })
 
     if (upstream.status >= 400) {
@@ -956,6 +1074,41 @@ async function handleOpenAIResponsesProtocol(
     return { error: 'Invalid request body' }
   }
 
+  // 提取 query 字符串
+  const rawUrl = typeof request.raw?.url === 'string' ? request.raw.url : request.url ?? ''
+  let querySuffix: string | null = null
+  if (typeof rawUrl === 'string') {
+    const questionIndex = rawUrl.indexOf('?')
+    if (questionIndex !== -1) {
+      querySuffix = rawUrl.slice(questionIndex + 1)
+    }
+  }
+  if (!querySuffix && typeof (request as any).querystring === 'string') {
+    querySuffix = (request as any).querystring || null
+  }
+
+  // 收集需要转发的 headers
+  const providerHeaders: Record<string, string> = {}
+  const headersToForward = [
+    'anthropic-version',
+    'anthropic-beta',
+    'x-stainless-arch',
+    'x-stainless-async',
+    'x-stainless-lang',
+    'x-stainless-os',
+    'x-stainless-package-version',
+    'x-stainless-runtime',
+    'x-stainless-runtime-version'
+  ]
+  for (const key of headersToForward) {
+    const value = request.headers[key]
+    if (typeof value === 'string' && value.length > 0) {
+      providerHeaders[key] = value
+    } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string') {
+      providerHeaders[key] = value[0]
+    }
+  }
+
   const providedApiKey = extractApiKeyFromRequest(request)
   let apiKeyContext: Awaited<ReturnType<typeof resolveApiKey>>
   try {
@@ -1060,7 +1213,9 @@ async function handleOpenAIResponsesProtocol(
     const upstream = await connector.send({
       model: target.modelId,
       body: providerBody,
-      stream: normalized.stream
+      stream: normalized.stream,
+      query: querySuffix,
+      headers: providerHeaders
     })
 
     if (upstream.status >= 400) {
