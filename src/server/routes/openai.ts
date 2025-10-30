@@ -781,7 +781,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           await updateLogTokens(logId, {
             inputTokens,
             outputTokens,
-            cachedTokens,
+            cachedTokens: usageCached,
             ttftMs: latencyMs,
             tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
           })
@@ -790,7 +790,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             requests: 1,
             inputTokens,
             outputTokens,
-            cachedTokens,
+            cachedTokens: usageCached,
+            cacheReadTokens: usageCacheRead,
+            cacheCreationTokens: usageCacheCreation,
             latencyMs
           })
           if (storeResponsePayloads) {
@@ -841,7 +843,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         await updateLogTokens(logId, {
           inputTokens,
           outputTokens,
-          cachedTokens,
+          cachedTokens: usageCached,
           ttftMs: usagePayload?.first_token_latency_ms ?? latencyMs,
           tpotMs: usagePayload?.tokens_per_second
             ? computeTpot(latencyMs, outputTokens, { streaming: false, reasoningTokens })
@@ -887,6 +889,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         let usagePrompt: number | null = null
         let usageCompletion: number | null = null
         let usageCached: number | null = null
+        let usageCacheRead = 0
+        let usageCacheCreation = 0
         let lastUsagePayload: any = null
         let firstTokenAt: number | null = null
         let claudeMessageId: string | null = null
@@ -934,9 +938,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           )
           if (usageCached == null) {
             const candidate = resolveCachedTokens(usagePayload)
-            if (candidate != null) {
-              usageCached = candidate
-            }
+            usageCacheRead = candidate.read
+            usageCacheCreation = candidate.creation
+            usageCached = candidate.read + candidate.creation
           }
           lastUsagePayload = usagePayload
         }
@@ -1223,8 +1227,10 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             : aggregatedText
             ? estimateTextTokens(aggregatedText, target.modelId)
             : 0
-        const finalCachedTokens =
-          usageCached != null ? usageCached : resolveCachedTokens(lastUsagePayload)
+        const finalCachedResult = usageCached != null 
+          ? { read: usageCacheRead, creation: usageCacheCreation }
+          : resolveCachedTokens(lastUsagePayload)
+        const finalCachedTokens = finalCachedResult.read + finalCachedResult.creation
         const totalLatencyMs = Date.now() - requestStart
         const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
 
@@ -1269,9 +1275,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           requests: 1,
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
-          cachedTokens: usageCached,
-          cacheReadTokens: cached.read,
-          cacheCreationTokens: cached.creation,
+          cachedTokens: finalCachedTokens,
+          cacheReadTokens: finalCachedResult.read,
+          cacheCreationTokens: finalCachedResult.creation,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads && capturedResponseChunks) {
@@ -1292,6 +1298,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
       let usageCompletion: number | null = null
       let usageReasoning: number | null = null
       let usageCached: number | null = null
+      let usageCacheRead = 0
+      let usageCacheCreation = 0
       let firstTokenAt: number | null = null
       let chunkCount = 0
       const capturedResponseChunks: string[] | null = storeResponsePayloads ? [] : null
@@ -1349,7 +1357,10 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           )
 
           if (usageCached == null) {
-            usageCached = resolveCachedTokens(usagePayload)
+            const cachedResult = resolveCachedTokens(usagePayload)
+            usageCacheRead = cachedResult.read
+            usageCacheCreation = cachedResult.creation
+            usageCached = cachedResult.read + cachedResult.creation
           }
           if (OPENAI_DEBUG) {
             debugLog('usage payload received', usagePayload)
@@ -1768,7 +1779,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           await updateLogTokens(logId, {
             inputTokens,
             outputTokens,
-            cachedTokens,
+            cachedTokens: usageCached,
             ttftMs: latencyMs,
             tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
           })
@@ -1777,7 +1788,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             requests: 1,
             inputTokens,
             outputTokens,
-            cachedTokens,
+            cachedTokens: usageCached,
+            cacheReadTokens: usageCacheRead,
+            cacheCreationTokens: usageCacheCreation,
             latencyMs
           })
           if (storeResponsePayloads) {
@@ -1824,7 +1837,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         await updateLogTokens(logId, {
           inputTokens,
           outputTokens,
-          cachedTokens,
+          cachedTokens: usageCached,
           ttftMs: usagePayload?.first_token_latency_ms ?? latencyMs,
           tpotMs: usagePayload?.tokens_per_second
             ? computeTpot(latencyMs, outputTokens, { streaming: false })
@@ -1870,6 +1883,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         let usagePrompt: number | null = null
         let usageCompletion: number | null = null
         let usageCached: number | null = null
+        let usageCacheRead = 0
+        let usageCacheCreation = 0
         let lastUsagePayload: any = null
         let firstTokenAt: number | null = null
         let claudeStopReason: string | null = null
@@ -1921,9 +1936,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           )
           if (usageCached == null) {
             const candidate = resolveCachedTokens(usagePayload)
-            if (candidate != null) {
-              usageCached = candidate
-            }
+            usageCacheRead = candidate.read
+            usageCacheCreation = candidate.creation
+            usageCached = candidate.read + candidate.creation
           }
           lastUsagePayload = usagePayload
         }
@@ -2253,8 +2268,10 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             : aggregatedText
             ? estimateTextTokens(aggregatedText, target.modelId)
             : 0
-        const finalCachedTokens =
-          usageCached != null ? usageCached : resolveCachedTokens(lastUsagePayload)
+        const finalCachedResult = usageCached != null 
+          ? { read: usageCacheRead, creation: usageCacheCreation }
+          : resolveCachedTokens(lastUsagePayload)
+        const finalCachedTokens = finalCachedResult.read + finalCachedResult.creation
         const totalLatencyMs = Date.now() - requestStart
         const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
 
@@ -2301,9 +2318,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           requests: 1,
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
-          cachedTokens: usageCached,
-          cacheReadTokens: cached.read,
-          cacheCreationTokens: cached.creation,
+          cachedTokens: finalCachedTokens,
+          cacheReadTokens: finalCachedResult.read,
+          cacheCreationTokens: finalCachedResult.creation,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads && capturedResponseChunks) {
@@ -2323,6 +2340,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
       let usagePrompt: number | null = null
       let usageCompletion: number | null = null
       let usageCached: number | null = null
+      let usageCacheRead = 0
+      let usageCacheCreation = 0
       let firstTokenAt: number | null = null
       const capturedResponseChunks: string[] | null = storeResponsePayloads ? [] : null
 
@@ -2365,7 +2384,10 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           )
 
           if (usageCached == null) {
-            usageCached = resolveCachedTokens(usagePayload)
+            const cachedResult = resolveCachedTokens(usagePayload)
+            usageCacheRead = cachedResult.read
+            usageCacheCreation = cachedResult.creation
+            usageCached = cachedResult.read + cachedResult.creation
           }
         }
 

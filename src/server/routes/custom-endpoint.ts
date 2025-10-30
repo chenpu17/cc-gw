@@ -601,7 +601,7 @@ async function handleAnthropicProtocol(
       await updateLogTokens(logId, {
         inputTokens,
         outputTokens,
-        cachedTokens,
+        cachedTokens: usageCached,
         ttftMs: latencyMs,
         tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
       })
@@ -610,7 +610,9 @@ async function handleAnthropicProtocol(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens,
+        cachedTokens: usageCached,
+        cacheReadTokens: usageCacheRead,
+        cacheCreationTokens: usageCacheCreation,
         latencyMs
       })
       if (storeResponsePayloads) {
@@ -641,6 +643,8 @@ async function handleAnthropicProtocol(
     let usagePrompt = 0
     let usageCompletion = 0
     let usageCached: number | null = null
+    let usageCacheRead = 0
+    let usageCacheCreation = 0
     let firstTokenAt: number | null = null
     const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
 
@@ -673,9 +677,9 @@ async function handleAnthropicProtocol(
                   usagePrompt = parsed.usage.input_tokens ?? usagePrompt
                   usageCompletion = parsed.usage.output_tokens ?? usageCompletion
                   const cached = resolveCachedTokens(parsed.usage)
-                  if (cached !== null) {
-                    usageCached = cached
-                  }
+                  usageCacheRead = cached.read
+                  usageCacheCreation = cached.creation
+                  usageCached = cached.read + cached.creation
                 }
                 if (!firstTokenAt && (parsed?.type === 'content_block_delta' || parsed?.delta?.text)) {
                   firstTokenAt = Date.now()
@@ -719,8 +723,6 @@ async function handleAnthropicProtocol(
       inputTokens: usagePrompt,
       outputTokens: usageCompletion,
       cachedTokens: usageCached,
-          cacheReadTokens: cached.read,
-          cacheCreationTokens: cached.creation,
       latencyMs: totalLatencyMs
     })
 
@@ -943,7 +945,7 @@ async function handleOpenAIChatProtocol(
       await updateLogTokens(logId, {
         inputTokens,
         outputTokens,
-        cachedTokens,
+        cachedTokens: usageCached,
         ttftMs: latencyMs,
         tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
       })
@@ -952,7 +954,9 @@ async function handleOpenAIChatProtocol(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens,
+        cachedTokens: usageCached,
+        cacheReadTokens: usageCacheRead,
+        cacheCreationTokens: usageCacheCreation,
         latencyMs
       })
 
@@ -981,6 +985,8 @@ async function handleOpenAIChatProtocol(
     let usagePrompt: number | null = null
     let usageCompletion: number | null = null
     let usageCached: number | null = null
+    let usageCacheRead = 0
+    let usageCacheCreation = 0
     let firstTokenAt: number | null = null
     const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
 
@@ -1013,7 +1019,10 @@ async function handleOpenAIChatProtocol(
                   if (usage) {
                     usagePrompt = usage.prompt_tokens ?? usage.input_tokens ?? usagePrompt
                     usageCompletion = usage.completion_tokens ?? usage.output_tokens ?? usageCompletion
-                    usageCached = usage.cached_tokens ?? usageCached
+                    const cachedResult = resolveCachedTokens(usage)
+                    usageCacheRead = cachedResult.read
+                    usageCacheCreation = cachedResult.creation
+                    usageCached = cachedResult.read + cachedResult.creation
                   }
                 } catch {}
               }
@@ -1264,7 +1273,7 @@ async function handleOpenAIResponsesProtocol(
       await updateLogTokens(logId, {
         inputTokens,
         outputTokens,
-        cachedTokens,
+        cachedTokens: usageCached,
         ttftMs: latencyMs,
         tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
       })
@@ -1273,7 +1282,9 @@ async function handleOpenAIResponsesProtocol(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens,
+        cachedTokens: usageCached,
+        cacheReadTokens: usageCacheRead,
+        cacheCreationTokens: usageCacheCreation,
         latencyMs
       })
 
@@ -1302,6 +1313,8 @@ async function handleOpenAIResponsesProtocol(
     let usagePrompt: number | null = null
     let usageCompletion: number | null = null
     let usageCached: number | null = null
+    let usageCacheRead = 0
+    let usageCacheCreation = 0
     let firstTokenAt: number | null = null
     const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
 
@@ -1334,7 +1347,10 @@ async function handleOpenAIResponsesProtocol(
                   if (usage) {
                     usagePrompt = usage.prompt_tokens ?? usage.input_tokens ?? usagePrompt
                     usageCompletion = usage.completion_tokens ?? usage.output_tokens ?? usageCompletion
-                    usageCached = usage.cached_tokens ?? usageCached
+                    const cachedResult = resolveCachedTokens(usage)
+                    usageCacheRead = cachedResult.read
+                    usageCacheCreation = cachedResult.creation
+                    usageCached = cachedResult.read + cachedResult.creation
                   }
                 } catch {}
               }
@@ -1573,7 +1589,7 @@ async function registerOpenAIChatHandler(
         await updateLogTokens(logId, {
           inputTokens,
           outputTokens,
-          cachedTokens,
+          cachedTokens: usageCached,
           ttftMs: latencyMs,
           tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
         })
@@ -1616,6 +1632,8 @@ async function registerOpenAIChatHandler(
       let usagePrompt: number | null = null
       let usageCompletion: number | null = null
       let usageCached: number | null = null
+    let usageCacheRead = 0
+    let usageCacheCreation = 0
       let firstTokenAt: number | null = null
       const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
 
@@ -1698,7 +1716,9 @@ async function registerOpenAIChatHandler(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens,
+        cachedTokens: usageCached,
+        cacheReadTokens: usageCacheRead,
+        cacheCreationTokens: usageCacheCreation,
         latencyMs
       })
 
@@ -1892,7 +1912,7 @@ async function registerOpenAIResponsesHandler(
         await updateLogTokens(logId, {
           inputTokens,
           outputTokens,
-          cachedTokens,
+          cachedTokens: usageCached,
           ttftMs: latencyMs,
           tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
         })
@@ -1935,6 +1955,8 @@ async function registerOpenAIResponsesHandler(
       let usagePrompt: number | null = null
       let usageCompletion: number | null = null
       let usageCached: number | null = null
+    let usageCacheRead = 0
+    let usageCacheCreation = 0
       let firstTokenAt: number | null = null
       const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
 
@@ -1978,9 +2000,9 @@ async function registerOpenAIResponsesHandler(
                   usagePrompt = usage.input_tokens ?? usage.prompt_tokens ?? usagePrompt
                   usageCompletion = usage.output_tokens ?? usage.completion_tokens ?? usageCompletion
                   const cached = resolveCachedTokens(usage)
-                  if (cached !== null) {
-                    usageCached = cached
-                  }
+                  usageCacheRead = cached.read
+                  usageCacheCreation = cached.creation
+                  usageCached = cached.read + cached.creation
                 }
               } catch {
                 // ignore parse errors
@@ -2018,7 +2040,9 @@ async function registerOpenAIResponsesHandler(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens,
+        cachedTokens: usageCached,
+        cacheReadTokens: usageCacheRead,
+        cacheCreationTokens: usageCacheCreation,
         latencyMs
       })
 

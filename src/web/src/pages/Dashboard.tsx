@@ -640,7 +640,7 @@ export default function DashboardPage() {
           icon={<Timer className="h-5 w-5" />}
           title={t('dashboard.cards.avgLatency')}
           value={overview?.today.avgLatencyMs ?? 0}
-          suffix={t('common.units.token')}
+          suffix={t('common.units.ms')}
           trend="-5%"
           trendDirection="down"
         />
