@@ -178,27 +178,38 @@ export async function updateMetrics(date: string, endpoint: string, delta: {
   inputTokens: number
   outputTokens: number
   cachedTokens?: number | null
+  cacheReadTokens?: number | null
+  cacheCreationTokens?: number | null
   latencyMs: number
 }): Promise<void> {
-  await runQuery(
-    `INSERT INTO daily_metrics (date, endpoint, request_count, total_input_tokens, total_output_tokens, total_cached_tokens, total_latency_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(date, endpoint) DO UPDATE SET
-       request_count = daily_metrics.request_count + excluded.request_count,
-       total_input_tokens = daily_metrics.total_input_tokens + excluded.total_input_tokens,
-       total_output_tokens = daily_metrics.total_output_tokens + excluded.total_output_tokens,
-       total_cached_tokens = daily_metrics.total_cached_tokens + excluded.total_cached_tokens,
-       total_latency_ms = daily_metrics.total_latency_ms + excluded.total_latency_ms`,
-    [
-      date,
-      endpoint,
-      delta.requests,
-      delta.inputTokens,
-      delta.outputTokens,
-      delta.cachedTokens ?? 0,
-      delta.latencyMs
-    ]
-  )
+  try {
+    await runQuery(
+      `INSERT INTO daily_metrics (date, endpoint, request_count, total_input_tokens, total_output_tokens, total_cached_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_latency_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(date, endpoint) DO UPDATE SET
+         request_count = daily_metrics.request_count + excluded.request_count,
+         total_input_tokens = daily_metrics.total_input_tokens + excluded.total_input_tokens,
+         total_output_tokens = daily_metrics.total_output_tokens + excluded.total_output_tokens,
+         total_cached_tokens = daily_metrics.total_cached_tokens + excluded.total_cached_tokens,
+         total_cache_read_tokens = daily_metrics.total_cache_read_tokens + excluded.total_cache_read_tokens,
+         total_cache_creation_tokens = daily_metrics.total_cache_creation_tokens + excluded.total_cache_creation_tokens,
+         total_latency_ms = daily_metrics.total_latency_ms + excluded.total_latency_ms`,
+      [
+        date,
+        endpoint,
+        delta.requests,
+        delta.inputTokens,
+        delta.outputTokens,
+        delta.cachedTokens ?? 0,
+        delta.cacheReadTokens ?? 0,
+        delta.cacheCreationTokens ?? 0,
+        delta.latencyMs
+      ]
+    )
+  } catch (err) {
+    // 静默失败，不影响请求转发
+    console.error('[updateMetrics] Failed to update metrics:', err)
+  }
 }
 
 export async function cleanupLogs(beforeTimestamp: number): Promise<number> {

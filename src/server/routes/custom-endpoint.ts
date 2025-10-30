@@ -71,24 +71,33 @@ function getPathsToRegister(basePath: string, protocol: EndpointProtocol): strin
 }
 
 
-function resolveCachedTokens(usage: any): number | null {
+function resolveCachedTokens(usage: any): { read: number; creation: number } {
+  const result = { read: 0, creation: 0 }
+
   if (!usage || typeof usage !== 'object') {
-    return null
+    return result
   }
-  if (typeof usage.cached_tokens === 'number') {
-    return usage.cached_tokens
-  }
-  const promptDetails = usage.prompt_tokens_details
-  if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
-    return promptDetails.cached_tokens
-  }
+
+  // Anthropic 格式 - 分别统计
   if (typeof usage.cache_read_input_tokens === 'number') {
-    return usage.cache_read_input_tokens
+    result.read = usage.cache_read_input_tokens
   }
   if (typeof usage.cache_creation_input_tokens === 'number') {
-    return usage.cache_creation_input_tokens
+    result.creation = usage.cache_creation_input_tokens
   }
-  return null
+
+  // OpenAI 格式的 cached_tokens (视为读取)
+  if (typeof usage.cached_tokens === 'number') {
+    result.read = usage.cached_tokens
+  }
+
+  // OpenAI 详细格式
+  const promptDetails = usage.prompt_tokens_details
+  if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
+    result.read = promptDetails.cached_tokens
+  }
+
+  return result
 }
 
 const roundTwoDecimals = (value: number): number => Math.round(value * 100) / 100
@@ -585,7 +594,8 @@ async function handleAnthropicProtocol(
       const json = await new Response(upstream.body!).json()
       const inputTokens = json.usage?.input_tokens ?? estimateTokens(normalized, target.modelId)
       const outputTokens = json.usage?.output_tokens ?? 0
-      const cachedTokens = resolveCachedTokens(json.usage)
+      const cached = resolveCachedTokens(json.usage)
+      const cachedTokens = cached.read + cached.creation
       const latencyMs = Date.now() - requestStart
 
       await updateLogTokens(logId, {
@@ -709,6 +719,8 @@ async function handleAnthropicProtocol(
       inputTokens: usagePrompt,
       outputTokens: usageCompletion,
       cachedTokens: usageCached,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
       latencyMs: totalLatencyMs
     })
 
@@ -924,7 +936,8 @@ async function handleOpenAIChatProtocol(
         usagePayload?.completion_tokens ??
         usagePayload?.output_tokens ??
         estimateTextTokens(json?.choices?.[0]?.message?.content ?? '', target.modelId)
-      const cachedTokens = resolveCachedTokens(usagePayload)
+      const cached = resolveCachedTokens(usagePayload)
+      const cachedTokens = cached.read + cached.creation
       const latencyMs = Date.now() - requestStart
 
       await updateLogTokens(logId, {
@@ -1244,7 +1257,8 @@ async function handleOpenAIResponsesProtocol(
       const content = json?.response?.body?.content ?? json?.choices?.[0]?.message?.content ?? ''
       const outputTokens =
         usagePayload?.completion_tokens ?? usagePayload?.output_tokens ?? estimateTextTokens(content, target.modelId)
-      const cachedTokens = resolveCachedTokens(usagePayload)
+      const cached = resolveCachedTokens(usagePayload)
+      const cachedTokens = cached.read + cached.creation
       const latencyMs = Date.now() - requestStart
 
       await updateLogTokens(logId, {
@@ -1552,7 +1566,8 @@ async function registerOpenAIChatHandler(
             })(),
             target.modelId
           )
-        const cachedTokens = resolveCachedTokens(usagePayload)
+        const cached = resolveCachedTokens(usagePayload)
+      const cachedTokens = cached.read + cached.creation
         const latencyMs = Date.now() - requestStart
 
         await updateLogTokens(logId, {
@@ -1870,7 +1885,8 @@ async function registerOpenAIResponsesHandler(
           usagePayload?.output_tokens ??
           usagePayload?.completion_tokens ??
           (typeof json?.content === 'string' ? estimateTextTokens(json.content, target.modelId) : 0)
-        const cachedTokens = resolveCachedTokens(usagePayload)
+        const cached = resolveCachedTokens(usagePayload)
+      const cachedTokens = cached.read + cached.creation
         const latencyMs = Date.now() - requestStart
 
         await updateLogTokens(logId, {

@@ -130,6 +130,8 @@ const resources = {
         cards: {
           todayRequests: '今日请求数',
           todayInput: '今日输入 Tokens',
+          todayCacheRead: '今日缓存读取',
+          todayCacheCreation: '今日缓存写入',
           todayOutput: '今日输出 Tokens',
           todayCached: '今日缓存 Tokens',
           avgLatency: '平均响应耗时'
@@ -143,6 +145,8 @@ const resources = {
           lineInput: '输入 Tokens',
           lineOutput: '输出 Tokens',
           lineCached: '缓存 Tokens',
+          lineCacheRead: '缓存读取',
+          lineCacheCreation: '缓存写入',
           axisTokens: 'Tokens',
           ttftLabel: 'TTFT(ms)',
           tpotLabel: 'TPOT(ms/Token)',
@@ -1127,6 +1131,8 @@ const resources = {
         cards: {
           todayRequests: 'Requests Today',
           todayInput: 'Input Tokens Today',
+          todayCacheRead: 'Cache Read Today',
+          todayCacheCreation: 'Cache Creation Today',
           todayOutput: 'Output Tokens Today',
           todayCached: 'Cached Tokens Today',
           avgLatency: 'Average Latency'
@@ -1140,6 +1146,8 @@ const resources = {
           lineInput: 'Input tokens',
           lineOutput: 'Output tokens',
           lineCached: 'Cached tokens',
+          lineCacheRead: 'Cache Read',
+          lineCacheCreation: 'Cache Creation',
           axisTokens: 'Tokens',
           ttftLabel: 'TTFT (ms)',
           tpotLabel: 'TPOT (ms/token)',

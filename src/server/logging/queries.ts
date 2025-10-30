@@ -252,6 +252,8 @@ export interface DailyMetric {
   inputTokens: number
   outputTokens: number
   cachedTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
   avgLatencyMs: number
 }
 
@@ -267,6 +269,8 @@ export async function getDailyMetrics(days = 7, endpoint?: string): Promise<Dail
     inputTokens: number | null
     outputTokens: number | null
     cachedTokens: number | null
+    cacheReadTokens: number | null
+    cacheCreationTokens: number | null
     totalLatency: number | null
   }>(
     `SELECT date,
@@ -274,6 +278,8 @@ export async function getDailyMetrics(days = 7, endpoint?: string): Promise<Dail
             total_input_tokens AS inputTokens,
             total_output_tokens AS outputTokens,
             total_cached_tokens AS cachedTokens,
+            total_cache_read_tokens AS cacheReadTokens,
+            total_cache_creation_tokens AS cacheCreationTokens,
             total_latency_ms AS totalLatency
        FROM daily_metrics
        ${whereClause}
@@ -289,6 +295,8 @@ export async function getDailyMetrics(days = 7, endpoint?: string): Promise<Dail
       inputTokens: row.inputTokens ?? 0,
       outputTokens: row.outputTokens ?? 0,
       cachedTokens: row.cachedTokens ?? 0,
+      cacheReadTokens: row.cacheReadTokens ?? 0,
+      cacheCreationTokens: row.cacheCreationTokens ?? 0,
       avgLatencyMs: row.requestCount ? Math.round((row.totalLatency ?? 0) / row.requestCount) : 0
     }))
     .reverse()
@@ -300,6 +308,8 @@ export interface MetricsOverview {
     inputTokens: number
     outputTokens: number
     cachedTokens: number
+    cacheReadTokens: number
+    cacheCreationTokens: number
     avgLatencyMs: number
   }
   today: {
@@ -307,6 +317,8 @@ export interface MetricsOverview {
     inputTokens: number
     outputTokens: number
     cachedTokens: number
+    cacheReadTokens: number
+    cacheCreationTokens: number
     avgLatencyMs: number
   }
 }
@@ -318,6 +330,8 @@ export async function getMetricsOverview(endpoint?: string): Promise<MetricsOver
     inputTokens: number
     outputTokens: number
     cachedTokens: number
+    cacheReadTokens: number
+    cacheCreationTokens: number
     totalLatency: number
   }>(
     `SELECT
@@ -325,6 +339,8 @@ export async function getMetricsOverview(endpoint?: string): Promise<MetricsOver
        COALESCE(SUM(total_input_tokens), 0) AS inputTokens,
        COALESCE(SUM(total_output_tokens), 0) AS outputTokens,
        COALESCE(SUM(total_cached_tokens), 0) AS cachedTokens,
+       COALESCE(SUM(total_cache_read_tokens), 0) AS cacheReadTokens,
+       COALESCE(SUM(total_cache_creation_tokens), 0) AS cacheCreationTokens,
        COALESCE(SUM(total_latency_ms), 0) AS totalLatency
      FROM daily_metrics
      ${totalsWhere}`,
@@ -337,12 +353,16 @@ export async function getMetricsOverview(endpoint?: string): Promise<MetricsOver
     inputTokens: number | null
     outputTokens: number | null
     cachedTokens: number | null
+    cacheReadTokens: number | null
+    cacheCreationTokens: number | null
     totalLatency: number | null
   }>(
     `SELECT request_count AS requests,
             total_input_tokens AS inputTokens,
             total_output_tokens AS outputTokens,
             total_cached_tokens AS cachedTokens,
+            total_cache_read_tokens AS cacheReadTokens,
+            total_cache_creation_tokens AS cacheCreationTokens,
             total_latency_ms AS totalLatency
        FROM daily_metrics
        WHERE date = ?
@@ -364,6 +384,8 @@ export async function getMetricsOverview(endpoint?: string): Promise<MetricsOver
       inputTokens: totalsRow?.inputTokens ?? 0,
       outputTokens: totalsRow?.outputTokens ?? 0,
       cachedTokens: totalsRow?.cachedTokens ?? 0,
+      cacheReadTokens: totalsRow?.cacheReadTokens ?? 0,
+      cacheCreationTokens: totalsRow?.cacheCreationTokens ?? 0,
       avgLatencyMs: resolveAvg(totalsLatency, totalsRequests)
     },
     today: {
@@ -371,6 +393,8 @@ export async function getMetricsOverview(endpoint?: string): Promise<MetricsOver
       inputTokens: todayRow?.inputTokens ?? 0,
       outputTokens: todayRow?.outputTokens ?? 0,
       cachedTokens: todayRow?.cachedTokens ?? 0,
+      cacheReadTokens: todayRow?.cacheReadTokens ?? 0,
+      cacheCreationTokens: todayRow?.cacheCreationTokens ?? 0,
       avgLatencyMs: resolveAvg(todayLatency, todayRequests)
     }
   }

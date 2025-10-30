@@ -127,24 +127,33 @@ function computeTpot(
   return Number.isFinite(raw) ? roundTwoDecimals(raw) : null
 }
 
-function resolveCachedTokens(usage: any): number | null {
+function resolveCachedTokens(usage: any): { read: number; creation: number } {
+  const result = { read: 0, creation: 0 }
+
   if (!usage || typeof usage !== 'object') {
-    return null
+    return result
   }
-  if (typeof usage.cached_tokens === 'number') {
-    return usage.cached_tokens
-  }
-  const promptDetails = usage.prompt_tokens_details
-  if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
-    return promptDetails.cached_tokens
-  }
+
+  // Anthropic 格式 - 分别统计
   if (typeof usage.cache_read_input_tokens === 'number') {
-    return usage.cache_read_input_tokens
+    result.read = usage.cache_read_input_tokens
   }
   if (typeof usage.cache_creation_input_tokens === 'number') {
-    return usage.cache_creation_input_tokens
+    result.creation = usage.cache_creation_input_tokens
   }
-  return null
+
+  // OpenAI 格式的 cached_tokens (视为读取)
+  if (typeof usage.cached_tokens === 'number') {
+    result.read = usage.cached_tokens
+  }
+
+  // OpenAI 详细格式
+  const promptDetails = usage.prompt_tokens_details
+  if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
+    result.read = promptDetails.cached_tokens
+  }
+
+  return result
 }
 
 function cloneOriginalPayload<T>(value: T): T {
@@ -432,7 +441,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         if (providerType === 'anthropic') {
           let inputTokens = json.usage?.input_tokens ?? 0
           let outputTokens = json.usage?.output_tokens ?? 0
-          const cachedTokens = resolveCachedTokens(json.usage)
+          const cached = resolveCachedTokens(json.usage)
+          const cachedTokens = cached.read + cached.creation
           if (!inputTokens) {
             inputTokens = target.tokenEstimate || estimateTokens(normalized, target.modelId)
           }
@@ -464,6 +474,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             inputTokens,
             outputTokens,
             cachedTokens,
+            cacheReadTokens: cached.read,
+            cacheCreationTokens: cached.creation,
             latencyMs
           })
           if (storeResponsePayloads) {
@@ -485,7 +497,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         const claudeResponse = buildClaudeResponse(json, target.modelId)
         let inputTokens = json.usage?.prompt_tokens ?? 0
         let outputTokens = json.usage?.completion_tokens ?? 0
-        const cachedTokens = resolveCachedTokens(json.usage)
+        const cached = resolveCachedTokens(json.usage)
+        const cachedTokens = cached.read + cached.creation
         if (!inputTokens) {
           inputTokens = target.tokenEstimate || estimateTokens(normalized, target.modelId)
         }
@@ -514,6 +527,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           requests: 1,
           inputTokens,
           outputTokens,
+          cachedTokens,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           latencyMs
         })
         if (storeResponsePayloads) {
@@ -710,9 +726,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
                         usagePrompt = payload.usage.input_tokens ?? usagePrompt
                         usageCompletion = payload.usage.output_tokens ?? usageCompletion
                         const maybeCached = resolveCachedTokens(payload.usage)
-                        if (maybeCached !== null) {
-                          usageCached = maybeCached
-                        }
+                        usageCached = maybeCached.read + maybeCached.creation
                         lastUsagePayload = payload.usage
                       }
                       if (payload?.delta) {
@@ -739,9 +753,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
                         usagePrompt = payload.usage.input_tokens ?? usagePrompt
                         usageCompletion = payload.usage.output_tokens ?? usageCompletion
                         const maybeCached = resolveCachedTokens(payload.usage)
-                        if (maybeCached !== null) {
-                          usageCached = maybeCached
-                        }
+                        usageCached = maybeCached.read + maybeCached.creation
                         lastUsagePayload = payload.usage
                       }
                       if (payload?.stop_reason) {
@@ -801,8 +813,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
         const totalLatencyMs = Date.now() - requestStart
         const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
+        const cached = resolveCachedTokens(lastUsagePayload)
         if (usageCached === null) {
-          usageCached = resolveCachedTokens(lastUsagePayload)
+          usageCached = cached.read + cached.creation
         }
         logUsage('stream.anthropic.final', {
           input: usagePrompt,
@@ -825,6 +838,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           inputTokens: usagePrompt,
           outputTokens: usageCompletion,
           cachedTokens: usageCached,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads) {
@@ -1000,7 +1015,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
               requests: 1,
               inputTokens: finalPromptTokens,
               outputTokens: finalCompletionTokens,
-              cachedTokens: usageCached,
+              cachedTokens: usageCached ?? 0,
+              cacheReadTokens: 0,
+              cacheCreationTokens: 0,
               latencyMs: totalLatencyMs
             })
             if (storeResponsePayloads) {
@@ -1170,7 +1187,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           requests: 1,
           inputTokens: fallbackPrompt,
           outputTokens: fallbackCompletion,
-          cachedTokens: usageCached,
+          cachedTokens: usageCached ?? 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads) {

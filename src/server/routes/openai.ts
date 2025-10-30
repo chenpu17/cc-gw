@@ -86,28 +86,39 @@ function computeTpot(
   return Number.isFinite(raw) ? roundTwoDecimals(raw) : null
 }
 
-function resolveCachedTokens(usage: any): number | null {
+function resolveCachedTokens(usage: any): { read: number; creation: number } {
+  const result = { read: 0, creation: 0 }
+
   if (!usage || typeof usage !== 'object') {
-    return null
+    return result
   }
-  if (typeof usage.cached_tokens === 'number') {
-    return usage.cached_tokens
-  }
-  const promptDetails = usage.prompt_tokens_details
-  if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
-    return promptDetails.cached_tokens
-  }
-  const inputDetails = usage.input_tokens_details
-  if (inputDetails && typeof inputDetails.cached_tokens === 'number') {
-    return inputDetails.cached_tokens
-  }
+
+  // Anthropic 格式 - 分别统计
   if (typeof usage.cache_read_input_tokens === 'number') {
-    return usage.cache_read_input_tokens
+    result.read = usage.cache_read_input_tokens
   }
   if (typeof usage.cache_creation_input_tokens === 'number') {
-    return usage.cache_creation_input_tokens
+    result.creation = usage.cache_creation_input_tokens
   }
-  return null
+
+  // OpenAI 格式的 cached_tokens (视为读取)
+  if (typeof usage.cached_tokens === 'number') {
+    result.read = usage.cached_tokens
+  }
+
+  // OpenAI 详细格式
+  const promptDetails = usage.prompt_tokens_details
+  if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
+    result.read = promptDetails.cached_tokens
+  }
+
+  // OpenAI input_tokens_details 格式
+  const inputDetails = usage.input_tokens_details
+  if (inputDetails && typeof inputDetails.cached_tokens === 'number') {
+    result.read = inputDetails.cached_tokens
+  }
+
+  return result
 }
 
 const generateId = (prefix: string): string => `${prefix}_${Math.random().toString(36).slice(2, 10)}`
@@ -757,7 +768,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             inputTokens = target.tokenEstimate ?? estimateTokens(normalized, target.modelId)
           }
 
-          const cachedTokens = resolveCachedTokens(usagePayload)
+          const cached = resolveCachedTokens(usagePayload)
+      const cachedTokens = cached.read + cached.creation
           const latencyMs = Date.now() - requestStart
 
           const openAIResponse = buildOpenAIResponseFromClaude(parsed, target.modelId, converted, {
@@ -822,7 +834,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           return 0
         })()
         const outputTokens = baseOutputTokens + reasoningTokens
-        const cachedTokens = resolveCachedTokens(usagePayload)
+        const cached = resolveCachedTokens(usagePayload)
+      const cachedTokens = cached.read + cached.creation
         const latencyMs = Date.now() - requestStart
 
         await updateLogTokens(logId, {
@@ -1257,6 +1270,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: usageCached,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads && capturedResponseChunks) {
@@ -1746,7 +1761,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             outputTokens
           })
 
-          const cachedTokens = resolveCachedTokens(usagePayload)
+          const cached = resolveCachedTokens(usagePayload)
+      const cachedTokens = cached.read + cached.creation
           const latencyMs = Date.now() - requestStart
 
           await updateLogTokens(logId, {
@@ -1801,7 +1817,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             })(),
             target.modelId
           )
-        const cachedTokens = resolveCachedTokens(usagePayload)
+        const cached = resolveCachedTokens(usagePayload)
+      const cachedTokens = cached.read + cached.creation
         const latencyMs = Date.now() - requestStart
 
         await updateLogTokens(logId, {
@@ -2285,6 +2302,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: usageCached,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads && capturedResponseChunks) {

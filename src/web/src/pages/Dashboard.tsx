@@ -20,6 +20,8 @@ interface OverviewStats {
     inputTokens: number
     outputTokens: number
     cachedTokens: number
+    cacheReadTokens: number
+    cacheCreationTokens: number
     avgLatencyMs: number
   }
   today: {
@@ -27,6 +29,8 @@ interface OverviewStats {
     inputTokens: number
     outputTokens: number
     cachedTokens: number
+    cacheReadTokens: number
+    cacheCreationTokens: number
     avgLatencyMs: number
   }
 }
@@ -37,6 +41,8 @@ interface DailyMetric {
   inputTokens: number
   outputTokens: number
   cachedTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
   avgLatencyMs: number
 }
 
@@ -241,7 +247,8 @@ export default function DashboardPage() {
     const requestLabel = t('dashboard.charts.barRequests')
     const inputLabel = t('dashboard.charts.lineInput')
     const outputLabel = t('dashboard.charts.lineOutput')
-    const cachedLabel = t('dashboard.charts.lineCached')
+    const cacheReadLabel = t('dashboard.charts.lineCacheRead')
+    const cacheCreationLabel = t('dashboard.charts.lineCacheCreation')
     return {
       tooltip: {
         trigger: 'axis',
@@ -250,7 +257,7 @@ export default function DashboardPage() {
         textStyle: { color: '#e2e8f0' }
       },
       legend: {
-        data: [requestLabel, inputLabel, outputLabel, cachedLabel],
+        data: [requestLabel, inputLabel, outputLabel, cacheReadLabel, cacheCreationLabel],
         textStyle: { color: '#64748b' }
       },
       grid: { left: 60, right: 40, top: 60, bottom: 60 },
@@ -304,12 +311,23 @@ export default function DashboardPage() {
           symbolSize: 6
         },
         {
-          name: cachedLabel,
+          name: cacheReadLabel,
           type: 'line',
           yAxisIndex: 0,
-          data: daily.map((item) => item.cachedTokens),
+          data: daily.map((item) => item.cacheReadTokens),
           smooth: true,
           itemStyle: { color: '#8b5cf6' },
+          lineStyle: { width: 3 },
+          symbol: 'circle',
+          symbolSize: 6
+        },
+        {
+          name: cacheCreationLabel,
+          type: 'line',
+          yAxisIndex: 0,
+          data: daily.map((item) => item.cacheCreationTokens),
+          smooth: true,
+          itemStyle: { color: '#ec4899' },
           lineStyle: { width: 3 },
           symbol: 'circle',
           symbolSize: 6
@@ -581,7 +599,7 @@ export default function DashboardPage() {
       ) : null}
 
       {/* Statistics Cards */}
-      <section className={cn(responsiveGridClass.fixed[5], 'gap-4 sm:gap-6')}>
+      <section className={cn(responsiveGridClass.auto, 'gap-4 sm:gap-6')}>
         <StatCard
           icon={<Activity className="h-5 w-5" />}
           title={t('dashboard.cards.todayRequests')}
@@ -600,8 +618,14 @@ export default function DashboardPage() {
         />
         <StatCard
           icon={<Activity className="h-5 w-5" />}
-          title={t('dashboard.cards.todayCached')}
-          value={overview?.today.cachedTokens ?? 0}
+          title={t('dashboard.cards.todayCacheRead')}
+          value={overview?.today.cacheReadTokens ?? 0}
+          suffix={t('common.units.token')}
+        />
+        <StatCard
+          icon={<Activity className="h-5 w-5" />}
+          title={t('dashboard.cards.todayCacheCreation')}
+          value={overview?.today.cacheCreationTokens ?? 0}
           suffix={t('common.units.token')}
         />
         <StatCard
@@ -616,7 +640,7 @@ export default function DashboardPage() {
           icon={<Timer className="h-5 w-5" />}
           title={t('dashboard.cards.avgLatency')}
           value={overview?.today.avgLatencyMs ?? 0}
-          suffix={t('common.units.ms')}
+          suffix={t('common.units.token')}
           trend="-5%"
           trendDirection="down"
         />
