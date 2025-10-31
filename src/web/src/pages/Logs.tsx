@@ -382,7 +382,7 @@ export default function LogsPage() {
       <PageSection disableAnimation variant="plain" className="p-0 max-w-full" contentClassName="gap-0">
         <div className="w-full rounded-lg border border-slate-200 dark:border-slate-700">
           <div className="table-container" style={{overflowX: 'auto', overflowY: 'hidden', width: '100%'}}>
-            <div style={{width: '1270px', minWidth: '1270px'}}>
+            <div style={{width: '1380px', minWidth: '1380px'}}>
               <table className="divide-y divide-slate-200 dark:divide-slate-700" style={{width: '100%', tableLayout: 'fixed'}}>
               <colgroup>
                 <col style={{width: '140px'}} />
@@ -392,7 +392,8 @@ export default function LogsPage() {
                 <col style={{width: '130px'}} />
                 <col style={{width: '100px'}} />
                 <col style={{width: '70px'}} />
-                <col style={{width: '70px'}} />
+                <col style={{width: '80px'}} />
+                <col style={{width: '80px'}} />
                 <col style={{width: '70px'}} />
                 <col style={{width: '70px'}} />
                 <col style={{width: '70px'}} />
