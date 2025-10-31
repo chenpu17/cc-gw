@@ -411,7 +411,8 @@ export default function LogsPage() {
                 <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.routedModel')}</th>
                 <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.apiKey')}</th>
                 <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.inputTokens')}</th>
-                <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.cachedTokens')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.cacheReadTokens')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.cacheCreationTokens')}</th>
                 <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.outputTokens')}</th>
                 <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.latency')}</th>
                 <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-200">{t('logs.table.columns.ttft')}</th>
@@ -570,7 +571,10 @@ function LogRow({
         {formatNumber(record.input_tokens)}
       </td>
       <td className="px-3 py-2.5 text-right text-xs font-medium text-slate-700 dark:text-slate-100 tabular-nums">
-        {formatNumber(record.cached_tokens)}
+        {formatNumber(record.cache_read_tokens)}
+      </td>
+      <td className="px-3 py-2.5 text-right text-xs font-medium text-slate-700 dark:text-slate-100 tabular-nums">
+        {formatNumber(record.cache_creation_tokens)}
       </td>
       <td className="px-3 py-2.5 text-right text-xs font-medium text-slate-700 dark:text-slate-100 tabular-nums">
         {formatNumber(record.output_tokens)}
@@ -800,8 +804,12 @@ function LogDetailsDrawer({
                     <dd className="font-medium">{formatNumber(record.input_tokens)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.cachedTokens')}</dt>
-                    <dd className="font-medium">{formatNumber(record.cached_tokens)}</dd>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.cacheReadTokens')}</dt>
+                    <dd className="font-medium">{formatNumber(record.cache_read_tokens)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.cacheCreationTokens')}</dt>
+                    <dd className="font-medium">{formatNumber(record.cache_creation_tokens)}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-slate-500 dark:text-slate-400">{t('logs.detail.info.outputTokens')}</dt>

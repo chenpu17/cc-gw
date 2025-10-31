@@ -198,6 +198,8 @@ async function ensureSchema(db: BetterSqliteDatabase): Promise<void> {
 
   await maybeAddColumn(db, 'request_logs', 'client_model', 'TEXT')
   await maybeAddColumn(db, 'request_logs', 'cached_tokens', 'INTEGER')
+  await maybeAddColumn(db, 'request_logs', 'cache_read_tokens', 'INTEGER DEFAULT 0')
+  await maybeAddColumn(db, 'request_logs', 'cache_creation_tokens', 'INTEGER DEFAULT 0')
   await maybeAddColumn(db, 'request_logs', 'ttft_ms', 'INTEGER')
   await maybeAddColumn(db, 'request_logs', 'tpot_ms', 'REAL')
   await maybeAddColumn(db, 'request_logs', 'stream', 'INTEGER')

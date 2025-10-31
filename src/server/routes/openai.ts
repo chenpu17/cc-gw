@@ -782,6 +782,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             inputTokens,
             outputTokens,
             cachedTokens: usageCached,
+            cacheReadTokens: cached.read,
+            cacheCreationTokens: cached.creation,
             ttftMs: latencyMs,
             tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
           })
@@ -844,6 +846,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens,
           outputTokens,
           cachedTokens: usageCached,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           ttftMs: usagePayload?.first_token_latency_ms ?? latencyMs,
           tpotMs: usagePayload?.tokens_per_second
             ? computeTpot(latencyMs, outputTokens, { streaming: false, reasoningTokens })
@@ -1264,6 +1268,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: finalCachedTokens ?? null,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, finalCompletionTokens, {
             streaming: true,
@@ -1464,6 +1470,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         inputTokens,
         outputTokens,
         cachedTokens: usageCached,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
         ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
         tpotMs: computeTpot(latencyMs, outputTokens, {
           streaming: true,
@@ -1780,6 +1788,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             inputTokens,
             outputTokens,
             cachedTokens: usageCached,
+            cacheReadTokens: cached.read,
+            cacheCreationTokens: cached.creation,
             ttftMs: latencyMs,
             tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
           })
@@ -1838,6 +1848,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens,
           outputTokens,
           cachedTokens: usageCached,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           ttftMs: usagePayload?.first_token_latency_ms ?? latencyMs,
           tpotMs: usagePayload?.tokens_per_second
             ? computeTpot(latencyMs, outputTokens, { streaming: false })
@@ -2307,6 +2319,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: finalCachedTokens ?? null,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, finalCompletionTokens, {
             streaming: true,
@@ -2470,6 +2484,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         inputTokens,
         outputTokens,
         cachedTokens: usageCached,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
         ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
         tpotMs: computeTpot(latencyMs, outputTokens, {
           streaming: true,

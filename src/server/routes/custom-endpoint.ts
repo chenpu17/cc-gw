@@ -602,6 +602,8 @@ async function handleAnthropicProtocol(
         inputTokens,
         outputTokens,
         cachedTokens: usageCached,
+        cacheReadTokens: cached.read,
+        cacheCreationTokens: cached.creation,
         ttftMs: latencyMs,
         tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
       })
@@ -711,6 +713,8 @@ async function handleAnthropicProtocol(
       inputTokens: usagePrompt,
       outputTokens: usageCompletion,
       cachedTokens: usageCached,
+      cacheReadTokens: usageCacheRead,
+      cacheCreationTokens: usageCacheCreation,
       ttftMs,
       tpotMs: computeTpot(totalLatencyMs, usageCompletion, {
         streaming: true,
@@ -946,6 +950,8 @@ async function handleOpenAIChatProtocol(
         inputTokens,
         outputTokens,
         cachedTokens: usageCached,
+        cacheReadTokens: cached.read,
+        cacheCreationTokens: cached.creation,
         ttftMs: latencyMs,
         tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
       })
@@ -1044,6 +1050,8 @@ async function handleOpenAIChatProtocol(
       inputTokens,
       outputTokens,
       cachedTokens: usageCached,
+      cacheReadTokens: usageCacheRead,
+      cacheCreationTokens: usageCacheCreation,
       ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
       tpotMs: computeTpot(latencyMs, outputTokens, {
         streaming: true,
@@ -1274,6 +1282,8 @@ async function handleOpenAIResponsesProtocol(
         inputTokens,
         outputTokens,
         cachedTokens: usageCached,
+        cacheReadTokens: cached.read,
+        cacheCreationTokens: cached.creation,
         ttftMs: latencyMs,
         tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
       })
@@ -1372,6 +1382,8 @@ async function handleOpenAIResponsesProtocol(
       inputTokens,
       outputTokens,
       cachedTokens: usageCached,
+      cacheReadTokens: usageCacheRead,
+      cacheCreationTokens: usageCacheCreation,
       ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
       tpotMs: computeTpot(latencyMs, outputTokens, {
         streaming: true,
@@ -1590,6 +1602,8 @@ async function registerOpenAIChatHandler(
           inputTokens,
           outputTokens,
           cachedTokens: usageCached,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           ttftMs: latencyMs,
           tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
         })
@@ -1705,6 +1719,8 @@ async function registerOpenAIChatHandler(
         inputTokens,
         outputTokens,
         cachedTokens: usageCached,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
         ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
         tpotMs: computeTpot(latencyMs, outputTokens, {
           streaming: true,
@@ -1913,6 +1929,8 @@ async function registerOpenAIResponsesHandler(
           inputTokens,
           outputTokens,
           cachedTokens: usageCached,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           ttftMs: latencyMs,
           tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
         })
@@ -2029,6 +2047,8 @@ async function registerOpenAIResponsesHandler(
         inputTokens,
         outputTokens,
         cachedTokens: usageCached,
+        cacheReadTokens: usageCacheRead,
+        cacheCreationTokens: usageCacheCreation,
         ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
         tpotMs: computeTpot(latencyMs, outputTokens, {
           streaming: true,

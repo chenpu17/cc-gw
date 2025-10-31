@@ -12,6 +12,8 @@ export interface LogRecord {
   input_tokens: number | null
   output_tokens: number | null
   cached_tokens: number | null
+  cache_read_tokens: number | null
+  cache_creation_tokens: number | null
   ttft_ms: number | null
   tpot_ms: number | null
   error: string | null

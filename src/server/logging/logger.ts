@@ -91,6 +91,8 @@ export async function updateLogTokens(
     inputTokens: number
     outputTokens: number
     cachedTokens?: number | null
+    cacheReadTokens?: number | null
+    cacheCreationTokens?: number | null
     ttftMs?: number | null
     tpotMs?: number | null
   }
@@ -101,6 +103,16 @@ export async function updateLogTokens(
     values.outputTokens,
     values.cachedTokens ?? null
   ]
+
+  if (values.cacheReadTokens !== undefined) {
+    setters.push('cache_read_tokens = ?')
+    params.push(values.cacheReadTokens ?? null)
+  }
+
+  if (values.cacheCreationTokens !== undefined) {
+    setters.push('cache_creation_tokens = ?')
+    params.push(values.cacheCreationTokens ?? null)
+  }
 
   if (values.ttftMs !== undefined) {
     setters.push('ttft_ms = ?')

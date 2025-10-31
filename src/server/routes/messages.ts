@@ -826,6 +826,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           inputTokens: usagePrompt,
           outputTokens: usageCompletion,
           cachedTokens: usageCached,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, usageCompletion, {
             streaming: true,
@@ -1004,6 +1006,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
               inputTokens: finalPromptTokens,
               outputTokens: finalCompletionTokens,
               cachedTokens: usageCached,
+              cacheReadTokens: 0,
+              cacheCreationTokens: 0,
               ttftMs,
               tpotMs: computeTpot(totalLatencyMs, finalCompletionTokens, {
                 streaming: true,
@@ -1176,6 +1180,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           inputTokens: fallbackPrompt,
           outputTokens: fallbackCompletion,
           cachedTokens: usageCached,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, fallbackCompletion, {
             streaming: true,
