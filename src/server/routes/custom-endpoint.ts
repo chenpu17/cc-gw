@@ -601,7 +601,7 @@ async function handleAnthropicProtocol(
       await updateLogTokens(logId, {
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
+        cachedTokens,
         cacheReadTokens: cached.read,
         cacheCreationTokens: cached.creation,
         ttftMs: latencyMs,
@@ -612,9 +612,9 @@ async function handleAnthropicProtocol(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
-        cacheReadTokens: usageCacheRead,
-        cacheCreationTokens: usageCacheCreation,
+        cachedTokens,
+        cacheReadTokens: cached.read,
+        cacheCreationTokens: cached.creation,
         latencyMs
       })
       if (storeResponsePayloads) {
@@ -949,7 +949,7 @@ async function handleOpenAIChatProtocol(
       await updateLogTokens(logId, {
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
+        cachedTokens,
         cacheReadTokens: cached.read,
         cacheCreationTokens: cached.creation,
         ttftMs: latencyMs,
@@ -960,9 +960,9 @@ async function handleOpenAIChatProtocol(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
-        cacheReadTokens: usageCacheRead,
-        cacheCreationTokens: usageCacheCreation,
+        cachedTokens,
+        cacheReadTokens: cached.read,
+        cacheCreationTokens: cached.creation,
         latencyMs
       })
 
@@ -1292,9 +1292,9 @@ async function handleOpenAIResponsesProtocol(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
-        cacheReadTokens: usageCacheRead,
-        cacheCreationTokens: usageCacheCreation,
+        cachedTokens,
+        cacheReadTokens: cached.read,
+        cacheCreationTokens: cached.creation,
         latencyMs
       })
 
@@ -1732,9 +1732,9 @@ async function registerOpenAIChatHandler(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
-        cacheReadTokens: usageCacheRead,
-        cacheCreationTokens: usageCacheCreation,
+        cachedTokens,
+        cacheReadTokens: cached.read,
+        cacheCreationTokens: cached.creation,
         latencyMs
       })
 
@@ -2060,9 +2060,9 @@ async function registerOpenAIResponsesHandler(
         requests: 1,
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
-        cacheReadTokens: usageCacheRead,
-        cacheCreationTokens: usageCacheCreation,
+        cachedTokens,
+        cacheReadTokens: cached.read,
+        cacheCreationTokens: cached.creation,
         latencyMs
       })
 

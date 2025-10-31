@@ -781,7 +781,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           await updateLogTokens(logId, {
             inputTokens,
             outputTokens,
-            cachedTokens: usageCached,
+            cachedTokens,
             cacheReadTokens: cached.read,
             cacheCreationTokens: cached.creation,
             ttftMs: latencyMs,
@@ -792,9 +792,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             requests: 1,
             inputTokens,
             outputTokens,
-            cachedTokens: usageCached,
-            cacheReadTokens: usageCacheRead,
-            cacheCreationTokens: usageCacheCreation,
+            cachedTokens,
+            cacheReadTokens: cached.read,
+            cacheCreationTokens: cached.creation,
             latencyMs
           })
           if (storeResponsePayloads) {
@@ -845,7 +845,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         await updateLogTokens(logId, {
           inputTokens,
           outputTokens,
-          cachedTokens: usageCached,
+          cachedTokens,
           cacheReadTokens: cached.read,
           cacheCreationTokens: cached.creation,
           ttftMs: usagePayload?.first_token_latency_ms ?? latencyMs,
@@ -858,6 +858,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           requests: 1,
           inputTokens,
           outputTokens,
+          cachedTokens,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           latencyMs
         })
         await finalize(200, null)
@@ -1860,6 +1863,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           requests: 1,
           inputTokens,
           outputTokens,
+          cachedTokens,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           latencyMs
         })
         await finalize(200, null)

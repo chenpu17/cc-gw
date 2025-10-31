@@ -465,6 +465,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
             inputTokens,
             outputTokens,
             cachedTokens,
+            cacheReadTokens: cached.read,
+            cacheCreationTokens: cached.creation,
             ttftMs: latencyMs,
             tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
           })
@@ -519,6 +521,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           inputTokens,
           outputTokens,
           cachedTokens,
+          cacheReadTokens: cached.read,
+          cacheCreationTokens: cached.creation,
           ttftMs: latencyMs,
           tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
         })
@@ -582,6 +586,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         let usagePrompt = 0
         let usageCompletion = 0
         let usageCached: number | null = null
+        let usageCacheRead = 0
+        let usageCacheCreation = 0
         let accumulatedContent = ''
         let firstTokenAt: number | null = null
         let lastUsagePayload: any = null
@@ -726,6 +732,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
                         usagePrompt = payload.usage.input_tokens ?? usagePrompt
                         usageCompletion = payload.usage.output_tokens ?? usageCompletion
                         const maybeCached = resolveCachedTokens(payload.usage)
+                        usageCacheRead = maybeCached.read
+                        usageCacheCreation = maybeCached.creation
                         usageCached = maybeCached.read + maybeCached.creation
                         lastUsagePayload = payload.usage
                       }
@@ -753,6 +761,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
                         usagePrompt = payload.usage.input_tokens ?? usagePrompt
                         usageCompletion = payload.usage.output_tokens ?? usageCompletion
                         const maybeCached = resolveCachedTokens(payload.usage)
+                        usageCacheRead = maybeCached.read
+                        usageCacheCreation = maybeCached.creation
                         usageCached = maybeCached.read + maybeCached.creation
                         lastUsagePayload = payload.usage
                       }
@@ -813,8 +823,11 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
         const totalLatencyMs = Date.now() - requestStart
         const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
-        const cached = resolveCachedTokens(lastUsagePayload)
+        // Use accumulated cache values, or fall back to lastUsagePayload
         if (usageCached === null) {
+          const cached = resolveCachedTokens(lastUsagePayload)
+          usageCacheRead = cached.read
+          usageCacheCreation = cached.creation
           usageCached = cached.read + cached.creation
         }
         logUsage('stream.anthropic.final', {
@@ -826,8 +839,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           inputTokens: usagePrompt,
           outputTokens: usageCompletion,
           cachedTokens: usageCached,
-          cacheReadTokens: cached.read,
-          cacheCreationTokens: cached.creation,
+          cacheReadTokens: usageCacheRead,
+          cacheCreationTokens: usageCacheCreation,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, usageCompletion, {
             streaming: true,
@@ -840,8 +853,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           inputTokens: usagePrompt,
           outputTokens: usageCompletion,
           cachedTokens: usageCached,
-          cacheReadTokens: cached.read,
-          cacheCreationTokens: cached.creation,
+          cacheReadTokens: usageCacheRead,
+          cacheCreationTokens: usageCacheCreation,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads) {
@@ -925,6 +938,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       let usagePrompt = 0
       let usageCompletion = 0
       let usageCached: number | null = null
+      let usageCacheRead = 0
+      let usageCacheCreation = 0
       let accumulatedContent = ''
       let completed = false
       let firstTokenAt: number | null = null
@@ -1067,9 +1082,10 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           if (usagePayload) {
             usagePrompt = usagePayload.prompt_tokens ?? usagePrompt
             usageCompletion = usagePayload.completion_tokens ?? usageCompletion
-            if (typeof usagePayload.cached_tokens === 'number') {
-              usageCached = usagePayload.cached_tokens
-            }
+            const maybeCached = resolveCachedTokens(usagePayload)
+            usageCacheRead = maybeCached.read
+            usageCacheCreation = maybeCached.creation
+            usageCached = maybeCached.read + maybeCached.creation
           }
 
           if (choice.delta?.tool_calls) {
@@ -1180,8 +1196,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           inputTokens: fallbackPrompt,
           outputTokens: fallbackCompletion,
           cachedTokens: usageCached,
-          cacheReadTokens: 0,
-          cacheCreationTokens: 0,
+          cacheReadTokens: usageCacheRead,
+          cacheCreationTokens: usageCacheCreation,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, fallbackCompletion, {
             streaming: true,
@@ -1194,8 +1210,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           inputTokens: fallbackPrompt,
           outputTokens: fallbackCompletion,
           cachedTokens: usageCached ?? 0,
-          cacheReadTokens: 0,
-          cacheCreationTokens: 0,
+          cacheReadTokens: usageCacheRead,
+          cacheCreationTokens: usageCacheCreation,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads) {
