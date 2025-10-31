@@ -111,7 +111,7 @@ export async function queryLogs(options: LogListOptions = {}): Promise<LogListRe
   const items = await getAll<LogRecord>(
     `SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
             stream, latency_ms, status_code, input_tokens, output_tokens,
-            cached_tokens, ttft_ms, tpot_ms, error, api_key_id, api_key_name, api_key_value
+            cached_tokens, cache_read_tokens, cache_creation_tokens, ttft_ms, tpot_ms, error, api_key_id, api_key_name, api_key_value
        FROM request_logs
        ${whereClause}
        ORDER BY timestamp DESC
@@ -134,7 +134,7 @@ export async function getLogDetail(id: number): Promise<LogRecord | null> {
   const record = await getOne<LogRecord>(
     `SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
             stream, latency_ms, status_code, input_tokens, output_tokens,
-            cached_tokens, ttft_ms, tpot_ms, error, api_key_id, api_key_name, api_key_value
+            cached_tokens, cache_read_tokens, cache_creation_tokens, ttft_ms, tpot_ms, error, api_key_id, api_key_name, api_key_value
        FROM request_logs
        WHERE id = ?`,
     [id]
@@ -208,6 +208,8 @@ export async function exportLogs(options: LogExportOptions = {}): Promise<LogExp
             l.input_tokens,
             l.output_tokens,
             l.cached_tokens,
+            l.cache_read_tokens,
+            l.cache_creation_tokens,
             l.ttft_ms,
             l.tpot_ms,
             l.error,
