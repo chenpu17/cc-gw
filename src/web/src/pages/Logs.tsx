@@ -605,7 +605,7 @@ function LogRow({
           size="sm"
           className="rounded-full text-xs px-2 py-1"
         >
-          详情
+          {t('logs.actions.detail')}
         </Button>
       </td>
     </tr>

@@ -24,6 +24,21 @@ export interface DefaultsConfig {
 
 export type GatewayEndpoint = 'anthropic' | 'openai'
 
+export interface HttpConfig {
+  enabled: boolean
+  port: number
+  host?: string
+}
+
+export interface HttpsConfig {
+  enabled: boolean
+  port: number
+  host?: string
+  keyPath: string
+  certPath: string
+  caPath?: string
+}
+
 export interface EndpointRoutingConfig {
   defaults: DefaultsConfig
   modelRoutes: Record<string, string>
@@ -48,8 +63,13 @@ export interface CustomEndpointConfig {
 }
 
 export interface GatewayConfig {
-  port: number
+  // 新格式: HTTP/HTTPS 独立配置
+  http?: HttpConfig
+  https?: HttpsConfig
+  // 旧格式: 向后兼容
+  port?: number
   host?: string
+
   providers: ProviderConfig[]
   defaults: DefaultsConfig
   enableRoutingFallback?: boolean
@@ -82,4 +102,18 @@ export interface WebAuthStatusResponse {
   enabled: boolean
   username: string
   hasPassword: boolean
+}
+
+export interface CertificateStatusResponse {
+  exists: boolean
+  configured: boolean
+  keyPath?: string
+  certPath?: string
+}
+
+export interface CertificateGenerationResponse {
+  success: boolean
+  keyPath?: string
+  certPath?: string
+  error?: string
 }

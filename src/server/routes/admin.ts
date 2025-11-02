@@ -1344,5 +1344,5 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 }
-  const isEndpoint = (value: unknown): value is GatewayEndpoint =>
-    value === 'anthropic' || value === 'openai'
+const isEndpoint = (value: unknown): value is GatewayEndpoint =>
+  value === 'anthropic' || value === 'openai'

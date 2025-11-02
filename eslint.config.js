@@ -6,8 +6,10 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    ignores: ["**/dist/**", "**/node_modules/**", "参考代码/**", "**/参考代码/**"]
+  },
+  {
     files: ["**/*.ts", "**/*.tsx"],
-    ignores: ["dist/**", "node_modules/**"],
     languageOptions: {
       globals: globals.node,
       parserOptions: {

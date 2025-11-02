@@ -306,8 +306,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
     if (providerType === 'anthropic') {
       providerBody = cloneOriginalPayload(payload)
       providerBody.model = target.modelId
-      if (normalized.stream !== undefined) {
-        providerBody.stream = normalized.stream
+      if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+        providerBody.stream = Boolean(payload.stream)
       }
       const collected: Record<string, string> = {}
       const skip = new Set(['content-length', 'host', 'connection', 'transfer-encoding'])

@@ -57,9 +57,29 @@ export interface RoutingPreset {
   createdAt: number
 }
 
-export interface GatewayConfig {
+export interface HttpConfig {
+  enabled: boolean
   port: number
   host?: string
+}
+
+export interface HttpsConfig {
+  enabled: boolean
+  port: number
+  host?: string
+  keyPath: string
+  certPath: string
+  caPath?: string
+}
+
+export interface GatewayConfig {
+  // 新格式: HTTP/HTTPS 独立配置
+  http?: HttpConfig
+  https?: HttpsConfig
+  // 旧格式: 向后兼容
+  port?: number
+  host?: string
+
   providers: ProviderConfig[]
   defaults: DefaultsConfig
   enableRoutingFallback?: boolean

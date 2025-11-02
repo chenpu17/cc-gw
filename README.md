@@ -166,7 +166,74 @@ export CC_GW_ANTHROPIC_BETA_ALL=claude-code-20250219,interleaved-thinking-2025-0
 
 然后运行 `direnv allow` 自动加载。
 
-##### 6.3 自定义接入点（Custom Endpoints）
+##### 6.3 HTTPS 配置
+
+cc-gw 支持同时启动 HTTP 和 HTTPS 服务。
+
+**默认配置**：
+- HTTP: 端口 `4100`（**默认启用**，推荐用于本地开发）
+- HTTPS: 端口 `4443`（**默认关闭**）
+- 两个协议可独立启用/禁用，但**至少要保持一个启用**
+
+⚠️ **重要提示：关于 HTTPS 证书**
+
+- **自签名证书无效**：Claude Code 和大多数 AI 工具无法信任自签名证书，会导致 "Unable to connect to API" 错误
+- **推荐方案**：本地开发环境建议使用 HTTP 协议（`127.0.0.1` 本地访问非常安全）
+- **如需 HTTPS**：请使用受信任 CA（如 Let's Encrypt）签发的正式证书，或配置反向代理（如 Nginx/Caddy）处理 HTTPS
+
+**手动配置 HTTPS（通过配置文件）**：
+
+编辑 `~/.cc-gw/config.json`：
+
+```json
+{
+  "http": {
+    "enabled": true,
+    "port": 4100,
+    "host": "127.0.0.1"
+  },
+  "https": {
+    "enabled": true,
+    "port": 4443,
+    "host": "127.0.0.1",
+    "keyPath": "/path/to/your/ssl/key.pem",
+    "certPath": "/path/to/your/ssl/cert.pem",
+    "caPath": ""
+  }
+}
+```
+
+**使用 HTTPS 访问**：
+
+```bash
+# 重启服务使配置生效
+cc-gw restart --daemon
+
+# 访问 HTTPS 端点
+curl https://127.0.0.1:4443/health
+
+# Web UI HTTPS 访问
+open https://127.0.0.1:4443/ui
+```
+
+**环境变量配置**：
+
+```bash
+# 推荐：使用 HTTP（默认）
+export ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic
+export OPENAI_BASE_URL=http://127.0.0.1:4100/openai/v1
+
+# 如果使用 HTTPS（需要受信任的证书）
+export ANTHROPIC_BASE_URL=https://127.0.0.1:4443/anthropic
+export OPENAI_BASE_URL=https://127.0.0.1:4443/openai/v1
+```
+
+**证书路径说明**：
+- `keyPath`: 私钥文件路径（必需）
+- `certPath`: 证书文件路径（必需）
+- `caPath`: CA 证书路径（可选，用于证书链）
+
+##### 6.4 自定义接入点（Custom Endpoints）
 
 cc-gw 支持创建额外的自定义 API 端点，每个端点可以：
 - 使用不同的协议（Anthropic、OpenAI）
@@ -219,6 +286,12 @@ cc-gw 支持创建额外的自定义 API 端点，每个端点可以：
    - 在"模型管理"中测试 Provider 连接
    - 检查模型路由配置
    - 确认上游服务模型名称正确
+
+4. **HTTPS 连接问题**：
+   - ⚠️ **Claude Code 无法连接**: 自签名证书会导致 "Unable to connect to API" 错误，建议使用 HTTP 协议（本地 127.0.0.1 访问安全）
+   - **证书路径错误**: 检查配置文件中的 `keyPath` 和 `certPath` 是否正确
+   - **需要受信任证书**: 如必须使用 HTTPS，请配置 Let's Encrypt 等受信任 CA 签发的证书
+   - **两个协议都禁用**: 至少要启用 HTTP 或 HTTPS 中的一个
 
 > ✅ 完成以上 6 个步骤后，你的 cc-gw 网关就完全配置好了！所有 AI 客户端都可以通过统一的网关访问不同的模型服务。
 
@@ -305,6 +378,19 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 
 ```json
 {
+  "http": {
+    "enabled": true,
+    "port": 4100,
+    "host": "127.0.0.1"
+  },
+  "https": {
+    "enabled": true,
+    "port": 4443,
+    "host": "127.0.0.1",
+    "keyPath": "~/.cc-gw/certs/key.pem",
+    "certPath": "~/.cc-gw/certs/cert.pem",
+    "caPath": ""
+  },
   "host": "127.0.0.1",
   "port": 4100,
   "providers": [
@@ -348,8 +434,15 @@ UI 支持中英文、深色/浅色主题以及移动端响应式布局，提供�
 }
 ```
 
-字段要点（建议仍以 Web UI “系统设置 / 模型管理” 进行操作，下列仅便于理解结构）：
+字段要点（建议仍以 Web UI "系统设置 / 模型管理" 进行操作，下列仅便于理解结构）：
 
+- `http` / `https`：协议配置，支持独立启用/禁用，但至少要保持一个启用。
+  - `enabled`：是否启用该协议
+  - `port`：监听端口
+  - `host`：监听地址
+  - `keyPath` / `certPath`（仅 HTTPS）：SSL/TLS 证书路径
+  - `caPath`（可选）：CA 证书链路径
+- `host` / `port`：旧格式向后兼容字段，新配置会自动迁移到 `http` / `https` 格式。
 - `providers`：定义上游服务；`type` 支持 `openai | anthropic | kimi | deepseek | custom`。
 - 模型标识使用 `providerId:modelId` 形式供路由引用。
 - `modelRoutes`：将 Claude 发起的模型名映射到上游模型；支持在源模型名中使用 `*` 通配符匹配，匹配度更高（字符更多）的规则优先，同等情况下按配置顺序取第一条；若希望直接透传请求的模型名，可将目标写成 `providerId:*`，此时会将源请求中的模型名原样发送给对应 Provider。

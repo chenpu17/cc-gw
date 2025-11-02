@@ -532,8 +532,8 @@ async function handleAnthropicProtocol(
       // 对于 anthropic provider，完全透明转发（与标准端点对齐）
       providerBody = cloneOriginalPayload(payload)
       providerBody.model = target.modelId
-      if (normalized.stream !== undefined) {
-        providerBody.stream = normalized.stream
+      if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+        providerBody.stream = Boolean(payload.stream)
       }
 
       // 收集所有原始 headers（与标准端点对齐）
@@ -908,7 +908,9 @@ async function handleOpenAIChatProtocol(
       })
     }
     providerBody.model = target.modelId
-    providerBody.stream = normalized.stream
+    if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+      providerBody.stream = Boolean(payload.stream)
+    }
 
     const upstream = await connector.send({
       model: target.modelId,
@@ -1241,7 +1243,9 @@ async function handleOpenAIResponsesProtocol(
       })
     }
     providerBody.model = target.modelId
-    providerBody.stream = normalized.stream
+    if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+      providerBody.stream = Boolean(payload.stream)
+    }
 
     const upstream = await connector.send({
       model: target.modelId,
@@ -1281,7 +1285,7 @@ async function handleOpenAIResponsesProtocol(
       await updateLogTokens(logId, {
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
+        cachedTokens,
         cacheReadTokens: cached.read,
         cacheCreationTokens: cached.creation,
         ttftMs: latencyMs,
@@ -1554,7 +1558,9 @@ async function registerOpenAIChatHandler(
         })
       }
       providerBody.model = target.modelId
-      providerBody.stream = normalized.stream
+      if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+        providerBody.stream = Boolean(payload.stream)
+      }
 
       const upstream = await connector.send({
         model: target.modelId,
@@ -1601,7 +1607,7 @@ async function registerOpenAIChatHandler(
         await updateLogTokens(logId, {
           inputTokens,
           outputTokens,
-          cachedTokens: usageCached,
+          cachedTokens,
           cacheReadTokens: cached.read,
           cacheCreationTokens: cached.creation,
           ttftMs: latencyMs,
@@ -1888,7 +1894,9 @@ async function registerOpenAIResponsesHandler(
 
       const providerBody = { ...payload }
       providerBody.model = target.modelId
-      providerBody.stream = normalized.stream
+      if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+        providerBody.stream = Boolean(payload.stream)
+      }
 
       const upstream = await connector.send({
         model: target.modelId,
@@ -1928,7 +1936,7 @@ async function registerOpenAIResponsesHandler(
         await updateLogTokens(logId, {
           inputTokens,
           outputTokens,
-          cachedTokens: usageCached,
+          cachedTokens,
           cacheReadTokens: cached.read,
           cacheCreationTokens: cached.creation,
           ttftMs: latencyMs,

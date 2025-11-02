@@ -627,7 +627,8 @@ const resources = {
           routing: '模型路由',
           configFile: '配置文件',
           cleanup: '日志清理',
-          security: '访问安全'
+          security: '访问安全',
+          protocol: '协议配置'
         },
         fields: {
           port: '监听端口',
@@ -684,6 +685,33 @@ const resources = {
             minLength: '密码至少需要 6 位字符',
             passwordRequired: '请设置登录密码',
             confirmMismatch: '两次输入的密码不一致'
+          }
+        },
+        protocol: {
+          description: '配置 HTTP 和 HTTPS 服务端口，默认同时启用两个协议',
+          restartWarning: '⚠️ 修改协议配置后需要重启服务才能生效',
+          restartHint: '保存配置后，请执行以下命令重启服务：',
+          restartTip: '💡 提示：端口、协议启用状态、证书路径需要重启；Provider 和路由配置支持热加载无需重启',
+          http: {
+            enable: '启用 HTTP',
+            hint: '标准 HTTP 协议，适用于本地开发和内网环境',
+            port: 'HTTP 端口',
+            host: 'HTTP 主机地址'
+          },
+          https: {
+            enable: '启用 HTTPS',
+            hint: 'HTTPS 加密协议',
+            port: 'HTTPS 端口',
+            host: 'HTTPS 主机地址',
+            keyPath: '证书私钥路径',
+            certPath: '证书文件路径',
+            caPath: 'CA 证书路径 (可选)',
+            warning: '⚠️ 关于 HTTPS 证书',
+            invalidCert: '自签名证书无效：',
+            invalidCertDetail: 'Claude Code 和大多数 AI 工具无法信任自签名证书，会导致连接失败。',
+            recommended: '推荐方案：',
+            recommendedDetail: '本地开发环境建议使用 HTTP 协议（127.0.0.1 本地访问非常安全）。',
+            tip: '💡 如需 HTTPS，请使用受信任 CA（如 Let\'s Encrypt）签发的正式证书，或配置反向代理（如 Nginx/Caddy）处理 HTTPS。'
           }
         },
         validation: {
@@ -1630,7 +1658,8 @@ const resources = {
           routing: 'Model routing',
           configFile: 'Configuration file',
           cleanup: 'Log cleanup',
-          security: 'Access security'
+          security: 'Access security',
+          protocol: 'Protocol Configuration'
         },
         fields: {
           port: 'Listen port',
@@ -1687,6 +1716,33 @@ const resources = {
             minLength: 'Password must be at least 6 characters',
             passwordRequired: 'Please provide a password',
             confirmMismatch: 'Passwords do not match'
+          }
+        },
+        protocol: {
+          description: 'Configure HTTP and HTTPS service ports (both protocols enabled by default)',
+          restartWarning: '⚠️ Service restart required after modifying protocol configuration',
+          restartHint: 'After saving, execute the following command to restart:',
+          restartTip: '💡 Tip: Port, protocol enable status, and certificate paths require restart; Provider and routing configs support hot-reload',
+          http: {
+            enable: 'Enable HTTP',
+            hint: 'Standard HTTP protocol, suitable for local development and internal networks',
+            port: 'HTTP Port',
+            host: 'HTTP Host'
+          },
+          https: {
+            enable: 'Enable HTTPS',
+            hint: 'HTTPS encrypted protocol',
+            port: 'HTTPS Port',
+            host: 'HTTPS Host',
+            keyPath: 'Certificate Private Key Path',
+            certPath: 'Certificate File Path',
+            caPath: 'CA Certificate Path (Optional)',
+            warning: '⚠️ About HTTPS Certificates',
+            invalidCert: 'Self-signed certificates are invalid:',
+            invalidCertDetail: 'Claude Code and most AI tools cannot trust self-signed certificates, causing connection failures.',
+            recommended: 'Recommended:',
+            recommendedDetail: 'For local development, use HTTP protocol (127.0.0.1 local access is secure).',
+            tip: '💡 If HTTPS is required, use certificates from trusted CAs (e.g., Let\'s Encrypt) or configure a reverse proxy (e.g., Nginx/Caddy) to handle HTTPS.'
           }
         },
         validation: {

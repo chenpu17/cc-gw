@@ -187,7 +187,7 @@ async function syncCustomEndpoints(app: FastifyInstance, config: GatewayConfig):
 }
 
 
-export async function createServer(): Promise<FastifyInstance> {
+export async function createServer(protocol: 'http' | 'https' = 'http'): Promise<FastifyInstance> {
   const config = cachedConfig ?? loadConfig()
   const requestLogEnabled = config.requestLogging !== false
   const responseLogEnabled = config.responseLogging !== false
@@ -195,12 +195,30 @@ export async function createServer(): Promise<FastifyInstance> {
     ? config.bodyLimit
     : 10 * 1024 * 1024
 
+  // HTTPS 配置
+  let httpsOptions: { key: Buffer; cert: Buffer; ca?: Buffer } | undefined
+  if (protocol === 'https' && config.https?.enabled) {
+    const { keyPath, certPath, caPath } = config.https
+
+    // 验证证书文件存在
+    if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+      throw new Error(`HTTPS 证书文件不存在: ${keyPath}, ${certPath}`)
+    }
+
+    httpsOptions = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+      ca: caPath ? fs.readFileSync(caPath) : undefined
+    }
+  }
+
   const app = Fastify({
     logger: {
       level: config.logLevel ?? 'info'
     },
     disableRequestLogging: true,
-    bodyLimit
+    bodyLimit,
+    https: httpsOptions
   })
 
   app.addHook('onRequest', async (request, reply) => {
@@ -377,29 +395,76 @@ export interface StartOptions {
   host?: string
 }
 
-export async function startServer(options: StartOptions = {}): Promise<FastifyInstance> {
-  const app = await createServer()
-  const envPort = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : undefined
-  const envHost = process.env.HOST
-  const configPort = cachedConfig?.port
-  const configHost = cachedConfig?.host
-  const port = options.port ?? envPort ?? configPort ?? DEFAULT_PORT
-  const host = options.host ?? envHost ?? configHost ?? DEFAULT_HOST
+export interface StartedServers {
+  http?: FastifyInstance
+  https?: FastifyInstance
+}
 
-  await app.listen({ port, host })
-  return app
+export async function startServer(options: StartOptions = {}): Promise<StartedServers> {
+  const config = cachedConfig ?? loadConfig()
+  const result: StartedServers = {}
+
+  // 启动 HTTP 服务器
+  if (config.http?.enabled !== false) {
+    const httpApp = await createServer('http')
+    const httpPort = options.port ?? (process.env.PORT ? Number.parseInt(process.env.PORT, 10) : config.http?.port ?? config.port ?? DEFAULT_PORT)
+    const httpHost = options.host ?? process.env.HOST ?? config.http?.host ?? config.host ?? DEFAULT_HOST
+
+    await httpApp.listen({ port: httpPort, host: httpHost })
+    httpApp.log.info(`HTTP server started at http://${httpHost}:${httpPort}`)
+    result.http = httpApp
+  }
+
+  // 启动 HTTPS 服务器
+  if (config.https?.enabled === true) {
+    try {
+      const httpsApp = await createServer('https')
+      const httpsPort = config.https.port
+      const httpsHost = config.https.host ?? config.host ?? DEFAULT_HOST
+
+      await httpsApp.listen({ port: httpsPort, host: httpsHost })
+      httpsApp.log.info(`HTTPS server started at https://${httpsHost}:${httpsPort}`)
+      result.https = httpsApp
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`HTTPS server启动失败: ${errorMessage}`)
+
+      // 如果 HTTP 也失败了,抛出错误
+      if (!result.http) {
+        throw error
+      }
+
+      console.warn('仅 HTTP 服务器启动成功,HTTPS 服务器启动失败')
+    }
+  }
+
+  // 至少要有一个服务器启动成功
+  if (!result.http && !result.https) {
+    throw new Error('HTTP 和 HTTPS 服务器均未启动')
+  }
+
+  return result
 }
 
 async function main() {
   try {
-    const app = await startServer()
+    const servers = await startServer()
 
     const shutdown = async () => {
       try {
-        await app.close()
+        const closePromises: Promise<void>[] = []
+
+        if (servers.http) {
+          closePromises.push(servers.http.close())
+        }
+        if (servers.https) {
+          closePromises.push(servers.https.close())
+        }
+
+        await Promise.all(closePromises)
         process.exit(0)
       } catch (err) {
-        app.log.error({ err }, '关闭服务失败')
+        console.error('关闭服务失败:', err)
         process.exit(1)
       }
     }

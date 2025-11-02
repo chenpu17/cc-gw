@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Settings as SettingsIcon, Copy } from 'lucide-react'
+import { Settings as SettingsIcon, Copy, Shield, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import { Loader } from '@/components/Loader'
@@ -9,7 +9,7 @@ import { PageSection } from '@/components/PageSection'
 import { cn } from '@/utils/cn'
 import { dangerButtonClass, mutedTextClass, primaryButtonClass, subtleButtonClass, inputClass } from '@/styles/theme'
 import { apiClient, type ApiError } from '@/services/api'
-import type { ConfigInfoResponse, GatewayConfig, WebAuthStatusResponse } from '@/types/providers'
+import type { ConfigInfoResponse, GatewayConfig, WebAuthStatusResponse, HttpConfig, HttpsConfig } from '@/types/providers'
 
 type LogLevel = NonNullable<GatewayConfig['logLevel']>
 
@@ -33,12 +33,25 @@ interface FormState {
   responseLogging: boolean
   bodyLimitMb: string
   enableRoutingFallback: boolean
+  // HTTP/HTTPS 协议配置
+  httpEnabled: boolean
+  httpPort: string
+  httpHost: string
+  httpsEnabled: boolean
+  httpsPort: string
+  httpsHost: string
+  httpsKeyPath: string
+  httpsCertPath: string
+  httpsCaPath: string
 }
 
 interface FormErrors {
   port?: string
   logRetentionDays?: string
   bodyLimitMb?: string
+  httpPort?: string
+  httpsPort?: string
+  protocol?: string
 }
 
 interface AuthFormState {
@@ -90,7 +103,17 @@ export default function SettingsPage() {
     requestLogging: true,
     responseLogging: true,
     bodyLimitMb: '10',
-    enableRoutingFallback: false
+    enableRoutingFallback: false,
+    // HTTP/HTTPS 协议配置
+    httpEnabled: true,
+    httpPort: '4100',
+    httpHost: '127.0.0.1',
+    httpsEnabled: false,
+    httpsPort: '4443',
+    httpsHost: '127.0.0.1',
+    httpsKeyPath: '',
+    httpsCertPath: '',
+    httpsCaPath: ''
   })
   const [errors, setErrors] = useState<FormErrors>({})
   const [saving, setSaving] = useState(false)
@@ -130,23 +153,36 @@ export default function SettingsPage() {
       const legacyStore = configQuery.data.config.storePayloads
       const deriveStoreFlag = (value?: boolean) =>
         typeof value === 'boolean' ? value : typeof legacyStore === 'boolean' ? legacyStore : true
+
+      const cfg = configQuery.data.config
+
       setForm({
-        port: String(configQuery.data.config.port ?? ''),
-        host: configQuery.data.config.host ?? '127.0.0.1',
-        logRetentionDays: String(configQuery.data.config.logRetentionDays ?? 30),
-        storeRequestPayloads: deriveStoreFlag(configQuery.data.config.storeRequestPayloads),
-        storeResponsePayloads: deriveStoreFlag(configQuery.data.config.storeResponsePayloads),
-        logLevel: (configQuery.data.config.logLevel as LogLevel) ?? 'info',
-        requestLogging: configQuery.data.config.requestLogging !== false,
-        responseLogging: configQuery.data.config.responseLogging ?? configQuery.data.config.requestLogging !== false,
+        port: String(cfg.port ?? cfg.http?.port ?? ''),
+        host: cfg.host ?? cfg.http?.host ?? '127.0.0.1',
+        logRetentionDays: String(cfg.logRetentionDays ?? 30),
+        storeRequestPayloads: deriveStoreFlag(cfg.storeRequestPayloads),
+        storeResponsePayloads: deriveStoreFlag(cfg.storeResponsePayloads),
+        logLevel: (cfg.logLevel as LogLevel) ?? 'info',
+        requestLogging: cfg.requestLogging !== false,
+        responseLogging: cfg.responseLogging ?? cfg.requestLogging !== false,
         bodyLimitMb: (() => {
-          const raw = configQuery.data.config.bodyLimit
+          const raw = cfg.bodyLimit
           if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
             return String(Math.max(1, Math.round(raw / (1024 * 1024))))
           }
           return '10'
         })(),
-        enableRoutingFallback: configQuery.data.config.enableRoutingFallback === true
+        enableRoutingFallback: cfg.enableRoutingFallback === true,
+        // HTTP/HTTPS 协议配置
+        httpEnabled: cfg.http?.enabled !== false,
+        httpPort: String(cfg.http?.port ?? cfg.port ?? 4100),
+        httpHost: cfg.http?.host ?? cfg.host ?? '127.0.0.1',
+        httpsEnabled: cfg.https?.enabled === true,
+        httpsPort: String(cfg.https?.port ?? 4443),
+        httpsHost: cfg.https?.host ?? cfg.host ?? '127.0.0.1',
+        httpsKeyPath: cfg.https?.keyPath ?? '',
+        httpsCertPath: cfg.https?.certPath ?? '',
+        httpsCaPath: cfg.https?.caPath ?? ''
       })
     }
   }, [configQuery.data])
@@ -188,6 +224,33 @@ export default function SettingsPage() {
 
   const validate = (): boolean => {
     const nextErrors: FormErrors = {}
+
+    // 协议验证: 至少启用一个
+    if (!form.httpEnabled && !form.httpsEnabled) {
+      nextErrors.protocol = '至少需要启用 HTTP 或 HTTPS 协议'
+    }
+
+    // HTTP 端口验证
+    if (form.httpEnabled) {
+      const httpPortValue = Number(form.httpPort)
+      if (!Number.isFinite(httpPortValue) || httpPortValue < 1 || httpPortValue > 65535) {
+        nextErrors.httpPort = 'HTTP 端口必须在 1-65535 之间'
+      }
+    }
+
+    // HTTPS 端口验证
+    if (form.httpsEnabled) {
+      const httpsPortValue = Number(form.httpsPort)
+      if (!Number.isFinite(httpsPortValue) || httpsPortValue < 1 || httpsPortValue > 65535) {
+        nextErrors.httpsPort = 'HTTPS 端口必须在 1-65535 之间'
+      }
+
+      // HTTPS 启用时需要证书路径
+      if (!form.httpsKeyPath || !form.httpsCertPath) {
+        nextErrors.protocol = 'HTTPS 已启用但缺少证书路径，请手动配置受信任的证书'
+      }
+    }
+
     const portValue = Number(form.port)
     if (!Number.isFinite(portValue) || portValue < 1 || portValue > 65535) {
       nextErrors.port = t('settings.validation.port')
@@ -245,8 +308,24 @@ export default function SettingsPage() {
       const portValue = Number(form.port)
       const retentionValue = Number(form.logRetentionDays)
       const bodyLimitValue = Number(form.bodyLimitMb)
+
       const nextConfig: GatewayConfig = {
         ...config,
+        // HTTP/HTTPS 协议配置
+        http: {
+          enabled: form.httpEnabled,
+          port: Number(form.httpPort),
+          host: form.httpHost.trim() || '127.0.0.1'
+        },
+        https: {
+          enabled: form.httpsEnabled,
+          port: Number(form.httpsPort),
+          host: form.httpsHost.trim() || '127.0.0.1',
+          keyPath: form.httpsKeyPath.trim(),
+          certPath: form.httpsCertPath.trim(),
+          caPath: form.httpsCaPath.trim() || undefined
+        },
+        // 保留旧字段以兼容
         port: portValue,
         host: form.host.trim() || undefined,
         logRetentionDays: retentionValue,
@@ -261,7 +340,24 @@ export default function SettingsPage() {
       const { webAuth: _ignored, ...payload } = nextConfig as GatewayConfig & { webAuth?: never }
       await apiClient.put('/api/config', payload)
       setConfig({ ...nextConfig, webAuth: config.webAuth })
-      pushToast({ title: t('settings.toast.saveSuccess'), variant: 'success' })
+
+      // 检测是否修改了需要重启的配置
+      const protocolChanged =
+        config.http?.enabled !== nextConfig.http?.enabled ||
+        config.http?.port !== nextConfig.http?.port ||
+        config.https?.enabled !== nextConfig.https?.enabled ||
+        config.https?.port !== nextConfig.https?.port ||
+        config.https?.keyPath !== nextConfig.https?.keyPath ||
+        config.https?.certPath !== nextConfig.https?.certPath
+
+      if (protocolChanged) {
+        pushToast({
+          title: '✅ 配置已保存！请执行 cc-gw restart --daemon 重启服务使协议配置生效',
+          variant: 'success'
+        })
+      } else {
+        pushToast({ title: t('settings.toast.saveSuccess'), variant: 'success' })
+      }
       void configQuery.refetch()
     } catch (error) {
       pushToast({
@@ -639,6 +735,211 @@ export default function SettingsPage() {
                 {t('settings.fields.defaults')}
               </span>
               <p className="mt-2 text-sm">{defaultsSummary ?? t('settings.defaults.none')}</p>
+            </div>
+          </PageSection>
+
+          {/* 协议配置区域 */}
+          <PageSection
+            title={t('settings.sections.protocol')}
+            description={t('settings.protocol.description')}
+            contentClassName="space-y-6"
+          >
+            {/* 重启提示 */}
+            <div className="rounded-2xl border border-amber-200/70 bg-amber-50/80 px-4 py-3 shadow-sm dark:border-amber-700/60 dark:bg-amber-900/30">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                    {t('settings.protocol.restartWarning')}
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    {t('settings.protocol.restartHint')}
+                  </p>
+                  <code className="block rounded-lg bg-amber-100/60 px-3 py-2 text-xs font-mono text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                    cc-gw restart --daemon
+                  </code>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {t('settings.protocol.restartTip')}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {errors.protocol && (
+              <div className="rounded-2xl border border-red-200/70 bg-red-50/80 px-4 py-3 text-sm text-red-700 dark:border-red-700/60 dark:bg-red-900/30 dark:text-red-200">
+                <AlertCircle className="inline h-4 w-4 mr-2" />
+                {errors.protocol}
+              </div>
+            )}
+
+            {/* HTTP 配置 */}
+            <div className="rounded-2xl border border-blue-200/70 bg-blue-50/50 p-5 dark:border-blue-700/60 dark:bg-blue-900/20">
+              <label className="flex cursor-pointer items-start gap-3 mb-4">
+                <input
+                  type="checkbox"
+                  checked={form.httpEnabled}
+                  onChange={(e) => setForm((prev) => ({ ...prev, httpEnabled: e.target.checked }))}
+                  className="mt-1 h-5 w-5 rounded border-blue-300 text-blue-600 focus:ring-blue-400 dark:border-blue-600"
+                />
+                <div className="flex-1">
+                  <span className="text-sm font-semibold text-blue-800 dark:text-blue-100">
+                    {t('settings.protocol.http.enable')}
+                  </span>
+                  <p className={cn(mutedTextClass, 'text-xs mt-1')}>
+                    {t('settings.protocol.http.hint')}
+                  </p>
+                </div>
+              </label>
+
+              {form.httpEnabled && (
+                <div className="grid gap-4 sm:grid-cols-2 mt-4 pt-4 border-t border-blue-200 dark:border-blue-700">
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('settings.protocol.http.port')}
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={form.httpPort}
+                      onChange={(e) => setForm((prev) => ({ ...prev, httpPort: e.target.value }))}
+                      className={cn(inputClass, 'h-11')}
+                      aria-invalid={Boolean(errors.httpPort)}
+                    />
+                    {errors.httpPort && (
+                      <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.httpPort}</span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('settings.protocol.http.host')}
+                    </span>
+                    <input
+                      value={form.httpHost}
+                      onChange={(e) => setForm((prev) => ({ ...prev, httpHost: e.target.value }))}
+                      placeholder="127.0.0.1"
+                      className={cn(inputClass, 'h-11')}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* HTTPS 配置 */}
+            <div className="rounded-2xl border border-green-200/70 bg-green-50/50 p-5 dark:border-green-700/60 dark:bg-green-900/20">
+              <label className="flex cursor-pointer items-start gap-3 mb-4">
+                <input
+                  type="checkbox"
+                  checked={form.httpsEnabled}
+                  onChange={(e) => setForm((prev) => ({ ...prev, httpsEnabled: e.target.checked }))}
+                  className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-400 dark:border-green-600"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-green-800 dark:text-green-100">
+                      {t('settings.protocol.https.enable')}
+                    </span>
+                    <Shield className="h-4 w-4 text-green-600 dark:text-green-300" />
+                  </div>
+                  <p className={cn(mutedTextClass, 'text-xs mt-1')}>
+                    {t('settings.protocol.https.hint')}
+                  </p>
+                </div>
+              </label>
+
+              {form.httpsEnabled && (
+                <div className="space-y-4 mt-4 pt-4 border-t border-green-200 dark:border-green-700">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        {t('settings.protocol.https.port')}
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={form.httpsPort}
+                        onChange={(e) => setForm((prev) => ({ ...prev, httpsPort: e.target.value }))}
+                        className={cn(inputClass, 'h-11')}
+                        aria-invalid={Boolean(errors.httpsPort)}
+                      />
+                      {errors.httpsPort && (
+                        <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.httpsPort}</span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        {t('settings.protocol.https.host')}
+                      </span>
+                      <input
+                        value={form.httpsHost}
+                        onChange={(e) => setForm((prev) => ({ ...prev, httpsHost: e.target.value }))}
+                        placeholder="127.0.0.1"
+                        className={cn(inputClass, 'h-11')}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('settings.protocol.https.keyPath')}
+                    </span>
+                    <input
+                      value={form.httpsKeyPath}
+                      onChange={(e) => setForm((prev) => ({ ...prev, httpsKeyPath: e.target.value }))}
+                      placeholder="~/.cc-gw/certs/key.pem"
+                      className={cn(inputClass, 'h-11 font-mono text-xs')}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('settings.protocol.https.certPath')}
+                    </span>
+                    <input
+                      value={form.httpsCertPath}
+                      onChange={(e) => setForm((prev) => ({ ...prev, httpsCertPath: e.target.value }))}
+                      placeholder="~/.cc-gw/certs/cert.pem"
+                      className={cn(inputClass, 'h-11 font-mono text-xs')}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('settings.protocol.https.caPath')}
+                    </span>
+                    <input
+                      value={form.httpsCaPath}
+                      onChange={(e) => setForm((prev) => ({ ...prev, httpsCaPath: e.target.value }))}
+                      placeholder="留空则不使用"
+                      className={cn(inputClass, 'h-11 font-mono text-xs')}
+                    />
+                  </div>
+
+                  {/* HTTPS 证书说明 */}
+                  <div className="rounded-xl border border-amber-200/70 bg-amber-50/60 p-4 dark:border-amber-700/60 dark:bg-amber-900/20">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                      <div className="space-y-2 flex-1">
+                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                          {t('settings.protocol.https.warning')}
+                        </p>
+                        <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                          <strong>{t('settings.protocol.https.invalidCert')}</strong>{t('settings.protocol.https.invalidCertDetail')}
+                        </p>
+                        <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                          <strong>{t('settings.protocol.https.recommended')}</strong>{t('settings.protocol.https.recommendedDetail')}
+                        </p>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                          {t('settings.protocol.https.tip')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </PageSection>
 

@@ -635,7 +635,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         }) as Record<string, any>
 
         providerBody.model = target.modelId
-        providerBody.stream = normalized.stream
+        if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+          providerBody.stream = Boolean(payload.stream)
+        }
 
         const rawHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
         const forwarded = collectAnthropicForwardHeaders(rawHeaders)
@@ -679,7 +681,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         providerBody = { ...payload }
 
         providerBody.model = target.modelId
-        providerBody.stream = normalized.stream
+        if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+          providerBody.stream = Boolean(payload.stream)
+        }
 
         if (providerBody.max_output_tokens == null && typeof providerBody.max_tokens === 'number') {
           providerBody.max_output_tokens = providerBody.max_tokens
@@ -1271,8 +1275,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: finalCachedTokens ?? null,
-          cacheReadTokens: 0,
-          cacheCreationTokens: 0,
+          cacheReadTokens: finalCachedResult.read,
+          cacheCreationTokens: finalCachedResult.creation,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, finalCompletionTokens, {
             streaming: true,
@@ -1468,13 +1472,17 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
       const textOutputTokens = usageCompletion ?? 0
       const reasoningTokens = usageReasoning ?? 0
       const outputTokens = textOutputTokens + reasoningTokens
+      const hasCacheStats = usageCached != null
+      const resolvedCachedTokens = hasCacheStats ? usageCached : null
+      const resolvedCacheRead = hasCacheStats ? usageCacheRead : null
+      const resolvedCacheCreation = hasCacheStats ? usageCacheCreation : null
 
       await updateLogTokens(logId, {
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
+        cachedTokens: resolvedCachedTokens,
+        cacheReadTokens: resolvedCacheRead,
+        cacheCreationTokens: resolvedCacheCreation,
         ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
         tpotMs: computeTpot(latencyMs, outputTokens, {
           streaming: true,
@@ -1487,6 +1495,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         requests: 1,
         inputTokens,
         outputTokens,
+        cachedTokens: resolvedCachedTokens ?? 0,
+        cacheReadTokens: resolvedCacheRead ?? 0,
+        cacheCreationTokens: resolvedCacheCreation ?? 0,
         latencyMs
       })
       await finalize(200, null)
@@ -1641,7 +1652,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         }) as Record<string, any>
 
         providerBody.model = target.modelId
-        providerBody.stream = normalized.stream
+        if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+          providerBody.stream = Boolean(payload.stream)
+        }
 
         const rawHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
         const forwarded = collectAnthropicForwardHeaders(rawHeaders)
@@ -1690,7 +1703,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         }) as Record<string, any>
 
         providerBody.model = target.modelId
-        providerBody.stream = normalized.stream
+        if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
+          providerBody.stream = Boolean(payload.stream)
+        }
 
         if (Array.isArray(payload.functions) && !providerBody.functions) {
           providerBody.functions = payload.functions
@@ -1790,7 +1805,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           await updateLogTokens(logId, {
             inputTokens,
             outputTokens,
-            cachedTokens: usageCached,
+            cachedTokens,
             cacheReadTokens: cached.read,
             cacheCreationTokens: cached.creation,
             ttftMs: latencyMs,
@@ -1801,9 +1816,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             requests: 1,
             inputTokens,
             outputTokens,
-            cachedTokens: usageCached,
-            cacheReadTokens: usageCacheRead,
-            cacheCreationTokens: usageCacheCreation,
+            cachedTokens,
+            cacheReadTokens: cached.read,
+            cacheCreationTokens: cached.creation,
             latencyMs
           })
           if (storeResponsePayloads) {
@@ -1850,7 +1865,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         await updateLogTokens(logId, {
           inputTokens,
           outputTokens,
-          cachedTokens: usageCached,
+          cachedTokens,
           cacheReadTokens: cached.read,
           cacheCreationTokens: cached.creation,
           ttftMs: usagePayload?.first_token_latency_ms ?? latencyMs,
@@ -2325,8 +2340,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: finalCachedTokens ?? null,
-          cacheReadTokens: 0,
-          cacheCreationTokens: 0,
+          cacheReadTokens: finalCachedResult.read,
+          cacheCreationTokens: finalCachedResult.creation,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, finalCompletionTokens, {
             streaming: true,
@@ -2485,13 +2500,17 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         target.tokenEstimate ??
         estimateTokens(normalized, target.modelId)
       const outputTokens = usageCompletion ?? 0
+      const hasCacheStats = usageCached != null
+      const resolvedCachedTokens = hasCacheStats ? usageCached : null
+      const resolvedCacheRead = hasCacheStats ? usageCacheRead : null
+      const resolvedCacheCreation = hasCacheStats ? usageCacheCreation : null
 
       await updateLogTokens(logId, {
         inputTokens,
         outputTokens,
-        cachedTokens: usageCached,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
+        cachedTokens: resolvedCachedTokens,
+        cacheReadTokens: resolvedCacheRead,
+        cacheCreationTokens: resolvedCacheCreation,
         ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
         tpotMs: computeTpot(latencyMs, outputTokens, {
           streaming: true,
@@ -2503,6 +2522,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         requests: 1,
         inputTokens,
         outputTokens,
+        cachedTokens: resolvedCachedTokens ?? 0,
+        cacheReadTokens: resolvedCacheRead ?? 0,
+        cacheCreationTokens: resolvedCacheCreation ?? 0,
         latencyMs
       })
       await finalize(200, null)

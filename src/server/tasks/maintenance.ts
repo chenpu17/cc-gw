@@ -12,11 +12,11 @@ export function startMaintenanceTimers(): void {
 }
 
 function scheduleCleanup(): void {
-  const run = () => {
+  const run = async () => {
     try {
       const retentionDays = getConfig().logRetentionDays ?? 30
       const cutoff = Date.now() - retentionDays * DAY_MS
-      const deleted = cleanupLogsBefore(cutoff)
+      const deleted = await cleanupLogsBefore(cutoff)
       if (deleted > 0) {
         console.info(`[maintenance] cleaned ${deleted} old log entries`)
       }

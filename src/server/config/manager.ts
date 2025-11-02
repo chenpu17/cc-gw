@@ -7,6 +7,8 @@ import type {
   EndpointRoutingConfig,
   GatewayConfig,
   GatewayEndpoint,
+  HttpConfig,
+  HttpsConfig,
   ModelRouteMap,
   RoutingPreset,
   WebAuthConfig
@@ -24,6 +26,7 @@ const LOG_LEVELS = new Set<NonNullable<GatewayConfig['logLevel']>>([
 const HOME_OVERRIDE = process.env.CC_GW_HOME
 export const HOME_DIR = path.resolve(HOME_OVERRIDE ?? path.join(os.homedir(), '.cc-gw'))
 export const CONFIG_PATH = path.join(HOME_DIR, 'config.json')
+export const CERTS_DIR = path.join(HOME_DIR, 'certs')
 
 type ConfigEvents = {
   change: (config: GatewayConfig) => void
@@ -81,6 +84,66 @@ function sanitizeModelRoutes(input: Record<string, unknown> | undefined): ModelR
     sanitized[trimmedKey] = trimmedValue
   }
   return sanitized
+}
+
+/**
+ * 迁移旧配置格式到新格式 (支持 HTTP/HTTPS 独立配置)
+ */
+function migrateProtocolConfig(data: any): void {
+  // 如果已经有新格式配置,不迁移
+  if (data.http || data.https) {
+    return
+  }
+
+  // 从旧格式迁移
+  const port = typeof data.port === 'number' ? data.port : 4100
+  const host = typeof data.host === 'string' ? data.host : '127.0.0.1'
+
+  data.http = {
+    enabled: true,
+    port,
+    host
+  }
+
+  // HTTPS 默认禁用，除非用户明确配置了证书路径
+  // 检查是否存在旧的 HTTPS 配置
+  const hasLegacyHttpsConfig =
+    (typeof data.httpsPort === 'number') ||
+    (typeof data.keyPath === 'string' && data.keyPath) ||
+    (typeof data.certPath === 'string' && data.certPath)
+
+  data.https = {
+    enabled: hasLegacyHttpsConfig ? true : false,
+    port: typeof data.httpsPort === 'number' ? data.httpsPort : 4443,
+    host: typeof data.httpsHost === 'string' ? data.httpsHost : host,
+    keyPath: typeof data.keyPath === 'string' ? data.keyPath : path.join(CERTS_DIR, 'key.pem'),
+    certPath: typeof data.certPath === 'string' ? data.certPath : path.join(CERTS_DIR, 'cert.pem'),
+    caPath: typeof data.caPath === 'string' ? data.caPath : ''
+  }
+
+  // 保留旧字段以兼容性
+  data.port = port
+  data.host = host
+}
+
+/**
+ * 验证协议配置 (至少启用一个协议)
+ */
+function validateProtocolConfig(data: any): void {
+  const httpEnabled = data.http?.enabled === true
+  const httpsEnabled = data.https?.enabled === true
+
+  if (!httpEnabled && !httpsEnabled) {
+    throw new Error('至少需要启用 HTTP 或 HTTPS 协议')
+  }
+
+  // 验证 HTTPS 证书路径
+  if (httpsEnabled) {
+    const https = data.https as HttpsConfig
+    if (!https.keyPath || !https.certPath) {
+      throw new Error('HTTPS 已启用但缺少证书路径配置')
+    }
+  }
 }
 
 function sanitizeWebAuth(input: unknown): WebAuthConfig | undefined {
@@ -145,8 +208,16 @@ function resolveEndpointRouting(
 
 function parseConfig(raw: string): GatewayConfig {
   const data = JSON.parse(raw)
+
+  // 迁移旧配置格式
+  migrateProtocolConfig(data)
+
+  // 验证协议配置
+  validateProtocolConfig(data)
+
   if (typeof data.port !== 'number') {
-    throw new Error('配置文件缺少或错误的 port 字段')
+    // 如果没有旧的 port 字段,尝试从 http 配置获取
+    data.port = data.http?.port ?? 4100
   }
   if (!Array.isArray(data.providers)) {
     data.providers = []

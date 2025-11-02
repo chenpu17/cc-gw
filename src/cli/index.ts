@@ -104,6 +104,20 @@ async function ensureConfigTemplate(port?: string): Promise<boolean> {
       longContextThreshold: 60000
     }
     const template = {
+      http: {
+        enabled: true,
+        port: selectedPort,
+        host: '127.0.0.1'
+      },
+      https: {
+        enabled: false,
+        port: 4443,
+        host: '127.0.0.1',
+        keyPath: '',
+        certPath: '',
+        caPath: ''
+      },
+      // 保留旧字段以兼容
       host: '127.0.0.1',
       port: selectedPort,
       providers: [],
@@ -240,11 +254,15 @@ async function handleStart(options: { daemon?: boolean; port?: string; foregroun
 
   if (configCreated) {
     console.log(green(`已在 ${CONFIG_FILE} 生成默认配置`))
-    console.log(yellow(`首次启动：待服务就绪后，请在浏览器访问 http://127.0.0.1:${effectivePort}/ui 进行配置。`))
+    console.log(yellow(`首次启动：待服务就绪后，请访问以下地址进行配置:`))
+    console.log(yellow(`  HTTP:  http://127.0.0.1:${effectivePort}/ui`))
+    console.log(yellow(`  HTTPS: https://127.0.0.1:4443/ui (需先生成证书)`))
   }
 
   if (daemonMode) {
-    console.log(green(`Web UI 已就绪: http://127.0.0.1:${effectivePort}/ui`))
+    console.log(green(`服务已启动:`))
+    console.log(green(`  HTTP:  http://127.0.0.1:${effectivePort}/ui`))
+    console.log(green(`  HTTPS: https://127.0.0.1:4443/ui (如已启用)`))
   }
 
   if (!daemonMode) {
