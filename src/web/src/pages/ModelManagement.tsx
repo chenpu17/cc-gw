@@ -177,6 +177,7 @@ export default function ModelManagementPage() {
   const [testDialogProvider, setTestDialogProvider] = useState<ProviderConfig | null>(null)
   const [testDialogUsePreset, setTestDialogUsePreset] = useState(true)
   const [testDialogPreservedExtras, setTestDialogPreservedExtras] = useState<Record<string, string>>({})
+  const [savingClaudeValidation, setSavingClaudeValidation] = useState(false)
 
   const providers = config?.providers ?? []
   const providerCount = providers.length
@@ -736,6 +737,68 @@ export default function ModelManagementPage() {
     setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
+  const handleToggleClaudeValidation = async (enabled: boolean) => {
+    if (!ensureConfig()) return
+    setSavingClaudeValidation(true)
+    try {
+      const currentRouting = config!.endpointRouting ? { ...config!.endpointRouting } : {}
+      const currentAnthropic = currentRouting.anthropic ?? {
+        defaults: config!.defaults,
+        modelRoutes: config!.modelRoutes ?? {}
+      }
+
+      const baseRouting: EndpointRoutingConfig = {
+        defaults: currentAnthropic.defaults ?? config!.defaults,
+        modelRoutes: currentAnthropic.modelRoutes ?? (config!.modelRoutes ?? {})
+      }
+
+      let validation = currentAnthropic.validation
+      if (enabled) {
+        validation = {
+          ...(validation ?? {}),
+          mode: 'claude-code'
+        }
+        if (validation.allowExperimentalBlocks === undefined) {
+          validation.allowExperimentalBlocks = true
+        }
+      } else {
+        validation = undefined
+      }
+
+      const nextAnthropicRouting: EndpointRoutingConfig = validation
+        ? { ...baseRouting, validation }
+        : { ...baseRouting }
+
+      const nextRouting: NonNullable<GatewayConfig['endpointRouting']> = {
+        ...currentRouting,
+        anthropic: nextAnthropicRouting
+      }
+
+      const nextConfig: GatewayConfig = {
+        ...config!,
+        endpointRouting: nextRouting
+      }
+
+      await apiClient.put('/api/config', nextConfig)
+      setConfig(nextConfig)
+      pushToast({
+        title: enabled
+          ? t('modelManagement.toast.claudeValidationEnabled')
+          : t('modelManagement.toast.claudeValidationDisabled'),
+        variant: 'success'
+      })
+      void configQuery.refetch()
+    } catch (error) {
+      const apiError = toApiError(error)
+      pushToast({
+        title: t('modelManagement.toast.claudeValidationFailure', { message: apiError.message }),
+        variant: 'error'
+      })
+    } finally {
+      setSavingClaudeValidation(false)
+    }
+  }
+
   const handleAddSuggestion = (endpoint: Endpoint, model: string) => {
     setRoutesByEndpoint((prev) => {
       const currentRoutes = prev[endpoint] || []
@@ -1159,6 +1222,9 @@ export default function ModelManagementPage() {
 
     const sourceListId = `route-source-${endpoint}`
     const targetListId = `route-target-${endpoint}`
+    const claudeValidationEnabled =
+      endpoint === 'anthropic' &&
+      config?.endpointRouting?.anthropic?.validation?.mode === 'claude-code'
 
     return (
       <section className={surfaceCardClass}>
@@ -1201,6 +1267,44 @@ export default function ModelManagementPage() {
             </button>
           </div>
         </div>
+
+        {endpoint === 'anthropic' && (
+          <div className="mt-6 rounded-xl border border-blue-200/60 bg-blue-50/60 p-4 dark:border-blue-500/40 dark:bg-blue-900/30 backdrop-blur-sm">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-200">
+                    {t('modelManagement.claudeValidation.title')}
+                  </span>
+                  <p className="text-xs text-blue-600/80 dark:text-blue-200/80">
+                    {t('modelManagement.claudeValidation.description')}
+                  </p>
+                </div>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                    checked={Boolean(claudeValidationEnabled)}
+                    onChange={(event) => handleToggleClaudeValidation(event.target.checked)}
+                    disabled={savingClaudeValidation}
+                  />
+                  <span className="text-xs font-medium text-blue-700 dark:text-blue-200">
+                    {savingClaudeValidation
+                      ? t('common.actions.saving')
+                      : t('modelManagement.claudeValidation.toggleLabel')}
+                  </span>
+                </label>
+              </div>
+              <span
+                className={`text-xs font-semibold ${claudeValidationEnabled ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}
+              >
+                {claudeValidationEnabled
+                  ? t('modelManagement.claudeValidation.statusEnabled')
+                  : t('modelManagement.claudeValidation.statusDisabled')}
+              </span>
+            </div>
+          </div>
+        )}
 
         {renderPresetsSection(endpoint)}
 
@@ -1925,4 +2029,3 @@ function EndpointDrawer({
     </>
   )
 }
-

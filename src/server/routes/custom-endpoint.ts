@@ -14,6 +14,8 @@ import { getConfig } from '../config/manager.js'
 import type { NormalizedPayload } from '../protocol/types.js'
 import { resolveApiKey, ApiKeyError, recordApiKeyUsage } from '../api-keys/service.js'
 import { encryptSecret } from '../security/encryption.js'
+import { validateAnthropicRequest } from './anthropic-validator.js'
+import { recordEvent } from '../events/service.js'
 import type { ProviderConnector } from '../providers/types.js'
 
 function resolveHeaderValue(value: string | string[] | undefined): string | undefined {
@@ -411,6 +413,10 @@ async function handleAnthropicProtocol(
     querySuffix = (request as any).querystring || null
   }
 
+  const configSnapshot = getConfig()
+  const validationConfig = configSnapshot.endpointRouting?.anthropic?.validation
+  const validationMode = validationConfig?.mode ?? 'off'
+
   // 收集需要转发的 headers
   const providerHeaders: Record<string, string> = {}
   const headersToForward = [
@@ -469,6 +475,54 @@ async function handleAnthropicProtocol(
   const normalized = normalizeClaudePayload(payload)
   const requestedModel = typeof payload.model === 'string' ? payload.model : undefined
 
+  if (validationMode && validationMode !== 'off') {
+    const modeLabel = validationMode === 'anthropic-strict' ? 'Anthropic' : 'Claude Code'
+    const validationResult = validateAnthropicRequest(payload, {
+      mode: validationMode === 'anthropic-strict' ? 'anthropic-strict' : 'claude-code',
+      allowExperimentalBlocks: validationConfig?.allowExperimentalBlocks,
+      request: {
+        headers: request.headers,
+        method: request.method,
+        query: querySuffix
+      }
+    })
+    if (!validationResult.ok) {
+      const detail = validationResult.path
+        ? `${validationResult.message} (${validationResult.path})`
+        : validationResult.message
+      void recordEvent({
+        type: 'claude_validation',
+        level: 'warn',
+        source: 'custom-endpoint',
+        title: 'Claude Code 请求校验防护（实验特性）拦截',
+        message: detail,
+        endpoint: endpointId,
+        ipAddress: request.ip,
+        apiKeyId: apiKeyContext.id ?? null,
+        apiKeyName: apiKeyContext.name ?? null,
+        apiKeyValue: encryptedApiKeyValue,
+        userAgent: typeof request.headers['user-agent'] === 'string' ? request.headers['user-agent'] : null,
+        mode: validationMode,
+        details: {
+          code: validationResult.code,
+          path: validationResult.path ?? null,
+          method: request.method,
+          query: querySuffix,
+          clientModel: payload.model ?? null
+        }
+      })
+      reply.code(430)
+      return {
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          code: validationResult.code,
+          message: `请求不符合 ${modeLabel} 规范：${detail}`
+        }
+      }
+    }
+  }
+
   // 使用实时读取的endpoint.routing
   const target = resolveRoute({
     payload: normalized,
@@ -478,7 +532,6 @@ async function handleAnthropicProtocol(
   })
 
   const requestStart = Date.now()
-  const configSnapshot = getConfig()
   const storeRequestPayloads = configSnapshot.storeRequestPayloads !== false
   const storeResponsePayloads = configSnapshot.storeResponsePayloads !== false
 

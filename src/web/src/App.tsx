@@ -7,6 +7,7 @@ import { useAuth } from '@/providers/AuthProvider'
 
 const DashboardPage = lazy(() => import('@/pages/Dashboard'))
 const LogsPage = lazy(() => import('@/pages/Logs'))
+const EventsPage = lazy(() => import('@/pages/Events'))
 const ModelManagementPage = lazy(() => import('@/pages/ModelManagement'))
 const ApiKeysPage = lazy(() => import('@/pages/ApiKeys'))
 const SettingsPage = lazy(() => import('@/pages/Settings'))
@@ -45,6 +46,7 @@ export function App() {
             >
               <Route index element={<DashboardPage />} />
               <Route path="logs" element={<LogsPage />} />
+              <Route path="events" element={<EventsPage />} />
               <Route path="models" element={<ModelManagementPage />} />
               <Route path="providers" element={<ModelManagementPage />} />
               <Route path="api-keys" element={<ApiKeysPage />} />

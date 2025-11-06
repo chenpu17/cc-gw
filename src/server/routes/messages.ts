@@ -10,6 +10,8 @@ import { getConfig } from '../config/manager.js'
 import type { NormalizedPayload } from '../protocol/types.js'
 import { resolveApiKey, ApiKeyError, recordApiKeyUsage } from '../api-keys/service.js'
 import { encryptSecret } from '../security/encryption.js'
+import { recordEvent } from '../events/service.js'
+import { validateAnthropicRequest } from './anthropic-validator.js'
 
 function mapStopReason(reason: string | null | undefined): string | null {
   switch (reason) {
@@ -281,6 +283,67 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       'received anthropic message request'
     )
 
+    const configSnapshot = getConfig()
+    const validationConfig = configSnapshot.endpointRouting?.anthropic?.validation
+    const validationMode = validationConfig?.mode ?? 'off'
+    if (validationMode && validationMode !== 'off') {
+      const modeLabel = validationMode === 'anthropic-strict' ? 'Anthropic' : 'Claude Code'
+      const result = validateAnthropicRequest(payload, {
+        mode: validationMode === 'anthropic-strict' ? 'anthropic-strict' : 'claude-code',
+        allowExperimentalBlocks: validationConfig?.allowExperimentalBlocks,
+        request: {
+          headers: request.headers,
+          method: request.method,
+          query: querySuffix
+        }
+      })
+      if (!result.ok) {
+        const detail = result.path ? `${result.message} (${result.path})` : result.message
+        request.log.warn(
+          {
+            event: 'anthropic.invalid_request',
+            reason: result.message,
+            path: result.path,
+            mode: validationMode,
+            method: request.method,
+            userAgent: request.headers['user-agent'],
+            hasQuery: !!querySuffix
+          },
+          'rejected anthropic payload by schema validator'
+        )
+        void recordEvent({
+          type: 'claude_validation',
+          level: 'warn',
+          source: 'anthropic',
+          title: 'Claude Code 请求校验防护（实验特性）拦截',
+          message: detail,
+          endpoint: 'anthropic',
+          ipAddress: request.ip,
+          apiKeyId: apiKeyContext.id ?? null,
+          apiKeyName: apiKeyContext.name ?? null,
+          apiKeyValue: encryptedApiKeyValue,
+          userAgent: typeof request.headers['user-agent'] === 'string' ? request.headers['user-agent'] : null,
+          mode: validationMode,
+          details: {
+            code: result.code,
+            path: result.path ?? null,
+            method: request.method,
+            query: querySuffix,
+            clientModel: payload.model ?? null
+          }
+        })
+        reply.code(430)
+        return {
+          type: 'error',
+          error: {
+            type: 'invalid_request_error',
+            code: result.code,
+            message: `请求不符合 ${modeLabel} 规范：${detail}`
+          }
+        }
+      }
+    }
+
     const normalized = normalizeClaudePayload(payload)
 
     const requestedModel = typeof payload.model === 'string' ? payload.model : undefined
@@ -346,7 +409,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
 
     const connector = getConnector(target.providerId)
     const requestStart = Date.now()
-    const configSnapshot = getConfig()
+    // configSnapshot already retrieved above
     const storeRequestPayloads = configSnapshot.storeRequestPayloads !== false
     const storeResponsePayloads = configSnapshot.storeResponsePayloads !== false
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, Cog, FileText, Key, Layers, LifeBuoy, Menu, Settings, X } from 'lucide-react'
+import { AlertTriangle, BarChart3, Cog, FileText, Key, Layers, LifeBuoy, Menu, Settings, X } from 'lucide-react'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { cn } from '@/utils/cn'
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/', icon: BarChart3, labelKey: 'nav.dashboard' },
   { to: '/logs', icon: FileText, labelKey: 'nav.logs' },
   { to: '/models', icon: Layers, labelKey: 'nav.models' },
+  { to: '/events', icon: AlertTriangle, labelKey: 'nav.events' },
   { to: '/api-keys', icon: Key, labelKey: 'nav.apiKeys' },
   { to: '/settings', icon: Settings, labelKey: 'nav.settings' },
   { to: '/help', icon: LifeBuoy, labelKey: 'nav.help' },

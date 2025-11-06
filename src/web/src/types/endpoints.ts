@@ -7,9 +7,17 @@ export interface DefaultsConfig {
   longContextThreshold: number
 }
 
+export type EndpointValidationMode = 'off' | 'claude-code' | 'anthropic-strict'
+
+export type EndpointValidationConfig =
+  | { mode: 'off'; allowExperimentalBlocks?: boolean }
+  | { mode: 'claude-code'; allowExperimentalBlocks?: boolean }
+  | { mode: 'anthropic-strict'; allowExperimentalBlocks?: boolean }
+
 export interface EndpointRoutingConfig {
   defaults: DefaultsConfig
   modelRoutes: Record<string, string>
+  validation?: EndpointValidationConfig
 }
 
 export interface RoutingPreset {

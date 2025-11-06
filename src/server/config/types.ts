@@ -28,9 +28,17 @@ export type GatewayEndpoint = 'anthropic' | 'openai'
 
 export type EndpointProtocol = 'anthropic' | 'openai-chat' | 'openai-responses' | 'openai-auto'
 
+export type EndpointValidationMode = 'off' | 'claude-code' | 'anthropic-strict'
+
+export type EndpointValidationConfig =
+  | { mode: 'off'; allowExperimentalBlocks?: boolean }
+  | { mode: 'claude-code'; allowExperimentalBlocks?: boolean }
+  | { mode: 'anthropic-strict'; allowExperimentalBlocks?: boolean }
+
 export interface EndpointRoutingConfig {
   defaults: DefaultsConfig
   modelRoutes: ModelRouteMap
+  validation?: EndpointValidationConfig
 }
 
 export interface EndpointPathConfig {

@@ -2,6 +2,8 @@ last_session_id
 参考代码/
 项目需求/
 .claude/
+AGENTS.md
+captures/
 # Node / pnpm artifacts
 node_modules/
 .pnpm-store/

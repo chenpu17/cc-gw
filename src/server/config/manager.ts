@@ -5,6 +5,7 @@ import { EventEmitter } from 'node:events'
 import type {
   DefaultsConfig,
   EndpointRoutingConfig,
+  EndpointValidationConfig,
   GatewayConfig,
   GatewayEndpoint,
   HttpConfig,
@@ -193,6 +194,38 @@ function sanitizeWebAuth(input: unknown): WebAuthConfig | undefined {
   return config
 }
 
+function sanitizeEndpointValidation(
+  value: unknown,
+  fallback?: EndpointValidationConfig
+): EndpointValidationConfig | undefined {
+  // 从 fallback 或默认值开始
+  let mode: EndpointValidationConfig['mode'] = fallback?.mode ?? 'off'
+  let allowExperimental = fallback?.allowExperimentalBlocks
+
+  if (!value || typeof value !== 'object') {
+    // 如果没有输入且有 fallback,返回 fallback
+    return fallback
+  }
+
+  const source = value as Record<string, unknown>
+
+  // 解析 mode
+  const modeRaw = source.mode
+  if (typeof modeRaw === 'string') {
+    const normalized = modeRaw.trim().toLowerCase()
+    if (normalized === 'off' || normalized === 'claude-code' || normalized === 'anthropic-strict') {
+      mode = normalized as EndpointValidationConfig['mode']
+    }
+  }
+
+  // 解析 allowExperimentalBlocks
+  if ('allowExperimentalBlocks' in source) {
+    allowExperimental = Boolean(source.allowExperimentalBlocks)
+  }
+
+  return { mode, allowExperimentalBlocks: allowExperimental }
+}
+
 function resolveEndpointRouting(
   source: unknown,
   fallback: EndpointRoutingConfig
@@ -200,9 +233,12 @@ function resolveEndpointRouting(
   const sourceObject = (typeof source === 'object' && source !== null) ? (source as Record<string, unknown>) : undefined
   const defaultsRaw = sourceObject?.defaults
   const routesRaw = sourceObject?.modelRoutes
+  const validationRaw = sourceObject?.validation
+  const validation = sanitizeEndpointValidation(validationRaw, fallback.validation)
   return {
     defaults: sanitizeDefaults(defaultsRaw ?? fallback.defaults),
-    modelRoutes: sanitizeModelRoutes(routesRaw ?? fallback.modelRoutes)
+    modelRoutes: sanitizeModelRoutes(routesRaw ?? fallback.modelRoutes),
+    ...(validation !== undefined ? { validation } : {})
   }
 }
 

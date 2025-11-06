@@ -193,7 +193,30 @@ async function ensureSchema(db: BetterSqliteDatabase): Promise<void> {
       ip_address TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY(api_key_id) REFERENCES api_keys(id) ON DELETE SET NULL
-    );`
+    );
+
+    CREATE TABLE IF NOT EXISTS gateway_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'info',
+      source TEXT,
+      title TEXT,
+      message TEXT,
+      endpoint TEXT,
+      ip_address TEXT,
+      api_key_id INTEGER,
+      api_key_name TEXT,
+      api_key_value TEXT,
+      user_agent TEXT,
+      mode TEXT,
+      details TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_gateway_events_created_at ON gateway_events(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_gateway_events_type ON gateway_events(type);
+    CREATE INDEX IF NOT EXISTS idx_gateway_events_level ON gateway_events(level);
+    `
   )
 
   await maybeAddColumn(db, 'request_logs', 'client_model', 'TEXT')
@@ -297,6 +320,169 @@ export async function getAll<T = any>(sql: string, params: StatementParams = [])
 export async function execQuery(sql: string): Promise<void> {
   const db = await getDb()
   await exec(db, sql)
+}
+
+export interface GatewayEventRecord {
+  id: number
+  created_at: number
+  type: string
+  level: string
+  source: string | null
+  title: string | null
+  message: string | null
+  endpoint: string | null
+  ip_address: string | null
+  api_key_id: number | null
+  api_key_name: string | null
+  api_key_value: string | null
+  user_agent: string | null
+  mode: string | null
+  details: string | null
+}
+
+export interface InsertEventInput {
+  createdAt: number
+  type: string
+  level?: string
+  source?: string | null
+  title?: string | null
+  message?: string | null
+  endpoint?: string | null
+  ipAddress?: string | null
+  apiKeyId?: number | null
+  apiKeyName?: string | null
+  apiKeyValue?: string | null
+  userAgent?: string | null
+  mode?: string | null
+  details?: Record<string, unknown> | null
+}
+
+export async function insertGatewayEvent(input: InsertEventInput): Promise<number> {
+  const {
+    createdAt,
+    type,
+    level = 'info',
+    source = null,
+    title = null,
+    message = null,
+    endpoint = null,
+    ipAddress = null,
+    apiKeyId = null,
+    apiKeyName = null,
+    apiKeyValue = null,
+    userAgent = null,
+    mode = null,
+    details = null
+  } = input
+
+  const serializedDetails =
+    details && Object.keys(details).length > 0 ? JSON.stringify(details) : null
+
+  const result = await runQuery(
+    `INSERT INTO gateway_events (
+      created_at,
+      type,
+      level,
+      source,
+      title,
+      message,
+      endpoint,
+      ip_address,
+      api_key_id,
+      api_key_name,
+      api_key_value,
+      user_agent,
+      mode,
+      details
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      createdAt,
+      type,
+      level,
+      source,
+      title,
+      message,
+      endpoint,
+      ipAddress,
+      apiKeyId,
+      apiKeyName,
+      apiKeyValue,
+      userAgent,
+      mode,
+      serializedDetails
+    ]
+  )
+
+  return result.lastID
+}
+
+export interface QueryEventsOptions {
+  limit: number
+  beforeId?: number
+  level?: string
+  type?: string
+}
+
+export interface QueriedEvent extends Omit<GatewayEventRecord, 'details'> {
+  details: Record<string, unknown> | null
+}
+
+export async function queryGatewayEvents(options: QueryEventsOptions): Promise<QueriedEvent[]> {
+  const { limit, beforeId, level, type } = options
+  const clauses: string[] = []
+  const params: any[] = []
+
+  if (beforeId && Number.isFinite(beforeId)) {
+    clauses.push('id < ?')
+    params.push(beforeId)
+  }
+  if (level) {
+    clauses.push('level = ?')
+    params.push(level)
+  }
+  if (type) {
+    clauses.push('type = ?')
+    params.push(type)
+  }
+
+  const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
+  params.push(limit)
+
+  const rows = await getAll<GatewayEventRecord>(
+    `SELECT
+       id,
+       created_at,
+       type,
+       level,
+       source,
+       title,
+       message,
+       endpoint,
+       ip_address,
+       api_key_id,
+       api_key_name,
+       api_key_value,
+       user_agent,
+       mode,
+       details
+     FROM gateway_events
+     ${whereClause}
+     ORDER BY id DESC
+     LIMIT ?`,
+    params
+  )
+
+  return rows.map((row) => ({
+    ...row,
+    details: (() => {
+      if (!row.details) return null
+      try {
+        return JSON.parse(row.details)
+      } catch {
+        return { raw: row.details }
+      }
+    })()
+  }))
 }
 
 async function getFileSize(filePath: string): Promise<number> {

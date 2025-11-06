@@ -11,6 +11,7 @@ const resources = {
       nav: {
         dashboard: '仪表盘',
         logs: '请求日志',
+        events: '事件',
         models: '模型与路由管理',
         apiKeys: 'API 密钥',
         settings: '设置',
@@ -575,6 +576,13 @@ const resources = {
         routing: {
           selectTarget: '请选择目标 Provider:模型'
         },
+        claudeValidation: {
+          title: 'Claude Code 请求校验防护（实验特性）',
+          description: '开启后，仅允许符合 Claude Code 协议的 /anthropic 请求；不合规请求会直接返回 430。',
+          toggleLabel: '启用校验',
+          statusEnabled: '已启用 Claude Code 校验',
+          statusDisabled: '当前未启用（默认）'
+        },
         toast: {
           routesSaved: '模型路由已更新。',
           routesSaveFailure: '保存模型路由失败：{{message}}',
@@ -583,7 +591,10 @@ const resources = {
           presetApplySuccess: '已应用模板 "{{name}}"。',
           presetApplyFailure: '应用模板失败：{{message}}',
           presetDeleteSuccess: '模板 "{{name}}" 已删除。',
-          presetDeleteFailure: '删除模板失败：{{message}}'
+          presetDeleteFailure: '删除模板失败：{{message}}',
+          claudeValidationEnabled: 'Claude Code 请求校验防护（实验特性）已启用。',
+          claudeValidationDisabled: 'Claude Code 请求校验防护（实验特性）已关闭。',
+          claudeValidationFailure: '更新 Claude 校验防护状态失败：{{message}}'
         },
         presets: {
           title: '路由模板',
@@ -603,6 +614,34 @@ const resources = {
         },
         confirm: {
           deletePreset: '确定要删除模板 "{{name}}" 吗？'
+        }
+      },
+      events: {
+        title: '安全事件',
+        description: '查看校验防护与系统检测记录，及时发现异常访问。',
+        filters: {
+          title: '筛选条件',
+          allLevels: '全部严重级别',
+          typePlaceholder: '按事件类型过滤（可留空）'
+        },
+        actions: {
+          newest: '最新',
+          older: '更早'
+        },
+        levels: {
+          info: '提示',
+          warn: '警告',
+          error: '错误'
+        },
+        empty: {
+          title: '暂无事件记录',
+          subtitle: '当前没有可用的安全事件。'
+        },
+        details: '查看详情',
+        defaultTitle: '未命名事件',
+        defaultMessage: '未提供详细描述。',
+        toast: {
+          loadFailure: '加载事件失败：{{message}}'
         }
       },
       settings: {
@@ -1042,6 +1081,7 @@ const resources = {
       nav: {
         dashboard: 'Dashboard',
         logs: 'Logs',
+        events: 'Events',
         models: 'Models & Routing',
         apiKeys: 'API Keys',
         settings: 'Settings',
@@ -1606,6 +1646,13 @@ const resources = {
         routing: {
           selectTarget: 'Select provider:model'
         },
+        claudeValidation: {
+          title: 'Claude Code request validation',
+          description: 'When enabled, /anthropic requests must follow the Claude Code schema; invalid payloads are rejected with 430.',
+          toggleLabel: 'Enable validation',
+          statusEnabled: 'Claude Code validation enabled',
+          statusDisabled: 'Disabled by default'
+        },
         toast: {
           routesSaved: 'Model routes updated successfully.',
           routesSaveFailure: 'Failed to save model routes: {{message}}',
@@ -1614,7 +1661,10 @@ const resources = {
           presetApplySuccess: 'Applied preset "{{name}}".',
           presetApplyFailure: 'Failed to apply preset: {{message}}',
           presetDeleteSuccess: 'Preset "{{name}}" deleted.',
-          presetDeleteFailure: 'Failed to delete preset: {{message}}'
+          presetDeleteFailure: 'Failed to delete preset: {{message}}',
+          claudeValidationEnabled: 'Claude Code request validation enabled.',
+          claudeValidationDisabled: 'Claude Code request validation disabled.',
+          claudeValidationFailure: 'Failed to update Claude validation: {{message}}'
         },
         presets: {
           title: 'Routing presets',
@@ -1634,6 +1684,34 @@ const resources = {
         },
         confirm: {
           deletePreset: 'Delete preset "{{name}}"?'
+        }
+      },
+      events: {
+        title: 'Security Events',
+        description: 'Review validation defenses and system alerts to spot suspicious traffic.',
+        filters: {
+          title: 'Filters',
+          allLevels: 'All severities',
+          typePlaceholder: 'Filter by type (optional)'
+        },
+        actions: {
+          newest: 'Newest',
+          older: 'Older'
+        },
+        levels: {
+          info: 'Info',
+          warn: 'Warning',
+          error: 'Error'
+        },
+        empty: {
+          title: 'No events recorded',
+          subtitle: 'There are no security events yet.'
+        },
+        details: 'View details',
+        defaultTitle: 'Untitled event',
+        defaultMessage: 'No additional description provided.',
+        toast: {
+          loadFailure: 'Failed to load events: {{message}}'
         }
       },
       settings: {

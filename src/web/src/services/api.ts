@@ -5,6 +5,7 @@ import type {
   UpdateEndpointRequest,
   EndpointResponse
 } from '@/types/endpoints'
+import type { EventsResponse } from '@/types/events'
 
 export const apiClient = axios.create({
   baseURL: '/',
@@ -66,6 +67,20 @@ export const customEndpointsApi = {
 
   delete: async (id: string): Promise<{ success: boolean }> => {
     const response = await apiClient.delete<{ success: boolean }>(`/api/custom-endpoints/${id}`)
+    return response.data
+  }
+}
+
+export const eventsApi = {
+  list: async (params?: { limit?: number; cursor?: number; level?: string; type?: string }): Promise<EventsResponse> => {
+    const response = await apiClient.get<EventsResponse>('/api/events', {
+      params: {
+        limit: params?.limit,
+        cursor: params?.cursor,
+        level: params?.level,
+        type: params?.type
+      }
+    })
     return response.data
   }
 }

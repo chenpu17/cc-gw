@@ -9,6 +9,7 @@ import { loadConfig, onConfigChange, getConfig } from './config/manager.js'
 import { registerMessagesRoute } from './routes/messages.js'
 import { registerOpenAiRoutes } from './routes/openai.js'
 import { registerAdminRoutes } from './routes/admin.js'
+import { registerEventsRoutes } from './routes/events.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerCustomEndpoint, getRegisteredEndpointIds, getRegisteredPaths } from './routes/custom-endpoint.js'
 import { startMaintenanceTimers } from './tasks/maintenance.js'
@@ -369,6 +370,7 @@ export async function createServer(protocol: 'http' | 'https' = 'http'): Promise
   await registerAuthRoutes(app)
   await registerMessagesRoute(app)
   await registerOpenAiRoutes(app)
+  await registerEventsRoutes(app)
 
   // 初始注册自定义端点
   await syncCustomEndpoints(app, config)
