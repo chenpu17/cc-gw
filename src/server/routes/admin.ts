@@ -730,7 +730,8 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
           maxTokens: 256,
           temperature: 0,
           toolChoice: undefined,
-          overrideTools: undefined
+          overrideTools: undefined,
+          providerType: provider.type
         })
 
     const connector = getConnector(provider.id)
@@ -858,7 +859,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const { limit, offset, filters } = buildLogOptions(query)
     const { items, total } = await queryLogs({ ...filters, limit, offset })
     reply.header('x-total-count', String(total))
-    return { total, items: items.map((item) => mapLogRecord(item)) }
+    return { total, items: (items || []).map((item) => mapLogRecord(item)) }
   })
 
   app.post('/api/logs/export', async (request, reply) => {
@@ -874,7 +875,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       count: records.length,
       limit,
       filters: filtersForExport,
-      records: records.map((record) => ({
+      records: (records || []).map((record) => ({
         ...mapLogRecord(record, { includeKeyValue: true }),
         payload: record.payload
       }))

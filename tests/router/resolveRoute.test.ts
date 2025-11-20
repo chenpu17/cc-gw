@@ -198,6 +198,29 @@ describe('resolveRoute', () => {
     expect(result).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-chat' })
   })
 
+  it('maps gpt-5 codex variants onto the configured codex route', () => {
+    mockedGetConfig.mockReturnValueOnce({
+      ...baseConfig,
+      endpointRouting: {
+        ...baseConfig.endpointRouting,
+        openai: {
+          defaults: { ...baseConfig.endpointRouting!.openai!.defaults },
+          modelRoutes: {
+            'gpt-5-codex': 'kimi:*'
+          }
+        }
+      }
+    })
+
+    const result = resolveRoute({
+      payload,
+      endpoint: 'openai',
+      requestedModel: 'gpt-5.1-codex-max'
+    })
+
+    expect(result).toMatchObject({ providerId: 'kimi', modelId: 'gpt-5.1-codex-max' })
+  })
+
   it('falls back to first provider model when defaults missing', () => {
     const emptyDefaults = {
       completion: null,
@@ -217,7 +240,8 @@ describe('resolveRoute', () => {
           defaults: { ...emptyDefaults },
           modelRoutes: {}
         }
-      }
+      },
+      enableRoutingFallback: true
     })
     const result = resolveRoute({ payload, endpoint: 'anthropic' })
     expect(result).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-chat' })

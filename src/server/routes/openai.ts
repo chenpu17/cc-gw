@@ -10,6 +10,13 @@ import { resolveApiKey, ApiKeyError, recordApiKeyUsage } from '../api-keys/servi
 import { encryptSecret } from '../security/encryption.js'
 import { estimateTokens, estimateTextTokens } from '../protocol/tokenizer.js'
 import { buildAnthropicBody, buildProviderBody } from '../protocol/toProvider.js'
+import {
+  convertAnthropicToOpenAIChat,
+  convertAnthropicToOpenAIResponse,
+  convertAnthropicContent,
+  mapAnthropicStopReasonToChatFinish
+} from '../protocol/responseConverter.js'
+import { StreamTransformer, type StreamFormat } from '../protocol/streamTransformer.js'
 const OPENAI_DEBUG = process.env.CC_GW_DEBUG_OPENAI === '1'
 const debugLog = (...args: unknown[]) => {
   if (OPENAI_DEBUG) {
@@ -220,6 +227,119 @@ function convertFunctionCallToToolChoice(
   return undefined
 }
 
+function convertOpenAIToolsToAnthropic(tools: any[] | undefined): any[] | undefined {
+  if (!Array.isArray(tools) || tools.length === 0) return undefined
+  return tools.map((tool: any) => {
+    // OpenAI 格式: { type: 'function', function: { name, description, parameters } }
+    // Anthropic 格式: { name, description, input_schema }
+    if (tool.type === 'function' && tool.function) {
+      return {
+        name: tool.function.name,
+        description: tool.function.description,
+        input_schema: tool.function.parameters ?? {}
+      }
+    }
+    // 如果已经是扁平格式（来自 convertFunctionsToTools），直接返回
+    if (tool.name) {
+      return {
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.input_schema ?? tool.parameters ?? {}
+      }
+    }
+    // 降级处理
+    return {
+      name: tool.function?.name ?? 'unknown',
+      description: tool.function?.description ?? '',
+      input_schema: tool.function?.parameters ?? {}
+    }
+  })
+}
+
+interface ToolChoiceConversionResult {
+  value: any
+  warnings: string[]
+}
+
+function convertOpenAIToolChoiceToAnthropic(
+  toolChoice: any,
+  tools?: any[]
+): ToolChoiceConversionResult {
+  const result: ToolChoiceConversionResult = {
+    value: undefined,
+    warnings: []
+  }
+
+  if (!toolChoice) return result
+
+  // 字符串格式处理
+  if (typeof toolChoice === 'string') {
+    // 'auto' - 直接返回，Anthropic 支持
+    if (toolChoice === 'auto') {
+      result.value = 'auto'
+      return result
+    }
+
+    // 'none' - Anthropic 不支持，返回 undefined（使用默认行为）
+    if (toolChoice === 'none') {
+      result.value = undefined
+      result.warnings.push(
+        "tool_choice='none' is not supported by Anthropic. Using default behavior (model may choose to use tools)."
+      )
+      return result
+    }
+
+    // 'required' - 根据工具数量智能选择
+    if (toolChoice === 'required') {
+      const toolCount = Array.isArray(tools) ? tools.length : 0
+
+      if (toolCount === 0) {
+        // 没有工具时，使用 auto
+        result.value = 'auto'
+        return result
+      } else if (toolCount === 1) {
+        // 只有一个工具时，强制使用该工具（精确映射）
+        result.value = {
+          type: 'tool',
+          name: tools![0].name
+        }
+        return result
+      } else {
+        // 多个工具时，使用 auto（语义不完全匹配）
+        result.value = 'auto'
+        result.warnings.push(
+          `tool_choice='required' with ${toolCount} tools cannot be precisely mapped. ` +
+          `Using 'auto'. Note: Anthropic's 'auto' allows skipping tools, unlike OpenAI's 'required'.`
+        )
+        return result
+      }
+    }
+
+    // 其他未知字符串返回 undefined
+    return result
+  }
+
+  // 对象格式处理
+  // OpenAI 格式: { type: 'function', function: { name } }
+  // Anthropic 格式: { type: 'tool', name }
+  if (typeof toolChoice === 'object') {
+    if (toolChoice.type === 'function' && toolChoice.function?.name) {
+      result.value = {
+        type: 'tool',
+        name: toolChoice.function.name
+      }
+      return result
+    }
+    // 如果已经是 Anthropic 格式，直接返回
+    if (toolChoice.type === 'tool' && toolChoice.name) {
+      result.value = toolChoice
+      return result
+    }
+  }
+
+  return result
+}
+
 function resolveHeaderValue(value: string | string[] | undefined): string | undefined {
   if (!value) return undefined
   if (typeof value === 'string') return value
@@ -241,230 +361,24 @@ function extractApiKeyFromRequest(request: any): string | undefined {
   return provided
 }
 
-function mapClaudeStopReasonToOpenAIStatus(reason: string | null | undefined): string {
-  switch (reason) {
-    case 'tool_use':
-      return 'requires_action'
-    case 'max_tokens':
-    case 'stop_sequence':
-      return 'incomplete'
-    default:
-      return 'completed'
-  }
-}
-
-function mapClaudeStopReasonToChatFinish(reason: string | null | undefined): string | null {
-  switch (reason) {
-    case 'tool_use':
-      return 'tool_calls'
-    case 'max_tokens':
-      return 'length'
-    case 'stop_sequence':
-      return 'stop'
-    case 'end_turn':
-    case 'stop':
-      return 'stop'
-    default:
-      return reason ?? null
-  }
-}
-
-interface ConvertedAnthropicContent {
-  content: any[]
-  aggregatedText: string
-}
-
-function convertAnthropicContent(blocks: any): ConvertedAnthropicContent {
-  const result: ConvertedAnthropicContent = {
-    content: [],
-    aggregatedText: ''
-  }
-  if (!Array.isArray(blocks)) {
-    return result
-  }
-
-  for (const block of blocks) {
-    if (!block || typeof block !== 'object') continue
-    const type = block.type ?? ''
-
-    if (type === 'text') {
-      const text = typeof block.text === 'string'
-        ? block.text
-        : Array.isArray(block.content)
-        ? block.content
-            .filter((item: any) => item && typeof item === 'object' && typeof item.text === 'string')
-            .map((item: any) => item.text)
-            .join('')
-        : ''
-      const id = typeof block.id === 'string' ? block.id : generateId('text')
-      result.content.push({
-        id,
-        type: 'output_text',
-        text
-      })
-      if (text) {
-        result.aggregatedText += text
-      }
-      continue
-    }
-
-    if (type === 'tool_use') {
-      result.content.push({
-        id: typeof block.id === 'string' ? block.id : generateId('tool'),
-        type: 'tool_use',
-        name: typeof block.name === 'string' ? block.name : 'tool',
-        input: block.input ?? {},
-        cache_control: block.cache_control
-      })
-      continue
-    }
-
-    if (type === 'tool_result') {
-      const id =
-        typeof block.id === 'string'
-          ? block.id
-          : block.tool_use_id
-          ? `result_${block.tool_use_id}`
-          : generateId('tool_result')
-      result.content.push({
-        id,
-        type: 'tool_result',
-        tool_use_id: block.tool_use_id,
-        content: block.content ?? null,
-        cache_control: block.cache_control
-      })
-      continue
-    }
-  }
-
-  return result
-}
-
-interface BuildOpenAIResponseOptions {
-  inputTokens: number
-  outputTokens: number
-  cachedTokens: number | null
-}
-
-function buildOpenAIResponseFromClaude(
-  claude: any,
-  model: string,
-  converted: ConvertedAnthropicContent,
-  usage: BuildOpenAIResponseOptions
-): any {
-  const created = Math.floor(Date.now() / 1000)
-  const responseId =
-    typeof claude?.id === 'string' ? claude.id.replace(/^msg_/, 'resp_') : generateId('resp')
-  const outputId = `out_${responseId.slice(responseId.indexOf('_') + 1)}`
-  const role = typeof claude?.role === 'string' ? claude.role : 'assistant'
-
-  const usagePayload: Record<string, number | null> = {
-    input_tokens: usage.inputTokens,
-    output_tokens: usage.outputTokens,
-    total_tokens: usage.inputTokens + usage.outputTokens,
-    prompt_tokens: usage.inputTokens,
-    completion_tokens: usage.outputTokens
-  }
-  if (usage.cachedTokens != null) {
-    usagePayload.cached_tokens = usage.cachedTokens
-  }
-
-  const messageContent = converted.content.map((item) => ({ ...item }))
-  const outputContent = converted.content.map((item) => ({ ...item }))
-
-  const response = {
-    id: responseId,
-    object: 'response',
-    created,
-    model,
-    status: mapClaudeStopReasonToOpenAIStatus(claude?.stop_reason),
-    status_code: 200,
-    response: {
-      id: responseId,
-      type: 'message',
-      role,
-      content: messageContent
-    },
-    output: [
-      {
-        id: outputId,
-        type: 'output_message',
-        role,
-        content: outputContent
-      }
-    ],
-    usage: usagePayload,
-    metadata: claude?.metadata ?? {},
-    stop_reason: claude?.stop_reason ?? null,
-    stop_sequence: claude?.stop_sequence ?? null
-  }
-
-  if (converted.aggregatedText) {
-    ;(response as Record<string, unknown>).output_text = converted.aggregatedText
-  }
-
-  return response
-}
-
-interface BuildChatCompletionOptions {
-  inputTokens: number
-  outputTokens: number
-}
-
-function buildChatCompletionFromClaude(
-  claude: any,
-  model: string,
-  converted: ConvertedAnthropicContent,
-  usage: BuildChatCompletionOptions
-): any {
-  const created = Math.floor(Date.now() / 1000)
-  const chatId =
-    typeof claude?.id === 'string' ? claude.id.replace(/^msg_/, 'chatcmpl_') : generateId('chatcmpl')
-
-  const message: Record<string, unknown> = {
-    role: typeof claude?.role === 'string' ? claude.role : 'assistant',
-    content: converted.aggregatedText ?? ''
-  }
-
-  const toolCalls = converted.content
-    .filter((item) => item?.type === 'tool_use')
-    .map((item, index) => ({
-      id: item.id ?? `call_${index}`,
-      type: 'function',
-      function: {
-        name: item.name ?? 'tool',
-        arguments: JSON.stringify(item.input ?? {})
-      }
-    }))
-
-  if (toolCalls.length > 0) {
-    message.tool_calls = toolCalls
-    if (!converted.aggregatedText) {
-      message.content = ''
-    }
-  }
-
-  const usagePayload = {
-    prompt_tokens: usage.inputTokens,
-    completion_tokens: usage.outputTokens,
-    total_tokens: usage.inputTokens + usage.outputTokens
-  }
-
-  return {
-    id: chatId,
-    object: 'chat.completion',
-    created,
-    model,
-    choices: [
-      {
-        index: 0,
-        finish_reason: mapClaudeStopReasonToChatFinish(claude?.stop_reason),
-        message
-      }
-    ],
-    usage: usagePayload
-  }
-}
+// ============================================================================
+// Response Format Conversion Functions
+// ============================================================================
+//
+// The following functions have been moved to protocol/responseConverter.ts
+// to eliminate code duplication and provide centralized conversion logic:
+//
+// - mapClaudeStopReasonToOpenAIStatus → mapAnthropicStopReasonToStatus
+// - mapClaudeStopReasonToChatFinish → mapAnthropicStopReasonToChatFinish
+// - ConvertedAnthropicContent (interface)
+// - convertAnthropicContent
+// - BuildOpenAIResponseOptions (interface)
+// - buildOpenAIResponseFromClaude → convertAnthropicToOpenAIResponse
+// - BuildChatCompletionOptions (interface)
+// - buildChatCompletionFromClaude → convertAnthropicToOpenAIChat
+//
+// Import them from '../protocol/responseConverter.js' instead
+// ============================================================================
 
 function collectAnthropicForwardHeaders(
   source: Record<string, string | string[] | undefined>
@@ -627,11 +541,20 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             ? payload.max_tokens
             : undefined
 
+        // 转换 OpenAI 格式的 tools 和 tool_choice 为 Anthropic 格式
+        const anthropicTools = convertOpenAIToolsToAnthropic(payload.tools)
+        const toolChoiceResult = convertOpenAIToolChoiceToAnthropic(payload.tool_choice, anthropicTools)
+
+        // Log warnings if any
+        for (const warning of toolChoiceResult.warnings) {
+          app.log.warn({ warning, endpoint: 'openai-chat', tool_choice: payload.tool_choice }, 'tool_choice conversion warning')
+        }
+
         providerBody = buildAnthropicBody(normalized, {
           maxTokens,
           temperature: typeof payload.temperature === 'number' ? payload.temperature : undefined,
-          toolChoice: payload.tool_choice,
-          overrideTools: Array.isArray(payload.tools) ? payload.tools : undefined
+          toolChoice: toolChoiceResult.value,
+          overrideTools: anthropicTools
         }) as Record<string, any>
 
         providerBody.model = target.modelId
@@ -754,6 +677,9 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
               ? usagePayload.prompt_tokens
               : target.tokenEstimate ?? estimateTokens(normalized, target.modelId)
 
+          // Convert content for token estimation
+          // Note: convertAnthropicToOpenAIResponse also converts internally,
+          // but we need aggregatedText for fallback token estimation
           const converted = convertAnthropicContent(parsed?.content)
           let outputTokens =
             typeof usagePayload?.output_tokens === 'number'
@@ -776,7 +702,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
       const cachedTokens = cached.read + cached.creation
           const latencyMs = Date.now() - requestStart
 
-          const openAIResponse = buildOpenAIResponseFromClaude(parsed, target.modelId, converted, {
+          const openAIResponse = convertAnthropicToOpenAIResponse(parsed, target.modelId, {
             inputTokens,
             outputTokens,
             cachedTokens
@@ -891,392 +817,63 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
     }
 
       if (providerType === 'anthropic') {
+        // Streaming response - use StreamTransformer for Anthropic → OpenAI Responses conversion
         const reader = upstream.body.getReader()
         const decoder = new TextDecoder()
-        let buffer = ''
-        let currentEvent: string | null = null
-        const contentBlocks = new Map<number, any>()
-        let aggregatedText = ''
-        let usagePrompt: number | null = null
-        let usageCompletion: number | null = null
-        let usageCached: number | null = null
-        let usageCacheRead = 0
-        let usageCacheCreation = 0
-        let lastUsagePayload: any = null
+
+        // Determine stream format conversion
+        const sourceFormat: StreamFormat = 'anthropic' // Anthropic provider
+        const targetFormat: StreamFormat = 'openai-responses' // OpenAI Responses API endpoint
+        const transformer = new StreamTransformer(sourceFormat, targetFormat, target.modelId)
+
         let firstTokenAt: number | null = null
-        let claudeMessageId: string | null = null
-        let claudeRole = 'assistant'
-        let claudeStopReason: string | null = null
-        let claudeStopSequence: string | null = null
-        let responseId = generateId('resp')
         const capturedResponseChunks: string[] | null = storeResponsePayloads ? [] : null
-        let clientClosed = false
-        const replyClosed = () => {
-          clientClosed = true
-          debugLog('client connection closed before completion')
-        }
-        reply.raw.once('close', replyClosed)
-
-        const selectMax = (candidates: Array<number | null>, current: number | null) =>
-          candidates.reduce<number | null>((max, value) => {
-            if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
-              return max == null || value > max ? value : max
-            }
-            return max
-          }, current)
-
-        const applyUsagePayload = (usagePayload: any) => {
-          if (!usagePayload || typeof usagePayload !== 'object') {
-            return
-          }
-          usagePrompt = selectMax(
-            [
-              typeof usagePayload.input_tokens === 'number' ? usagePayload.input_tokens : null,
-              typeof usagePayload.prompt_tokens === 'number' ? usagePayload.prompt_tokens : null,
-              typeof usagePayload.total_tokens === 'number' &&
-              typeof usageCompletion === 'number'
-                ? usagePayload.total_tokens - usageCompletion
-                : null
-            ],
-            usagePrompt
-          )
-          usageCompletion = selectMax(
-            [
-              typeof usagePayload.output_tokens === 'number' ? usagePayload.output_tokens : null,
-              typeof usagePayload.completion_tokens === 'number' ? usagePayload.completion_tokens : null
-            ],
-            usageCompletion
-          )
-          if (usageCached == null) {
-            const candidate = resolveCachedTokens(usagePayload)
-            usageCacheRead = candidate.read
-            usageCacheCreation = candidate.creation
-            usageCached = candidate.read + candidate.creation
-          }
-          lastUsagePayload = usagePayload
-        }
-
-        const nowSeconds = () => Math.floor(Date.now() / 1000)
-
-        const sendEvent = (payload: Record<string, unknown>) => {
-          const serialized = JSON.stringify(payload)
-          if (!clientClosed) {
-            reply.raw.write(`data: ${serialized}\n\n`)
-          }
-          if (capturedResponseChunks) {
-            capturedResponseChunks.push(`data: ${serialized}\n\n`)
-          }
-        }
-
-        let createdSent = false
-        const ensureCreatedSent = () => {
-          if (createdSent) return
-          sendEvent({
-            id: responseId,
-            object: 'response',
-            created: nowSeconds(),
-            model: target.modelId,
-            type: 'response.created'
-          })
-          createdSent = true
-        }
 
         try {
           while (true) {
             const { value, done } = await reader.read()
             if (done) break
             if (!value) continue
+
             const chunk = decoder.decode(value, { stream: true })
-            buffer += chunk
 
-            let newlineIndex = buffer.indexOf('\n')
-            while (newlineIndex !== -1) {
-              const line = buffer.slice(0, newlineIndex + 1)
-              buffer = buffer.slice(newlineIndex + 1)
-              const trimmed = line.trim()
-              if (!trimmed) {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-              if (trimmed.startsWith('event:')) {
-                currentEvent = trimmed.slice(6).trim()
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-              if (!trimmed.startsWith('data:')) {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-              const dataStr = trimmed.slice(5).trim()
-              if (dataStr === '[DONE]') {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-              let payload: any
-              try {
-                payload = JSON.parse(dataStr)
-              } catch {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
+            // Transform chunk
+            const { transformedChunk, metadata } = transformer.transform(chunk)
 
-              if (payload?.usage) {
-                applyUsagePayload(payload.usage)
-              }
-
-              switch (currentEvent) {
-                case 'message_start': {
-                  const message = payload?.message
-                  if (message && typeof message === 'object') {
-                    if (typeof message.id === 'string') {
-                      claudeMessageId = message.id
-                      responseId = message.id.replace(/^msg_/, 'resp_')
-                    }
-                    if (typeof message.role === 'string') {
-                      claudeRole = message.role
-                    }
-                    ensureCreatedSent()
-                  }
-                  break
-                }
-                case 'content_block_start': {
-                  const index = typeof payload?.index === 'number' ? payload.index : null
-                  const block = payload?.content_block
-                  if (index != null && block && typeof block === 'object') {
-                    const normalized: any = { ...block }
-                    ensureCreatedSent()
-                    if (normalized.type === 'text') {
-                      normalized.text = typeof normalized.text === 'string' ? normalized.text : ''
-                      if (normalized.text) {
-                        aggregatedText += normalized.text
-                        if (!firstTokenAt && normalized.text.trim().length > 0) {
-                          firstTokenAt = Date.now()
-                        }
-                        sendEvent({
-                          id: responseId,
-                          object: 'response',
-                          created: nowSeconds(),
-                          model: target.modelId,
-                          type: 'response.output_text.delta',
-                          response_id: responseId,
-                          output_index: 0,
-                          delta: {
-                            type: 'output_text.delta',
-                            text: normalized.text
-                          }
-                        })
-                      }
-                    } else if (normalized.type === 'tool_use') {
-                      if (typeof normalized.id !== 'string') {
-                        normalized.id = generateId('tool')
-                      }
-                      if (normalized.input == null || typeof normalized.input !== 'object') {
-                        normalized.input = {}
-                      }
-                      sendEvent({
-                        id: responseId,
-                        object: 'response',
-                        created: nowSeconds(),
-                        model: target.modelId,
-                        type: 'response.output_tool_call.delta',
-                        response_id: responseId,
-                        output_index: 0,
-                        delta: {
-                          type: 'tool_call.delta',
-                          tool_call: {
-                            id: normalized.id,
-                            type: 'function',
-                            name: typeof normalized.name === 'string' ? normalized.name : 'tool',
-                            arguments: normalized.input ?? {}
-                          }
-                        }
-                      })
-                    }
-                    contentBlocks.set(index, normalized)
-                  }
-                  break
-                }
-                case 'content_block_delta': {
-                  const index = typeof payload?.index === 'number' ? payload.index : null
-                  if (index == null) break
-                  const block = contentBlocks.get(index)
-                  if (!block || typeof payload?.delta !== 'object') break
-                  if (block.type === 'text') {
-                    const deltaValue = payload.delta
-                    let deltaText = ''
-                    if (typeof deltaValue?.text === 'string') {
-                      deltaText = deltaValue.text
-                    } else if (Array.isArray(deltaValue?.text)) {
-                      deltaText = deltaValue.text.filter((item: any) => typeof item === 'string').join('')
-                    }
-                    if (deltaText) {
-                      ensureCreatedSent()
-                      block.text = (block.text ?? '') + deltaText
-                      aggregatedText += deltaText
-                      if (!firstTokenAt) {
-                        firstTokenAt = Date.now()
-                      }
-                      sendEvent({
-                        id: responseId,
-                        object: 'response',
-                        created: nowSeconds(),
-                        model: target.modelId,
-                        type: 'response.output_text.delta',
-                        response_id: responseId,
-                        output_index: 0,
-                        delta: {
-                          type: 'output_text.delta',
-                          text: deltaText
-                        }
-                      })
-                    }
-                  } else if (block.type === 'tool_use') {
-                    if (payload.delta?.input && typeof payload.delta.input === 'object') {
-                      block.input = { ...(block.input ?? {}), ...payload.delta.input }
-                      ensureCreatedSent()
-                      sendEvent({
-                        id: responseId,
-                        object: 'response',
-                        created: nowSeconds(),
-                        model: target.modelId,
-                        type: 'response.output_tool_call.delta',
-                        response_id: responseId,
-                        output_index: 0,
-                        delta: {
-                          type: 'tool_call.delta',
-                          tool_call: {
-                            id: block.id,
-                            type: 'function',
-                            name: typeof block.name === 'string' ? block.name : 'tool',
-                            arguments: block.input ?? {}
-                          }
-                        }
-                      })
-                    }
-                  }
-                  break
-                }
-                case 'message_delta': {
-                  if (payload?.delta) {
-                    if (payload.delta.stop_reason) {
-                      claudeStopReason = payload.delta.stop_reason
-                    }
-                    if (payload.delta.stop_sequence) {
-                      claudeStopSequence = payload.delta.stop_sequence
-                    }
-                  }
-                  break
-                }
-                case 'message_stop': {
-                  if (payload?.usage) {
-                    applyUsagePayload(payload.usage)
-                  }
-                  break
-                }
-                default:
-                  break
-              }
-              newlineIndex = buffer.indexOf('\n')
+            // Track TTFT
+            if (!firstTokenAt && metadata.ttft) {
+              firstTokenAt = Date.now()
             }
+
+            // Capture transformed chunks for logging (OpenAI Responses format)
+            if (capturedResponseChunks) {
+              capturedResponseChunks.push(transformedChunk)
+            }
+
+            // Write transformed chunk to client
+            reply.raw.write(transformedChunk)
           }
         } finally {
-          reply.raw.removeListener('close', replyClosed)
-        }
-
-        if (buffer.trim().length > 0) {
-          const trimmed = buffer.trim()
-          if (trimmed.startsWith('data:')) {
-            const dataStr = trimmed.slice(5).trim()
-            if (dataStr !== '[DONE]') {
-              try {
-                const payload = JSON.parse(dataStr)
-                if (payload?.usage) {
-                  applyUsagePayload(payload.usage)
-                }
-                if (payload?.delta?.stop_reason) {
-                  claudeStopReason = payload.delta.stop_reason
-                }
-                if (payload?.delta?.stop_sequence) {
-                  claudeStopSequence = payload.delta.stop_sequence
-                }
-              } catch {
-                // ignore trailing parse errors
-              }
-            }
-          }
-        }
-
-        const sortedBlocks = Array.from(contentBlocks.entries())
-          .sort((a, b) => a[0] - b[0])
-          .map(([, block]) => block)
-
-        const claudeMessage = {
-          id: claudeMessageId ?? responseId.replace(/^resp_/, 'msg_'),
-          role: claudeRole,
-          content: sortedBlocks,
-          stop_reason: claudeStopReason,
-          stop_sequence: claudeStopSequence,
-          usage: lastUsagePayload
-        }
-
-        responseId = claudeMessage.id.replace(/^msg_/, 'resp_')
-
-        const converted = convertAnthropicContent(claudeMessage.content)
-        if (!aggregatedText && converted.aggregatedText) {
-          aggregatedText = converted.aggregatedText
-        }
-
-        ensureCreatedSent()
-
-        let finalPromptTokens =
-          typeof usagePrompt === 'number' && usagePrompt > 0
-            ? usagePrompt
-            : target.tokenEstimate ?? estimateTokens(normalized, target.modelId)
-        let finalCompletionTokens =
-          typeof usageCompletion === 'number' && usageCompletion > 0
-            ? usageCompletion
-            : aggregatedText
-            ? estimateTextTokens(aggregatedText, target.modelId)
-            : 0
-        const finalCachedResult = usageCached != null 
-          ? { read: usageCacheRead, creation: usageCacheCreation }
-          : resolveCachedTokens(lastUsagePayload)
-        const finalCachedTokens = finalCachedResult.read + finalCachedResult.creation
-        const totalLatencyMs = Date.now() - requestStart
-        const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
-
-        const openAIResponse = buildOpenAIResponseFromClaude(claudeMessage, target.modelId, converted, {
-          inputTokens: finalPromptTokens,
-          outputTokens: finalCompletionTokens,
-          cachedTokens: finalCachedTokens ?? null
-        })
-
-        sendEvent({
-          id: responseId,
-          object: 'response',
-          created: nowSeconds(),
-          model: target.modelId,
-          type: 'response.completed',
-          response: openAIResponse.response,
-          output: openAIResponse.output,
-          usage: openAIResponse.usage,
-          status: openAIResponse.status,
-          status_code: openAIResponse.status_code
-        })
-        if (capturedResponseChunks) {
-          capturedResponseChunks.push('data: [DONE]\n\n')
-        }
-        if (!clientClosed) {
-          reply.raw.write('data: [DONE]\n\n')
           reply.raw.end()
         }
+
+        // Get final usage statistics from transformer
+        const finalUsage = transformer.getFinalUsage()
+        const finalPromptTokens = finalUsage.inputTokens || target.tokenEstimate || estimateTokens(normalized, target.modelId)
+        const finalCompletionTokens = finalUsage.outputTokens || estimateTextTokens('', target.modelId)
+        const finalCachedRead = finalUsage.cacheReadTokens
+        const finalCachedCreation = finalUsage.cacheCreationTokens
+        const finalCachedTokens = finalCachedRead + finalCachedCreation
+
+        const totalLatencyMs = Date.now() - requestStart
+        const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
 
         await updateLogTokens(logId, {
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: finalCachedTokens ?? null,
-          cacheReadTokens: finalCachedResult.read,
-          cacheCreationTokens: finalCachedResult.creation,
+          cacheReadTokens: finalCachedRead,
+          cacheCreationTokens: finalCachedCreation,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, finalCompletionTokens, {
             streaming: true,
@@ -1289,8 +886,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: finalCachedTokens,
-          cacheReadTokens: finalCachedResult.read,
-          cacheCreationTokens: finalCachedResult.creation,
+          cacheReadTokens: finalCachedRead,
+          cacheCreationTokens: finalCachedCreation,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads && capturedResponseChunks) {
@@ -1644,11 +1241,20 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             ? payload.max_completion_tokens
             : undefined
 
+        // 转换 OpenAI 格式的 tools 和 tool_choice 为 Anthropic 格式
+        const anthropicTools = convertOpenAIToolsToAnthropic(overrideTools)
+        const toolChoiceResult = convertOpenAIToolChoiceToAnthropic(toolChoice, anthropicTools)
+
+        // Log warnings if any
+        for (const warning of toolChoiceResult.warnings) {
+          app.log.warn({ warning, endpoint: 'openai-responses', tool_choice: toolChoice }, 'tool_choice conversion warning')
+        }
+
         providerBody = buildAnthropicBody(normalized, {
           maxTokens,
           temperature: typeof payload.temperature === 'number' ? payload.temperature : undefined,
-          toolChoice,
-          overrideTools
+          toolChoice: toolChoiceResult.value,
+          overrideTools: anthropicTools
         }) as Record<string, any>
 
         providerBody.model = target.modelId
@@ -1699,7 +1305,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           maxTokens: typeof payload.max_tokens === 'number' ? payload.max_tokens : undefined,
           temperature: typeof payload.temperature === 'number' ? payload.temperature : undefined,
           toolChoice,
-          overrideTools
+          overrideTools,
+          providerType
         }) as Record<string, any>
 
         providerBody.model = target.modelId
@@ -1793,13 +1400,15 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
             inputTokens = target.tokenEstimate ?? estimateTokens(normalized, target.modelId)
           }
 
-          const openAIResponse = buildChatCompletionFromClaude(parsed, target.modelId, converted, {
+          const cached = resolveCachedTokens(usagePayload)
+          const cachedTokens = cached.read + cached.creation
+
+          const openAIResponse = convertAnthropicToOpenAIChat(parsed, target.modelId, {
             inputTokens,
-            outputTokens
+            outputTokens,
+            cachedTokens
           })
 
-          const cached = resolveCachedTokens(usagePayload)
-      const cachedTokens = cached.read + cached.creation
           const latencyMs = Date.now() - requestStart
 
           await updateLogTokens(logId, {
@@ -1907,441 +1516,63 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
       }
 
       if (providerType === 'anthropic') {
+        // Streaming response - use StreamTransformer for Anthropic → OpenAI Chat conversion
         const reader = upstream.body.getReader()
         const decoder = new TextDecoder()
-        let buffer = ''
-        let currentEvent: string | null = null
-        const contentBlocks = new Map<number, any>()
-        let aggregatedText = ''
-        let usagePrompt: number | null = null
-        let usageCompletion: number | null = null
-        let usageCached: number | null = null
-        let usageCacheRead = 0
-        let usageCacheCreation = 0
-        let lastUsagePayload: any = null
+
+        // Determine stream format conversion
+        const sourceFormat: StreamFormat = 'anthropic' // Anthropic provider
+        const targetFormat: StreamFormat = 'openai-chat' // OpenAI Chat Completions endpoint
+        const transformer = new StreamTransformer(sourceFormat, targetFormat, target.modelId)
+
         let firstTokenAt: number | null = null
-        let claudeStopReason: string | null = null
-        let claudeStopSequence: string | null = null
-        let claudeMessageId: string | null = null
-        let responseId = generateId('chatcmpl')
-        const toolStates = new Map<
-          number,
-          { id: string; name: string; input: Record<string, any>; serialized: string }
-        >()
         const capturedResponseChunks: string[] | null = storeResponsePayloads ? [] : null
-        let clientClosed = false
-        const replyClosed = () => {
-          clientClosed = true
-          debugLog('client connection closed before completion')
-        }
-        reply.raw.once('close', replyClosed)
-
-        const nowSeconds = () => Math.floor(Date.now() / 1000)
-
-        const selectMax = (candidates: Array<number | null>, current: number | null) =>
-          candidates.reduce<number | null>((max, value) => {
-            if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
-              return max == null || value > max ? value : max
-            }
-            return max
-          }, current)
-
-        const applyUsagePayload = (usagePayload: any) => {
-          if (!usagePayload || typeof usagePayload !== 'object') {
-            return
-          }
-          usagePrompt = selectMax(
-            [
-              typeof usagePayload.input_tokens === 'number' ? usagePayload.input_tokens : null,
-              typeof usagePayload.prompt_tokens === 'number' ? usagePayload.prompt_tokens : null,
-              typeof usagePayload.total_tokens === 'number' && typeof usageCompletion === 'number'
-                ? usagePayload.total_tokens - usageCompletion
-                : null
-            ],
-            usagePrompt
-          )
-          usageCompletion = selectMax(
-            [
-              typeof usagePayload.output_tokens === 'number' ? usagePayload.output_tokens : null,
-              typeof usagePayload.completion_tokens === 'number' ? usagePayload.completion_tokens : null
-            ],
-            usageCompletion
-          )
-          if (usageCached == null) {
-            const candidate = resolveCachedTokens(usagePayload)
-            usageCacheRead = candidate.read
-            usageCacheCreation = candidate.creation
-            usageCached = candidate.read + candidate.creation
-          }
-          lastUsagePayload = usagePayload
-        }
-
-        const sendChunk = (chunk: Record<string, unknown>) => {
-          const serialized = JSON.stringify(chunk)
-          if (!clientClosed) {
-            reply.raw.write(`data: ${serialized}\n\n`)
-          }
-          if (capturedResponseChunks) {
-            capturedResponseChunks.push(`data: ${serialized}\n\n`)
-          }
-        }
-
-        let initialChunkSent = false
-        const ensureInitialChunk = () => {
-          if (initialChunkSent) return
-          initialChunkSent = true
-          sendChunk({
-            id: responseId,
-            object: 'chat.completion.chunk',
-            created: nowSeconds(),
-            model: target.modelId,
-            choices: [
-              {
-                index: 0,
-                delta: {
-                  role: 'assistant'
-                },
-                finish_reason: null
-              }
-            ]
-          })
-        }
-
-        const updateToolState = (index: number, name: string, input: any) => {
-          const existing = toolStates.get(index)
-          if (existing) {
-            existing.input = { ...(existing.input ?? {}), ...(input ?? {}) }
-            const newSerialized = JSON.stringify(existing.input)
-            const deltaText = newSerialized.startsWith(existing.serialized)
-              ? newSerialized.slice(existing.serialized.length)
-              : newSerialized
-            existing.serialized = newSerialized
-            if (deltaText) {
-              ensureInitialChunk()
-              sendChunk({
-                id: responseId,
-                object: 'chat.completion.chunk',
-                created: nowSeconds(),
-                model: target.modelId,
-                choices: [
-                  {
-                    index: 0,
-                    delta: {
-                      tool_calls: [
-                        {
-                          index,
-                          id: existing.id,
-                          type: 'function',
-                          function: {
-                            name: existing.name,
-                            arguments: deltaText
-                          }
-                        }
-                      ]
-                    },
-                    finish_reason: null
-                  }
-                ]
-              })
-            }
-            return existing
-          }
-          const id = generateId('call')
-          const serialized = JSON.stringify(input ?? {})
-          const initialName = name || 'tool'
-          const state = {
-            id,
-            name: initialName,
-            input: { ...(input ?? {}) },
-            serialized
-          }
-          toolStates.set(index, state)
-          ensureInitialChunk()
-          sendChunk({
-            id: responseId,
-            object: 'chat.completion.chunk',
-            created: nowSeconds(),
-            model: target.modelId,
-            choices: [
-              {
-                index: 0,
-                delta: {
-                  tool_calls: [
-                    {
-                      index,
-                      id,
-                      type: 'function',
-                      function: {
-                        name: initialName,
-                        arguments: ''
-                      }
-                    }
-                  ]
-                },
-                finish_reason: null
-              }
-            ]
-          })
-          if (serialized.length > 2) {
-            sendChunk({
-              id: responseId,
-              object: 'chat.completion.chunk',
-              created: nowSeconds(),
-              model: target.modelId,
-              choices: [
-                {
-                  index: 0,
-                  delta: {
-                    tool_calls: [
-                      {
-                        index,
-                        id,
-                        type: 'function',
-                        function: {
-                          name: initialName,
-                          arguments: serialized
-                        }
-                      }
-                    ]
-                  },
-                  finish_reason: null
-                }
-              ]
-            })
-          }
-          return state
-        }
 
         try {
           while (true) {
             const { value, done } = await reader.read()
             if (done) break
             if (!value) continue
+
             const chunk = decoder.decode(value, { stream: true })
-            buffer += chunk
 
-            let newlineIndex = buffer.indexOf('\n')
-            while (newlineIndex !== -1) {
-              const line = buffer.slice(0, newlineIndex + 1)
-              buffer = buffer.slice(newlineIndex + 1)
+            // Transform chunk
+            const { transformedChunk, metadata } = transformer.transform(chunk)
 
-              const trimmed = line.trim()
-              if (!trimmed) {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-              if (trimmed.startsWith('event:')) {
-                currentEvent = trimmed.slice(6).trim()
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-              if (!trimmed.startsWith('data:')) {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-              const dataStr = trimmed.slice(5).trim()
-              if (dataStr === '[DONE]') {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-
-              let dataPayload: any
-              try {
-                dataPayload = JSON.parse(dataStr)
-              } catch {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-
-              if (dataPayload?.usage) {
-                applyUsagePayload(dataPayload.usage)
-              }
-
-              switch (currentEvent) {
-                case 'message_start': {
-                  const message = dataPayload?.message
-                  if (message && typeof message === 'object') {
-                    if (typeof message.id === 'string') {
-                      claudeMessageId = message.id
-                      responseId = message.id.replace(/^msg_/, 'chatcmpl_')
-                    }
-                    ensureInitialChunk()
-                  }
-                  break
-                }
-                case 'content_block_start': {
-                  const index = typeof dataPayload?.index === 'number' ? dataPayload.index : null
-                  const block = dataPayload?.content_block
-                  if (index != null && block && typeof block === 'object') {
-                    contentBlocks.set(index, block)
-                    if (block.type === 'tool_use') {
-                      updateToolState(index, block.name, block.input ?? {})
-                    }
-                  }
-                  break
-                }
-                case 'content_block_delta': {
-                  const index = typeof dataPayload?.index === 'number' ? dataPayload.index : null
-                  if (index == null) break
-                  const block = contentBlocks.get(index)
-                  if (!block) break
-                  if (block.type === 'text') {
-                    const deltaValue = dataPayload?.delta
-                    let deltaText = ''
-                    if (typeof deltaValue?.text === 'string') {
-                      deltaText = deltaValue.text
-                    } else if (Array.isArray(deltaValue?.text)) {
-                      deltaText = deltaValue.text.filter((item: any) => typeof item === 'string').join('')
-                    }
-                    if (deltaText) {
-                      ensureInitialChunk()
-                      if (!firstTokenAt) {
-                        firstTokenAt = Date.now()
-                      }
-                      aggregatedText += deltaText
-                      sendChunk({
-                        id: responseId,
-                        object: 'chat.completion.chunk',
-                        created: nowSeconds(),
-                        model: target.modelId,
-                        choices: [
-                          {
-                            index: 0,
-                            delta: {
-                              content: deltaText
-                            },
-                            finish_reason: null
-                          }
-                        ]
-                      })
-                    }
-                  } else if (block.type === 'tool_use') {
-                    const deltaInput = dataPayload?.delta?.input
-                    const name = typeof block.name === 'string' ? block.name : 'tool'
-                    updateToolState(index, name, deltaInput ?? {})
-                  }
-                  break
-                }
-                case 'message_delta': {
-                  if (dataPayload?.delta) {
-                    if (dataPayload.delta.stop_reason) {
-                      claudeStopReason = dataPayload.delta.stop_reason
-                    }
-                    if (dataPayload.delta.stop_sequence) {
-                      claudeStopSequence = dataPayload.delta.stop_sequence
-                    }
-                  }
-                  break
-                }
-                case 'message_stop': {
-                  if (dataPayload?.usage) {
-                    applyUsagePayload(dataPayload.usage)
-                  }
-                  break
-                }
-                default:
-                  break
-              }
-
-              newlineIndex = buffer.indexOf('\n')
+            // Track TTFT
+            if (!firstTokenAt && metadata.ttft) {
+              firstTokenAt = Date.now()
             }
+
+            // Capture transformed chunks for logging (OpenAI Chat format)
+            if (capturedResponseChunks) {
+              capturedResponseChunks.push(transformedChunk)
+            }
+
+            // Write transformed chunk to client
+            reply.raw.write(transformedChunk)
           }
         } finally {
-          reply.raw.removeListener('close', replyClosed)
-        }
-
-        if (buffer.trim().length > 0) {
-          const trimmed = buffer.trim()
-          if (trimmed.startsWith('data:')) {
-            const dataStr = trimmed.slice(5).trim()
-            if (dataStr !== '[DONE]') {
-              try {
-                const payloadObj = JSON.parse(dataStr)
-                if (payloadObj?.usage) {
-                  applyUsagePayload(payloadObj.usage)
-                }
-                if (payloadObj?.delta?.stop_reason) {
-                  claudeStopReason = payloadObj.delta.stop_reason
-                }
-                if (payloadObj?.delta?.stop_sequence) {
-                  claudeStopSequence = payloadObj.delta.stop_sequence
-                }
-              } catch {
-                // ignore
-              }
-            }
-          }
-        }
-
-        const sortedBlocks = Array.from(contentBlocks.entries())
-          .sort((a, b) => a[0] - b[0])
-          .map(([, block]) => block)
-
-        const claudeMessage = {
-          id: claudeMessageId ?? responseId.replace(/^chatcmpl_/, 'msg_'),
-          role: 'assistant',
-          content: sortedBlocks,
-          stop_reason: claudeStopReason,
-          stop_sequence: claudeStopSequence,
-          usage: lastUsagePayload
-        }
-
-        const converted = convertAnthropicContent(claudeMessage.content)
-        if (!aggregatedText && converted.aggregatedText) {
-          aggregatedText = converted.aggregatedText
-        }
-
-        const finalPromptTokens =
-          typeof usagePrompt === 'number' && usagePrompt > 0
-            ? usagePrompt
-            : target.tokenEstimate ?? estimateTokens(normalized, target.modelId)
-        const finalCompletionTokens =
-          typeof usageCompletion === 'number' && usageCompletion > 0
-            ? usageCompletion
-            : aggregatedText
-            ? estimateTextTokens(aggregatedText, target.modelId)
-            : 0
-        const finalCachedResult = usageCached != null 
-          ? { read: usageCacheRead, creation: usageCacheCreation }
-          : resolveCachedTokens(lastUsagePayload)
-        const finalCachedTokens = finalCachedResult.read + finalCachedResult.creation
-        const totalLatencyMs = Date.now() - requestStart
-        const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
-
-        const finishReason = mapClaudeStopReasonToChatFinish(claudeStopReason) ?? 'stop'
-
-        sendChunk({
-          id: responseId,
-          object: 'chat.completion.chunk',
-          created: nowSeconds(),
-          model: target.modelId,
-          choices: [
-            {
-              index: 0,
-              delta: {},
-              finish_reason: finishReason
-            }
-          ],
-          usage: {
-            prompt_tokens: finalPromptTokens,
-            completion_tokens: finalCompletionTokens,
-            total_tokens: finalPromptTokens + finalCompletionTokens
-          }
-        })
-        if (capturedResponseChunks) {
-          capturedResponseChunks.push('data: [DONE]\n\n')
-        }
-        if (!clientClosed) {
-          reply.raw.write('data: [DONE]\n\n')
           reply.raw.end()
         }
+
+        // Get final usage statistics from transformer
+        const finalUsage = transformer.getFinalUsage()
+        const finalPromptTokens = finalUsage.inputTokens || target.tokenEstimate || estimateTokens(normalized, target.modelId)
+        const finalCompletionTokens = finalUsage.outputTokens || estimateTextTokens('', target.modelId)
+        const finalCachedRead = finalUsage.cacheReadTokens
+        const finalCachedCreation = finalUsage.cacheCreationTokens
+        const finalCachedTokens = finalCachedRead + finalCachedCreation
+
+        const totalLatencyMs = Date.now() - requestStart
+        const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
 
         await updateLogTokens(logId, {
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: finalCachedTokens ?? null,
-          cacheReadTokens: finalCachedResult.read,
-          cacheCreationTokens: finalCachedResult.creation,
+          cacheReadTokens: finalCachedRead,
+          cacheCreationTokens: finalCachedCreation,
           ttftMs,
           tpotMs: computeTpot(totalLatencyMs, finalCompletionTokens, {
             streaming: true,
@@ -2354,8 +1585,8 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           inputTokens: finalPromptTokens,
           outputTokens: finalCompletionTokens,
           cachedTokens: finalCachedTokens,
-          cacheReadTokens: finalCachedResult.read,
-          cacheCreationTokens: finalCachedResult.creation,
+          cacheReadTokens: finalCachedRead,
+          cacheCreationTokens: finalCachedCreation,
           latencyMs: totalLatencyMs
         })
         if (storeResponsePayloads && capturedResponseChunks) {

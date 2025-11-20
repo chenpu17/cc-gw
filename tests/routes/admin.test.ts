@@ -150,7 +150,7 @@ describe('admin routes', () => {
       })
       expect(response.statusCode).toBe(200)
       expect(response.headers['x-total-count']).toBe('42')
-      expect(response.json()).toEqual({ total: 42, items: [{ id: 1, stream: true }] })
+      expect(response.json()).toEqual({ total: 42, items: [{ id: 1, stream: true, api_key_value_available: false }] })
     } finally {
       await app.close()
     }

@@ -5,6 +5,8 @@ import { normalizeOpenAIChatPayload } from '../protocol/normalize-openai-chat.js
 import { normalizeOpenAIResponsesPayload } from '../protocol/normalize-openai.js'
 import { resolveRoute } from '../router/index.js'
 import { buildProviderBody, buildAnthropicBody } from '../protocol/toProvider.js'
+import { convertOpenAIToAnthropic } from '../protocol/responseConverter.js'
+import { StreamTransformer, type StreamFormat } from '../protocol/streamTransformer.js'
 import { getConnector } from '../providers/registry.js'
 import { createOpenAIConnector } from '../providers/openai.js'
 import { finalizeLog, recordLog, updateLogTokens, updateMetrics, upsertLogPayload } from '../logging/logger.js'
@@ -414,7 +416,8 @@ async function handleAnthropicProtocol(
   }
 
   const configSnapshot = getConfig()
-  const validationConfig = configSnapshot.endpointRouting?.anthropic?.validation
+  // Use custom endpoint's validation config if specified, otherwise fall back to global Anthropic endpoint config
+  const validationConfig = endpoint.routing?.validation ?? configSnapshot.endpointRouting?.anthropic?.validation
   const validationMode = validationConfig?.mode ?? 'off'
 
   // 收集需要转发的 headers
@@ -645,8 +648,18 @@ async function handleAnthropicProtocol(
 
     if (!normalized.stream) {
       const json = await new Response(upstream.body!).json()
-      const inputTokens = json.usage?.input_tokens ?? estimateTokens(normalized, target.modelId)
-      const outputTokens = json.usage?.output_tokens ?? 0
+
+      // Check if we need to convert response format
+      const providerType = target.provider.type
+      const needsConversion = providerType !== 'anthropic'
+
+      // Convert OpenAI format to Anthropic format if needed
+      const responseToReturn = needsConversion
+        ? convertOpenAIToAnthropic(json, target.modelId)
+        : json
+
+      const inputTokens = json.usage?.input_tokens ?? json.usage?.prompt_tokens ?? estimateTokens(normalized, target.modelId)
+      const outputTokens = json.usage?.output_tokens ?? json.usage?.completion_tokens ?? 0
       const cached = resolveCachedTokens(json.usage)
       const cachedTokens = cached.read + cached.creation
       const latencyMs = Date.now() - requestStart
@@ -683,81 +696,151 @@ async function handleAnthropicProtocol(
       }
       await finalize(200, null)
       reply.header('content-type', 'application/json')
-      return json
+      return responseToReturn
     }
 
     // Streaming response
     reply.header('content-type', 'text/event-stream; charset=utf-8')
     reply.header('cache-control', 'no-cache, no-store, must-revalidate')
+    reply.header('connection', 'keep-alive')
     reply.hijack()
     reply.raw.writeHead(200)
 
     const reader = upstream.body!.getReader()
     const decoder = new TextDecoder()
-    let buffer = ''
-    let usagePrompt = 0
-    let usageCompletion = 0
-    let usageCached: number | null = null
-    let usageCacheRead = 0
-    let usageCacheCreation = 0
+
+    // Determine stream format conversion
+    const sourceFormat: StreamFormat = providerType === 'anthropic' ? 'anthropic' : 'openai-chat'
+    const targetFormat: StreamFormat = 'anthropic' // Custom endpoint with Anthropic protocol always outputs Anthropic format
+
     let firstTokenAt: number | null = null
     const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
+    let usagePrompt = 0
+    let usageCompletion = 0
+    let usageCacheRead = 0
+    let usageCacheCreation = 0
 
-    try {
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        if (!value) continue
+    // When source and target format are the same, use direct passthrough for 100% compatibility
+    // This preserves all SSE events (including ping) and avoids any parsing/reconstruction differences
+    if (sourceFormat === targetFormat) {
+      // Direct passthrough mode (same as messages.ts for Anthropic → Anthropic)
+      app.log.info({ sourceFormat, targetFormat }, 'Using direct passthrough mode (no StreamTransformer)')
+      let buffer = ''
 
-        const chunk = decoder.decode(value, { stream: true })
-        buffer += chunk
-        reply.raw.write(chunk)
+      try {
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+          if (!value) continue
 
-        if (capturedChunks) {
-          capturedChunks.push(chunk)
-        }
+          const chunk = decoder.decode(value, { stream: true })
+          buffer += chunk
 
-        let newlineIndex = buffer.indexOf('\n')
-        while (newlineIndex !== -1) {
-          const line = buffer.slice(0, newlineIndex)
-          buffer = buffer.slice(newlineIndex + 1)
+          // Capture for logging
+          if (capturedChunks) {
+            capturedChunks.push(chunk)
+          }
 
-          const trimmed = line.trim()
-          if (trimmed.startsWith('data:')) {
-            const dataStr = trimmed.slice(5).trim()
-            if (dataStr !== '[DONE]') {
+          // Extract metadata while passing through
+          let newlineIndex = buffer.indexOf('\n')
+          while (newlineIndex !== -1) {
+            const line = buffer.slice(0, newlineIndex + 1)
+            buffer = buffer.slice(newlineIndex + 1)
+
+            // Extract first token timing
+            if (!firstTokenAt && line.includes('content_block_delta')) {
+              firstTokenAt = Date.now()
+            }
+
+            // Extract usage from message_delta or message_stop
+            if (line.startsWith('data:')) {
               try {
-                const parsed = JSON.parse(dataStr)
-                if (parsed?.usage) {
-                  usagePrompt = parsed.usage.input_tokens ?? usagePrompt
-                  usageCompletion = parsed.usage.output_tokens ?? usageCompletion
-                  const cached = resolveCachedTokens(parsed.usage)
-                  usageCacheRead = cached.read
-                  usageCacheCreation = cached.creation
-                  usageCached = cached.read + cached.creation
-                }
-                if (!firstTokenAt && (parsed?.type === 'content_block_delta' || parsed?.delta?.text)) {
-                  firstTokenAt = Date.now()
+                const dataStr = line.slice(5).trim()
+                if (dataStr && dataStr !== '[DONE]') {
+                  const payload = JSON.parse(dataStr)
+                  if (payload.usage) {
+                    if (payload.usage.input_tokens !== undefined) {
+                      usagePrompt = payload.usage.input_tokens
+                    }
+                    if (payload.usage.output_tokens !== undefined) {
+                      usageCompletion = payload.usage.output_tokens
+                    }
+                    const cached = resolveCachedTokens(payload.usage)
+                    usageCacheRead = cached.read
+                    usageCacheCreation = cached.creation
+                  }
                 }
               } catch {
                 // Ignore parse errors
               }
             }
+
+            // Write original line directly to client (preserves all events including ping)
+            reply.raw.write(line)
+            newlineIndex = buffer.indexOf('\n')
+          }
+        }
+
+        // Write any remaining buffer
+        if (buffer.length > 0) {
+          reply.raw.write(buffer)
+        }
+      } finally {
+        reply.raw.end()
+      }
+    } else {
+      // Format conversion mode - use StreamTransformer
+      app.log.info({ sourceFormat, targetFormat }, 'Using StreamTransformer for format conversion')
+      const transformer = new StreamTransformer(sourceFormat, targetFormat, target.modelId)
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+          if (!value) continue
+
+          const chunk = decoder.decode(value, { stream: true })
+
+          // Transform chunk
+          const { transformedChunk, metadata } = transformer.transform(chunk)
+
+          // Track TTFT
+          if (!firstTokenAt && metadata.ttft) {
+            firstTokenAt = Date.now()
           }
 
-          newlineIndex = buffer.indexOf('\n')
+          // Capture transformed chunks for logging (Anthropic format)
+          if (capturedChunks) {
+            capturedChunks.push(transformedChunk)
+          }
+
+          // Write transformed chunk to client
+          app.log.debug({
+            chunkLength: transformedChunk.length,
+            preview: transformedChunk.slice(0, 200)
+          }, 'Writing chunk to client')
+          reply.raw.write(transformedChunk)
         }
+      } finally {
+        reply.raw.end()
       }
-    } finally {
-      reply.raw.end()
+
+      // Get final usage from transformer
+      const finalUsage = transformer.getFinalUsage()
+      usagePrompt = finalUsage.inputTokens
+      usageCompletion = finalUsage.outputTokens
+      usageCacheRead = finalUsage.cacheReadTokens
+      usageCacheCreation = finalUsage.cacheCreationTokens
     }
 
+    // Apply token estimation fallback if needed
     if (!usagePrompt) {
       usagePrompt = target.tokenEstimate || estimateTokens(normalized, target.modelId)
     }
     if (!usageCompletion) {
       usageCompletion = estimateTextTokens('', target.modelId)
     }
+    const usageCached = usageCacheRead + usageCacheCreation
 
     const totalLatencyMs = Date.now() - requestStart
     const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
@@ -780,12 +863,76 @@ async function handleAnthropicProtocol(
       inputTokens: usagePrompt,
       outputTokens: usageCompletion,
       cachedTokens: usageCached,
+      cacheReadTokens: usageCacheRead,
+      cacheCreationTokens: usageCacheCreation,
       latencyMs: totalLatencyMs
     })
 
     if (storeResponsePayloads && capturedChunks) {
       try {
-        await upsertLogPayload(logId, { response: capturedChunks.join('') })
+        // Parse captured chunks (already in Anthropic format after transformation)
+        const allChunks = capturedChunks.join('')
+        let accumulatedText = ''
+        let stopReason: string | null = null
+        const contentBlocks: any[] = []
+
+        // Parse Anthropic SSE stream
+        const lines = allChunks.split('\n')
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed.startsWith('data:')) {
+            const dataStr = trimmed.slice(5).trim()
+            if (dataStr !== '[DONE]') {
+              try {
+                const currentData = JSON.parse(dataStr)
+
+                // Parse Anthropic format events
+                if (currentData?.type === 'content_block_delta') {
+                  const text = currentData?.delta?.text
+                  if (typeof text === 'string') {
+                    accumulatedText += text
+                  }
+                } else if (currentData?.type === 'content_block_start') {
+                  const block = currentData?.content_block
+                  if (block?.type === 'text') {
+                    contentBlocks.push({ type: 'text', text: '' })
+                  } else if (block?.type === 'tool_use') {
+                    contentBlocks.push({
+                      type: 'tool_use',
+                      id: block.id,
+                      name: block.name,
+                      input: {}
+                    })
+                  }
+                } else if (currentData?.type === 'message_stop' || currentData?.type === 'message_delta') {
+                  if (currentData.delta?.stop_reason) {
+                    stopReason = currentData.delta.stop_reason
+                  }
+                }
+              } catch {
+                // Ignore parse errors
+              }
+            }
+          }
+        }
+
+        // Construct structured response summary
+        const responseSummary = {
+          content: accumulatedText,
+          blocks: contentBlocks,
+          usage: {
+            input_tokens: usagePrompt,
+            output_tokens: usageCompletion,
+            cached_tokens: usageCached ?? 0,
+            cache_read_tokens: usageCacheRead,
+            cache_creation_tokens: usageCacheCreation
+          },
+          stop_reason: stopReason ?? 'end_turn',
+          model: target.modelId
+        }
+
+        await upsertLogPayload(logId, { response: JSON.stringify(responseSummary) })
       } catch (error) {
         app.log.warn({ error }, 'Failed to persist streamed response')
       }
@@ -1123,7 +1270,60 @@ async function handleOpenAIChatProtocol(
 
     if (storeResponsePayloads && capturedChunks) {
       try {
-        await upsertLogPayload(logId, { response: capturedChunks.join('') })
+        // Parse captured chunks to extract content and metadata
+        const allChunks = capturedChunks.join('')
+        let accumulatedText = ''
+        let finishReason: string | null = null
+
+        // Parse SSE stream to extract structured response
+        const lines = allChunks.split('\n')
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed.startsWith('data:')) {
+            const dataStr = trimmed.slice(5).trim()
+            if (dataStr !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(dataStr)
+                const choice = parsed?.choices?.[0]
+                if (choice) {
+                  // Extract text content
+                  if (choice.delta?.content) {
+                    accumulatedText += choice.delta.content
+                  }
+                  // Extract finish_reason
+                  if (choice.finish_reason) {
+                    finishReason = choice.finish_reason
+                  }
+                }
+              } catch {
+                // Ignore parse errors
+              }
+            }
+          }
+        }
+
+        // Construct structured response summary (OpenAI Chat Completion style)
+        const responseSummary = {
+          id: `chatcmpl_${Date.now()}`,
+          object: 'chat.completion',
+          model: target.modelId,
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: accumulatedText
+            },
+            finish_reason: finishReason ?? 'stop'
+          }],
+          usage: {
+            prompt_tokens: inputTokens,
+            completion_tokens: outputTokens,
+            total_tokens: inputTokens + outputTokens,
+            cached_tokens: usageCached ?? 0
+          }
+        }
+
+        await upsertLogPayload(logId, { response: JSON.stringify(responseSummary) })
       } catch {}
     }
 
@@ -1457,7 +1657,60 @@ async function handleOpenAIResponsesProtocol(
 
     if (storeResponsePayloads && capturedChunks) {
       try {
-        await upsertLogPayload(logId, { response: capturedChunks.join('') })
+        // Parse captured chunks to extract content and metadata
+        const allChunks = capturedChunks.join('')
+        let accumulatedText = ''
+        let finishReason: string | null = null
+
+        // Parse SSE stream to extract structured response
+        const lines = allChunks.split('\n')
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed.startsWith('data:')) {
+            const dataStr = trimmed.slice(5).trim()
+            if (dataStr !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(dataStr)
+                const choice = parsed?.choices?.[0]
+                if (choice) {
+                  // Extract text content
+                  if (choice.delta?.content) {
+                    accumulatedText += choice.delta.content
+                  }
+                  // Extract finish_reason
+                  if (choice.finish_reason) {
+                    finishReason = choice.finish_reason
+                  }
+                }
+              } catch {
+                // Ignore parse errors
+              }
+            }
+          }
+        }
+
+        // Construct structured response summary (OpenAI Chat Completion style)
+        const responseSummary = {
+          id: `chatcmpl_${Date.now()}`,
+          object: 'chat.completion',
+          model: target.modelId,
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: accumulatedText
+            },
+            finish_reason: finishReason ?? 'stop'
+          }],
+          usage: {
+            prompt_tokens: inputTokens,
+            completion_tokens: outputTokens,
+            total_tokens: inputTokens + outputTokens,
+            cached_tokens: usageCached ?? 0
+          }
+        }
+
+        await upsertLogPayload(logId, { response: JSON.stringify(responseSummary) })
       } catch {}
     }
 

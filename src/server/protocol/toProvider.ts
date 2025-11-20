@@ -1,4 +1,5 @@
 import { NormalizedPayload, ProviderChatMessage, ProviderChatRequestBody } from './types'
+import { resolveProviderFeatures } from './conversionMap.js'
 
 function buildMessages(payload: NormalizedPayload): ProviderChatMessage[] {
   const messages: ProviderChatMessage[] = []
@@ -17,8 +18,8 @@ function buildMessages(payload: NormalizedPayload): ProviderChatMessage[] {
             role: 'tool',
             tool_call_id: tool.id,
             name: tool.name ?? tool.id,
-            content: serialized ?? '',
-            cache_control: tool.cacheControl
+            content: serialized ?? ''
+            // 移除 cache_control: Anthropic 专有字段，不应传给 OpenAI/Kimi/DeepSeek
           })
         }
       }
@@ -42,8 +43,8 @@ function buildMessages(payload: NormalizedPayload): ProviderChatMessage[] {
             arguments: typeof call.arguments === 'string'
               ? call.arguments
               : JSON.stringify(call.arguments ?? {})
-          },
-          cache_control: call.cacheControl
+          }
+          // 移除 cache_control: Anthropic 专有字段，不应传给 OpenAI/Kimi/DeepSeek
         }))
         if (!openAiMsg.content) {
           openAiMsg.content = null
@@ -60,6 +61,7 @@ export interface ProviderBuildOptions {
   temperature?: number
   toolChoice?: any
   overrideTools?: any[]
+  providerType?: string
 }
 
 export function buildProviderBody(payload: NormalizedPayload, options: ProviderBuildOptions = {}): ProviderChatRequestBody {
@@ -91,9 +93,10 @@ export function buildProviderBody(payload: NormalizedPayload, options: ProviderB
     body.tool_choice = options.toolChoice
   }
 
+  // 只透传通用的 OpenAI 参数，移除 Anthropic 专有字段
   const passthroughKeys = [
-    'cache_control',
-    'metadata',
+    // 'cache_control',  // 移除：Anthropic 专有，Kimi/DeepSeek 不支持
+    // 'metadata',       // 移除：不是所有提供商都支持 (现在条件性添加，见下方)
     'response_format',
     'parallel_tool_calls',
     'frequency_penalty',
@@ -118,6 +121,15 @@ export function buildProviderBody(payload: NormalizedPayload, options: ProviderB
       }
     }
   }
+
+  // OpenAI 兼容提供商支持 metadata
+  const features = resolveProviderFeatures(options.providerType)
+  if (features.allowMetadata) {
+    if (original.metadata && typeof original.metadata === 'object') {
+      ;(body as Record<string, unknown>).metadata = original.metadata
+    }
+  }
+
   return body
 }
 
@@ -166,6 +178,7 @@ function buildAnthropicContentFromText(text: string | undefined): AnthropicConte
 }
 
 export function buildAnthropicBody(payload: NormalizedPayload, options: ProviderBuildOptions = {}): AnthropicRequestBody {
+  const features = resolveProviderFeatures(options.providerType ?? 'anthropic')
   const messages: AnthropicMessage[] = []
 
   for (const message of payload.messages) {
@@ -177,9 +190,14 @@ export function buildAnthropicBody(payload: NormalizedPayload, options: Provider
 
     if (message.role === 'user' && message.toolResults?.length) {
       for (const result of message.toolResults) {
-        const content = typeof result.content === 'string'
-          ? [{ type: 'text' as const, text: result.content }]
-          : [{ type: 'text' as const, text: JSON.stringify(result.content ?? '') }]
+        // 构建 tool_result 的 content，确保至少包含一个 text block
+        let content: Array<{ type: 'text'; text: string }>
+        if (typeof result.content === 'string') {
+          content = [{ type: 'text' as const, text: result.content }]
+        } else {
+          const serialized = JSON.stringify(result.content ?? '')
+          content = [{ type: 'text' as const, text: serialized }]
+        }
         blocks.push({
           type: 'tool_result',
           tool_use_id: result.id,
@@ -201,14 +219,15 @@ export function buildAnthropicBody(payload: NormalizedPayload, options: Provider
       }
     }
 
+    // 只有当消息有实际内容时才添加到 messages 列表
+    // 完全空的消息会被跳过，避免发送空 text block
     if (message.role === 'assistant' || message.role === 'user') {
-      if (blocks.length === 0) {
-        blocks.push({ type: 'text', text: '' })
+      if (blocks.length > 0) {
+        messages.push({
+          role: message.role,
+          content: blocks
+        })
       }
-      messages.push({
-        role: message.role,
-        content: blocks
-      })
     }
   }
 
@@ -225,7 +244,7 @@ export function buildAnthropicBody(payload: NormalizedPayload, options: Provider
     body.temperature = options.temperature
   }
 
-  if (payload.original && typeof payload.original === 'object') {
+  if (features.allowMetadata && payload.original && typeof payload.original === 'object') {
     const original = payload.original as Record<string, unknown>
     if (original.metadata && typeof original.metadata === 'object') {
       body.metadata = original.metadata as Record<string, unknown>

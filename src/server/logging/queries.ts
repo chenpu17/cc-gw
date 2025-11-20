@@ -228,7 +228,7 @@ export async function exportLogs(options: LogExportOptions = {}): Promise<LogExp
     maxLimit ? { ...params, limit: maxLimit } : params
   )
 
-  return rows.map((row) => {
+  return (rows || []).map((row) => {
     const { prompt, response, ...rest } = row
     const payload =
       prompt == null && response == null
@@ -292,7 +292,7 @@ export async function getDailyMetrics(days = 7, endpoint?: string): Promise<Dail
     params
   )
 
-  return rows
+  return (rows || [])
     .map((row) => ({
       date: row.date,
       requestCount: row.requestCount ?? 0,
@@ -453,7 +453,7 @@ export async function getModelUsageMetrics(days = 7, limit = 10, endpoint?: stri
   const roundValue = (value: number | null | undefined, fractionDigits = 0) =>
     value == null ? null : Number(value.toFixed(fractionDigits))
 
-  return rows.map((row) => ({
+  return (rows || []).map((row) => ({
     model: row.model,
     provider: row.provider,
     requests: row.requests ?? 0,
@@ -541,7 +541,7 @@ export async function getApiKeyUsageMetrics(days = 7, limit = 10, endpoint?: str
     [...params, limit]
   )
 
-  return rows.map((row) => ({
+  return (rows || []).map((row) => ({
     apiKeyId: row.apiKeyId ?? null,
     apiKeyName: row.apiKeyName ?? null,
     requests: row.requests ?? 0,

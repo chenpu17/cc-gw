@@ -15,6 +15,8 @@ const MODEL_ALIASES: Record<string, string> = {
   'claude-3-5-haiku-latest': 'claude-3-5-haiku-20241022'
 }
 
+const CODEX_MODEL_PATTERN = /^gpt-5(?:\.\d+)?-codex/i
+
 export interface RouteContext {
   payload: NormalizedPayload
   requestedModel?: string
@@ -141,7 +143,15 @@ function applyModelAlias(model: string | null | undefined): string | undefined {
   if (!trimmed) return undefined
   const lower = trimmed.toLowerCase()
   const resolved = MODEL_ALIASES[lower]
-  return resolved && resolved !== trimmed ? resolved : undefined
+  if (resolved && resolved !== trimmed) {
+    return resolved
+  }
+
+  if (CODEX_MODEL_PATTERN.test(lower) && lower !== 'gpt-5-codex') {
+    return 'gpt-5-codex'
+  }
+
+  return undefined
 }
 
 export function resolveRoute(ctx: RouteContext): RouteTarget {

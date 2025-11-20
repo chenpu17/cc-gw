@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import { normalizeClaudePayload } from '../protocol/normalize.js'
 import { resolveRoute } from '../router/index.js'
 import { buildProviderBody } from '../protocol/toProvider.js'
+import { convertOpenAIToAnthropic } from '../protocol/responseConverter.js'
+import { StreamTransformer, type StreamFormat } from '../protocol/streamTransformer.js'
 import { getConnector } from '../providers/registry.js'
 import { finalizeLog, recordLog, updateLogTokens, updateMetrics, upsertLogPayload } from '../logging/logger.js'
 import { estimateTokens, estimateTextTokens } from '../protocol/tokenizer.js'
@@ -12,6 +14,7 @@ import { resolveApiKey, ApiKeyError, recordApiKeyUsage } from '../api-keys/servi
 import { encryptSecret } from '../security/encryption.js'
 import { recordEvent } from '../events/service.js'
 import { validateAnthropicRequest } from './anthropic-validator.js'
+import { mergeText, stringifyToolContent } from '../protocol/contentHelpers.js'
 
 function mapStopReason(reason: string | null | undefined): string | null {
   switch (reason) {
@@ -24,33 +27,6 @@ function mapStopReason(reason: string | null | undefined): string | null {
     default:
       return reason ?? null
   }
-}
-
-function stringifyToolContent(value: unknown): string {
-  if (value === null || value === undefined) {
-    return ''
-  }
-  if (typeof value === 'string') {
-    return value
-  }
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
-}
-
-function mergeText(base: string | undefined, extraParts: string[]): string {
-  const parts: string[] = []
-  if (base && base.trim().length > 0) {
-    parts.push(base)
-  }
-  for (const part of extraParts) {
-    if (part && part.trim().length > 0) {
-      parts.push(part)
-    }
-  }
-  return parts.join('\n\n')
 }
 
 function stripTooling(payload: NormalizedPayload): NormalizedPayload {
@@ -166,43 +142,8 @@ function cloneOriginalPayload<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
-function buildClaudeResponse(openAI: any, model: string) {
-  const choice = openAI.choices?.[0]
-  const message = choice?.message ?? {}
-  const contentBlocks: any[] = []
-  if (typeof message.content === 'string' && message.content.length > 0) {
-    contentBlocks.push({ type: 'text', text: message.content })
-  }
-  if (Array.isArray(message.tool_calls)) {
-    for (const call of message.tool_calls) {
-      contentBlocks.push({
-        type: 'tool_use',
-        id: call.id || `tool_${Math.random().toString(36).slice(2)}`,
-        name: call.function?.name,
-        input: (() => {
-          try {
-            return call.function?.arguments ? JSON.parse(call.function.arguments) : {}
-          } catch {
-            return {}
-          }
-        })()
-      })
-    }
-  }
-  return {
-    id: openAI.id ? openAI.id.replace('chatcmpl', 'msg') : `msg_${Math.random().toString(36).slice(2)}`,
-    type: 'message',
-    role: 'assistant',
-    model,
-    content: contentBlocks,
-    stop_reason: mapStopReason(choice?.finish_reason),
-    stop_sequence: null,
-    usage: {
-      input_tokens: openAI.usage?.prompt_tokens ?? 0,
-      output_tokens: openAI.usage?.completion_tokens ?? 0
-    }
-  }
-}
+// buildClaudeResponse moved to protocol/responseConverter.ts as convertOpenAIToAnthropic
+// Export alias maintained for backward compatibility (see bottom of file)
 
 export async function registerMessagesRoute(app: FastifyInstance): Promise<void> {
   const handler = async (request: any, reply: any) => {
@@ -403,7 +344,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         maxTokens: maxTokensOverride,
         temperature: payload.temperature,
         toolChoice,
-        overrideTools
+        overrideTools,
+        providerType
       })
     }
 
@@ -559,7 +501,7 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
           return json
         }
 
-        const claudeResponse = buildClaudeResponse(json, target.modelId)
+        const claudeResponse = convertOpenAIToAnthropic(json, target.modelId)
         let inputTokens = json.usage?.prompt_tokens ?? 0
         let outputTokens = json.usage?.completion_tokens ?? 0
         const cached = resolveCachedTokens(json.usage)
@@ -992,312 +934,158 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         return reply
       }
 
+      // Streaming response - use StreamTransformer for OpenAI → Anthropic conversion
       const reader = upstream.body.getReader()
       const decoder = new TextDecoder()
-      let buffer = ''
-      let textBlockStarted = false
-      let encounteredToolCall = false
-      const toolAccum: Record<number, string> = {}
-      let usagePrompt = 0
-      let usageCompletion = 0
-      let usageCached: number | null = null
-      let usageCacheRead = 0
-      let usageCacheCreation = 0
-      let accumulatedContent = ''
-      let completed = false
-      let firstTokenAt: number | null = null
 
-      const encode = (event: string, data: any) => {
-        const chunk = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-        reply.raw.write(chunk)
+      // Determine stream format conversion
+      const sourceFormat: StreamFormat = 'openai-chat' // OpenAI provider
+      const targetFormat: StreamFormat = 'anthropic' // System /anthropic endpoint always outputs Anthropic format
+      const transformer = new StreamTransformer(sourceFormat, targetFormat, target.modelId)
+
+      let firstTokenAt: number | null = null
+      const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+          if (!value) continue
+
+          const chunk = decoder.decode(value, { stream: true })
+
+          // Transform chunk
+          const { transformedChunk, metadata } = transformer.transform(chunk)
+
+          // Track TTFT
+          if (!firstTokenAt && metadata.ttft) {
+            firstTokenAt = Date.now()
+          }
+
+          // Capture transformed chunks for logging (Anthropic format)
+          if (capturedChunks) {
+            capturedChunks.push(transformedChunk)
+          }
+
+          // Write transformed chunk to client
+          reply.raw.write(transformedChunk)
+        }
+      } finally {
+        reply.raw.end()
       }
 
-      encode('message_start', {
-        type: 'message_start',
-        message: {
-          id: `msg_${Math.random().toString(36).slice(2)}`,
-          type: 'message',
-          role: 'assistant',
-          model: target.modelId,
-          content: [],
-          stop_reason: null,
-          stop_sequence: null,
-          usage: { input_tokens: 0, output_tokens: 0 }
-        }
+      // Get final usage statistics from transformer
+      const finalUsage = transformer.getFinalUsage()
+      const usagePrompt = finalUsage.inputTokens || target.tokenEstimate || estimateTokens(normalized, target.modelId)
+      const usageCompletion = finalUsage.outputTokens || estimateTextTokens('', target.modelId)
+      const usageCacheRead = finalUsage.cacheReadTokens
+      const usageCacheCreation = finalUsage.cacheCreationTokens
+      const usageCached = usageCacheRead + usageCacheCreation
+
+      const totalLatencyMs = Date.now() - requestStart
+      const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
+
+      logUsage('stream.openai.final', {
+        input: usagePrompt,
+        output: usageCompletion,
+        cached: usageCached
       })
 
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        if (!value) continue
-        const chunk = decoder.decode(value, { stream: true })
-        buffer += chunk
-        const lines = buffer.split('\n')
-        if (!buffer.endsWith('\n')) {
-          buffer = lines.pop() ?? ''
-        } else {
-          buffer = ''
-        }
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed.startsWith('data:')) continue
-          const dataStr = trimmed.slice(5).trim()
-          if (dataStr === '[DONE]') {
-            if (encounteredToolCall) {
-              for (const idx of Object.keys(toolAccum)) {
-                encode('content_block_stop', {
-                  type: 'content_block_stop',
-                  index: Number(idx)
-                })
-              }
-            } else if (textBlockStarted) {
-              encode('content_block_stop', {
-                type: 'content_block_stop',
-                index: 0
-              })
-            }
-            const finalPromptTokens = usagePrompt || target.tokenEstimate || estimateTokens(normalized, target.modelId)
-            const finalCompletionTokens = usageCompletion || estimateTextTokens(accumulatedContent, target.modelId)
+      await updateLogTokens(logId, {
+        inputTokens: usagePrompt,
+        outputTokens: usageCompletion,
+        cachedTokens: usageCached,
+        cacheReadTokens: usageCacheRead,
+        cacheCreationTokens: usageCacheCreation,
+        ttftMs,
+        tpotMs: computeTpot(totalLatencyMs, usageCompletion, {
+          streaming: true,
+          ttftMs
+        })
+      })
+      await commitUsage(usagePrompt, usageCompletion)
+      await updateMetrics(new Date().toISOString().slice(0, 10), 'anthropic', {
+        requests: 1,
+        inputTokens: usagePrompt,
+        outputTokens: usageCompletion,
+        cachedTokens: usageCached ?? 0,
+        cacheReadTokens: usageCacheRead,
+        cacheCreationTokens: usageCacheCreation,
+        latencyMs: totalLatencyMs
+      })
 
-            encode('message_delta', {
-              type: 'message_delta',
-              delta: {
-                stop_reason: encounteredToolCall ? 'tool_use' : 'end_turn',
-                stop_sequence: null
-              },
-              usage: {
-                input_tokens: finalPromptTokens,
-                output_tokens: finalCompletionTokens
-              }
-            })
-            encode('message_stop', { type: 'message_stop' })
-            reply.raw.write('\n')
-            reply.raw.end()
-            const totalLatencyMs = Date.now() - requestStart
-            const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
-            logUsage('stream.openai.final', {
-              input: finalPromptTokens,
-              output: finalCompletionTokens,
-              cached: usageCached
-            })
-            await updateLogTokens(logId, {
-              inputTokens: finalPromptTokens,
-              outputTokens: finalCompletionTokens,
-              cachedTokens: usageCached,
-              cacheReadTokens: 0,
-              cacheCreationTokens: 0,
-              ttftMs,
-              tpotMs: computeTpot(totalLatencyMs, finalCompletionTokens, {
-                streaming: true,
-                ttftMs
-              })
-            })
-            await commitUsage(finalPromptTokens, finalCompletionTokens)
-            await updateMetrics(new Date().toISOString().slice(0, 10), 'anthropic', {
-              requests: 1,
-              inputTokens: finalPromptTokens,
-              outputTokens: finalCompletionTokens,
-              cachedTokens: usageCached ?? 0,
-              cacheReadTokens: 0,
-              cacheCreationTokens: 0,
-              latencyMs: totalLatencyMs
-            })
-            if (storeResponsePayloads) {
-              try {
-                await upsertLogPayload(logId, {
-                  response: JSON.stringify({
-                    content: accumulatedContent,
-                    tool_calls: Object.keys(toolAccum).length > 0 ? Object.values(toolAccum).map((args, idx) => ({
-                      index: idx,
-                      arguments: args
-                    })) : undefined,
-                    usage: {
-                      input_tokens: finalPromptTokens,
-                      output_tokens: finalCompletionTokens,
-                      cache_read_input_tokens: usageCached
-                    },
-                    stop_reason: encounteredToolCall ? 'tool_use' : 'end_turn',
-                    model: target.modelId
-                  })
-                })
-              } catch (error) {
-                request.log.warn({ error }, 'Failed to persist OpenAI streamed response summary')
-              }
-            }
-            await finalize(200, null)
-            completed = true
-            return reply
-          }
-          let parsed: any
-          try {
-            parsed = JSON.parse(dataStr)
-          } catch {
-            continue
-          }
-          const choice = parsed.choices?.[0]
-          if (!choice) continue
+      if (storeResponsePayloads && capturedChunks) {
+        try {
+          // Parse captured chunks (already in Anthropic format after transformation)
+          const allChunks = capturedChunks.join('')
+          let accumulatedText = ''
+          let stopReason: string | null = null
+          const contentBlocks: any[] = []
 
-          const usagePayload =
-            parsed.usage ||
-            choice.usage ||
-            (choice.delta && (choice.delta as any).usage) ||
-            null
-          if (usagePayload) {
-            usagePrompt = usagePayload.prompt_tokens ?? usagePrompt
-            usageCompletion = usagePayload.completion_tokens ?? usageCompletion
-            const maybeCached = resolveCachedTokens(usagePayload)
-            usageCacheRead = maybeCached.read
-            usageCacheCreation = maybeCached.creation
-            usageCached = maybeCached.read + maybeCached.creation
-          }
+          // Parse Anthropic SSE stream
+          const lines = allChunks.split('\n')
 
-          if (choice.delta?.tool_calls) {
-            request.log.debug({ event: 'debug.tool_call_delta', delta: choice.delta?.tool_calls }, 'tool call delta received')
-            if (!firstTokenAt) {
-              firstTokenAt = Date.now()
-            }
-            encounteredToolCall = true
-            for (const toolCall of choice.delta.tool_calls) {
-              const idx = toolCall.index ?? 0
-              if (toolAccum[idx] === undefined) {
-                toolAccum[idx] = ''
-                encode('content_block_start', {
-                  type: 'content_block_start',
-                  index: idx,
-                  content_block: {
-                    type: 'tool_use',
-                    id: toolCall.id || `tool_${Date.now()}_${idx}`,
-                    name: toolCall.function?.name,
-                    input: {}
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (trimmed.startsWith('data:')) {
+              const dataStr = trimmed.slice(5).trim()
+              if (dataStr !== '[DONE]') {
+                try {
+                  const currentData = JSON.parse(dataStr)
+
+                  // Parse Anthropic format events
+                  if (currentData?.type === 'content_block_delta') {
+                    const text = currentData?.delta?.text
+                    if (typeof text === 'string') {
+                      accumulatedText += text
+                    }
+                  } else if (currentData?.type === 'content_block_start') {
+                    const block = currentData?.content_block
+                    if (block?.type === 'text') {
+                      contentBlocks.push({ type: 'text', text: '' })
+                    } else if (block?.type === 'tool_use') {
+                      contentBlocks.push({
+                        type: 'tool_use',
+                        id: block.id,
+                        name: block.name,
+                        input: {}
+                      })
+                    }
+                  } else if (currentData?.type === 'message_stop' || currentData?.type === 'message_delta') {
+                    if (currentData.delta?.stop_reason) {
+                      stopReason = currentData.delta.stop_reason
+                    }
                   }
-                })
-              }
-              const deltaArgs = toolCall.function?.arguments || ''
-              if (deltaArgs) {
-                toolAccum[idx] += deltaArgs
-                encode('content_block_delta', {
-                  type: 'content_block_delta',
-                  index: idx,
-                  delta: {
-                    type: 'input_json_delta',
-                    partial_json: deltaArgs
-                  }
-                })
+                } catch {
+                  // Ignore parse errors
+                }
               }
             }
-            continue
           }
 
-          if (choice.delta?.content) {
-            if (!firstTokenAt && choice.delta.content.length > 0) {
-              firstTokenAt = Date.now()
-            }
-            if (!textBlockStarted) {
-              textBlockStarted = true
-              encode('content_block_start', {
-                type: 'content_block_start',
-                index: 0,
-                content_block: {
-                  type: 'text',
-                  text: ''
-                }
-              })
-            }
-            encode('content_block_delta', {
-              type: 'content_block_delta',
-              index: 0,
-              delta: {
-                type: 'text_delta',
-                text: choice.delta.content
-              }
-            })
-            accumulatedContent += choice.delta.content ?? ''
+          // Construct structured response summary
+          const responseSummary = {
+            content: accumulatedText,
+            blocks: contentBlocks,
+            usage: {
+              input_tokens: usagePrompt,
+              output_tokens: usageCompletion,
+              cached_tokens: usageCached ?? 0,
+              cache_read_tokens: usageCacheRead,
+              cache_creation_tokens: usageCacheCreation
+            },
+            stop_reason: stopReason ?? 'end_turn',
+            model: target.modelId
           }
 
-          if (choice.delta?.reasoning) {
-            if (!firstTokenAt) {
-              firstTokenAt = Date.now()
-            }
-            if (!textBlockStarted) {
-              textBlockStarted = true
-              encode('content_block_start', {
-                type: 'content_block_start',
-                index: 0,
-                content_block: {
-                  type: 'text',
-                  text: ''
-                }
-              })
-            }
-            encode('content_block_delta', {
-              type: 'content_block_delta',
-              index: 0,
-              delta: {
-                type: 'thinking_delta',
-                thinking: choice.delta.reasoning
-              }
-            })
-          }
+          await upsertLogPayload(logId, { response: JSON.stringify(responseSummary) })
+        } catch (error) {
+          request.log.warn({ error }, 'Failed to persist streamed response')
         }
       }
 
-      if (!completed) {
-        reply.raw.end()
-        if (!firstTokenAt) {
-          firstTokenAt = requestStart
-        }
-        const totalLatencyMs = Date.now() - requestStart
-        const fallbackPrompt = usagePrompt || target.tokenEstimate || estimateTokens(normalized, target.modelId)
-        const fallbackCompletion = usageCompletion || estimateTextTokens(accumulatedContent, target.modelId)
-        const ttftMs = firstTokenAt ? firstTokenAt - requestStart : null
-        logUsage('stream.openai.fallback', {
-          input: fallbackPrompt,
-          output: fallbackCompletion,
-          cached: usageCached
-        })
-        await updateLogTokens(logId, {
-          inputTokens: fallbackPrompt,
-          outputTokens: fallbackCompletion,
-          cachedTokens: usageCached,
-          cacheReadTokens: usageCacheRead,
-          cacheCreationTokens: usageCacheCreation,
-          ttftMs,
-          tpotMs: computeTpot(totalLatencyMs, fallbackCompletion, {
-            streaming: true,
-            ttftMs
-          })
-        })
-        await commitUsage(fallbackPrompt, fallbackCompletion)
-        await updateMetrics(new Date().toISOString().slice(0, 10), 'anthropic', {
-          requests: 1,
-          inputTokens: fallbackPrompt,
-          outputTokens: fallbackCompletion,
-          cachedTokens: usageCached ?? 0,
-          cacheReadTokens: usageCacheRead,
-          cacheCreationTokens: usageCacheCreation,
-          latencyMs: totalLatencyMs
-        })
-        if (storeResponsePayloads) {
-          try {
-            await upsertLogPayload(logId, {
-              response: JSON.stringify({
-                content: accumulatedContent,
-                usage: {
-                  input_tokens: fallbackPrompt,
-                  output_tokens: fallbackCompletion,
-                  cache_read_input_tokens: usageCached
-                },
-                stop_reason: 'end_turn',
-                model: target.modelId
-              })
-            })
-          } catch (error) {
-            request.log.warn({ error }, 'Failed to persist OpenAI streamed response summary (fallback)')
-          }
-        }
-        await finalize(200, null)
-        return reply
-      }
+      await finalize(200, null)
+      return reply
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unexpected error'
       if (!reply.sent) {
@@ -1318,3 +1106,13 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
   app.post('/anthropic/v1/messages', handler)
   app.post('/anthropic/v1/v1/messages', handler)
 }
+
+// ============================================================================
+// Backward Compatibility Exports
+// ============================================================================
+
+/**
+ * @deprecated Use convertOpenAIToAnthropic from protocol/responseConverter.ts instead
+ * Maintained for backward compatibility with existing imports
+ */
+export { convertOpenAIToAnthropic as buildClaudeResponse } from '../protocol/responseConverter.js'
