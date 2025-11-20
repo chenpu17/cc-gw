@@ -50,6 +50,41 @@ function main() {
     }
   }
 
+  // 修改 package.json 以适配 npm 发布
+  const pkgPath = path.join(releaseDir, 'package.json')
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
+
+  // 修正 bin 路径
+  pkg.bin = {
+    'cc-gw': 'cli/index.js'
+  }
+
+  // 修正 files 字段
+  pkg.files = [
+    'cli',
+    'server',
+    'web',
+    'README.md',
+    'LICENSE'
+  ]
+
+  // 删除不需要的 scripts
+  delete pkg.scripts.prepack
+  delete pkg.scripts.dev
+  delete pkg.scripts['build:server']
+  delete pkg.scripts['build:cli']
+  delete pkg.scripts['build:web']
+  delete pkg.scripts['build:all']
+  delete pkg.scripts['release:bundle']
+  delete pkg.scripts.lint
+  delete pkg.scripts.format
+  delete pkg.scripts['format:write']
+  delete pkg.scripts.typecheck
+  delete pkg.scripts.test
+  delete pkg.scripts['test:playwright']
+
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8')
+
   console.log(`Release bundle created at ${releaseDir}`)
 }
 
