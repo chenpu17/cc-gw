@@ -56,9 +56,14 @@ function resolveServerEntry(): string {
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = path.dirname(__filename)
   const candidates = [
+    // Workspace install（src/cli/dist -> src/server/dist）
     path.resolve(__dirname, '../../server/dist/index.js'),
     path.resolve(__dirname, '../server/dist/index.js'),
-    path.resolve(__dirname, '../../../src/server/dist/index.js')
+    path.resolve(__dirname, '../../../src/server/dist/index.js'),
+    // Release bundle（cli -> server）
+    path.resolve(__dirname, '../server/index.js'),
+    path.resolve(__dirname, '../../server/index.js'),
+    path.resolve(__dirname, '../../../server/index.js')
   ]
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -72,6 +77,8 @@ function resolveWebDist(): string | null {
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = path.dirname(__filename)
 
+  const hasIndex = (dir: string): boolean => fs.existsSync(path.join(dir, 'index.html'))
+
   const candidates = [
     path.resolve(__dirname, '../web/dist'),
     path.resolve(__dirname, '../../web/dist'),
@@ -80,7 +87,7 @@ function resolveWebDist(): string | null {
   ]
 
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
+    if (hasIndex(candidate)) {
       return candidate
     }
   }

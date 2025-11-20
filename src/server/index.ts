@@ -101,6 +101,7 @@ function resolveWebDist(): string | null {
 
   const candidates = [
     process.env.CC_GW_UI_ROOT,
+    path.resolve(__dirname, '../web'),           // npm 包直接使用 web/
     path.resolve(__dirname, '../web/public'),
     path.resolve(__dirname, '../web/dist'),
     path.resolve(__dirname, '../../web/dist'),
