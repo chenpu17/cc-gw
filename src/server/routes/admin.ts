@@ -493,7 +493,8 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         ...routing,
         [endpoint]: {
           defaults: routing[endpoint]?.defaults ?? config.defaults,
-          modelRoutes: cloneRoutes(preset.modelRoutes)
+          modelRoutes: cloneRoutes(preset.modelRoutes),
+          validation: routing[endpoint]?.validation // 保留原有的 validation 配置
         }
       }
 
@@ -532,7 +533,8 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         ...customEndpoint,
         routing: {
           defaults: customEndpoint.routing?.defaults ?? config.defaults,
-          modelRoutes: cloneRoutes(preset.modelRoutes)
+          modelRoutes: cloneRoutes(preset.modelRoutes),
+          validation: customEndpoint.routing?.validation // 保留原有的 validation 配置
         }
       }
 

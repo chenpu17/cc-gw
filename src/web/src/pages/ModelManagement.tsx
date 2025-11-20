@@ -90,6 +90,43 @@ function deriveRoutesFromConfig(
   return result
 }
 
+/**
+ * 判断端点是否使用 Anthropic 协议
+ */
+function isAnthropicEndpoint(endpoint: string, customEndpoints: CustomEndpoint[]): boolean {
+  if (endpoint === 'anthropic') {
+    return true
+  }
+  const customEndpoint = customEndpoints.find((e) => e.id === endpoint)
+  if (!customEndpoint) {
+    return false
+  }
+  // 检查新格式 (paths)
+  if (customEndpoint.paths && customEndpoint.paths.length > 0) {
+    return customEndpoint.paths.some((p) => p.protocol === 'anthropic')
+  }
+  // 检查旧格式 (protocol)
+  return customEndpoint.protocol === 'anthropic'
+}
+
+/**
+ * 获取端点的 validation 配置
+ */
+function getEndpointValidation(
+  endpoint: string,
+  config: GatewayConfig | null,
+  customEndpoints: CustomEndpoint[]
+): { mode: string; allowExperimentalBlocks?: boolean } | undefined {
+  if (!config) return undefined
+
+  if (endpoint === 'anthropic' || endpoint === 'openai') {
+    return config.endpointRouting?.[endpoint]?.validation
+  }
+
+  const customEndpoint = customEndpoints.find((e) => e.id === endpoint)
+  return customEndpoint?.routing?.validation
+}
+
 export default function ModelManagementPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
@@ -737,50 +774,100 @@ export default function ModelManagementPage() {
     setRouteError((prev) => ({ ...prev, [endpoint]: null }))
   }
 
-  const handleToggleClaudeValidation = async (enabled: boolean) => {
+  const handleToggleClaudeValidation = async (endpoint: string, enabled: boolean) => {
     if (!ensureConfig()) return
     setSavingClaudeValidation(true)
     try {
-      const currentRouting = config!.endpointRouting ? { ...config!.endpointRouting } : {}
-      const currentAnthropic = currentRouting.anthropic ?? {
-        defaults: config!.defaults,
-        modelRoutes: config!.modelRoutes ?? {}
-      }
-
-      const baseRouting: EndpointRoutingConfig = {
-        defaults: currentAnthropic.defaults ?? config!.defaults,
-        modelRoutes: currentAnthropic.modelRoutes ?? (config!.modelRoutes ?? {})
-      }
-
-      let validation = currentAnthropic.validation
-      if (enabled) {
-        validation = {
-          ...(validation ?? {}),
-          mode: 'claude-code'
+      if (endpoint === 'anthropic' || endpoint === 'openai') {
+        // 系统端点：更新 config.endpointRouting
+        const currentRouting = config!.endpointRouting ? { ...config!.endpointRouting } : {}
+        const currentEndpointRouting = currentRouting[endpoint] ?? {
+          defaults: config!.defaults,
+          modelRoutes: (endpoint === 'anthropic' ? config!.modelRoutes : {}) ?? {}
         }
-        if (validation.allowExperimentalBlocks === undefined) {
-          validation.allowExperimentalBlocks = true
+
+        const baseRouting: EndpointRoutingConfig = {
+          defaults: currentEndpointRouting.defaults ?? config!.defaults,
+          modelRoutes: currentEndpointRouting.modelRoutes ?? {}
         }
+
+        let validation = currentEndpointRouting.validation
+        if (enabled) {
+          validation = {
+            ...(validation ?? {}),
+            mode: 'claude-code'
+          }
+          if (validation.allowExperimentalBlocks === undefined) {
+            validation.allowExperimentalBlocks = true
+          }
+        } else {
+          validation = undefined
+        }
+
+        const nextEndpointRouting: EndpointRoutingConfig = validation
+          ? { ...baseRouting, validation }
+          : { ...baseRouting }
+
+        const nextRouting: NonNullable<GatewayConfig['endpointRouting']> = {
+          ...currentRouting,
+          [endpoint]: nextEndpointRouting
+        }
+
+        const nextConfig: GatewayConfig = {
+          ...config!,
+          endpointRouting: nextRouting
+        }
+
+        await apiClient.put('/api/config', nextConfig)
+        setConfig(nextConfig)
       } else {
-        validation = undefined
+        // 自定义端点：更新 customEndpoints[i].routing.validation
+        const customEndpoints = config!.customEndpoints ?? []
+        const endpointIndex = customEndpoints.findIndex((e) => e.id === endpoint)
+        if (endpointIndex === -1) {
+          throw new Error(t('modelManagement.toast.endpointNotFound'))
+        }
+
+        const customEndpoint = customEndpoints[endpointIndex]
+        const currentRouting = customEndpoint.routing ?? {
+          defaults: config!.defaults,
+          modelRoutes: {}
+        }
+
+        let validation = currentRouting.validation
+        if (enabled) {
+          validation = {
+            ...(validation ?? {}),
+            mode: 'claude-code'
+          }
+          if (validation.allowExperimentalBlocks === undefined) {
+            validation.allowExperimentalBlocks = true
+          }
+        } else {
+          validation = undefined
+        }
+
+        const updatedRouting: EndpointRoutingConfig = validation
+          ? { ...currentRouting, validation }
+          : { ...currentRouting }
+
+        const updatedEndpoint = {
+          ...customEndpoint,
+          routing: updatedRouting
+        }
+
+        const updatedCustomEndpoints = [...customEndpoints]
+        updatedCustomEndpoints[endpointIndex] = updatedEndpoint
+
+        const nextConfig: GatewayConfig = {
+          ...config!,
+          customEndpoints: updatedCustomEndpoints
+        }
+
+        await apiClient.put('/api/config', nextConfig)
+        setConfig(nextConfig)
       }
 
-      const nextAnthropicRouting: EndpointRoutingConfig = validation
-        ? { ...baseRouting, validation }
-        : { ...baseRouting }
-
-      const nextRouting: NonNullable<GatewayConfig['endpointRouting']> = {
-        ...currentRouting,
-        anthropic: nextAnthropicRouting
-      }
-
-      const nextConfig: GatewayConfig = {
-        ...config!,
-        endpointRouting: nextRouting
-      }
-
-      await apiClient.put('/api/config', nextConfig)
-      setConfig(nextConfig)
       pushToast({
         title: enabled
           ? t('modelManagement.toast.claudeValidationEnabled')
@@ -1222,9 +1309,9 @@ export default function ModelManagementPage() {
 
     const sourceListId = `route-source-${endpoint}`
     const targetListId = `route-target-${endpoint}`
-    const claudeValidationEnabled =
-      endpoint === 'anthropic' &&
-      config?.endpointRouting?.anthropic?.validation?.mode === 'claude-code'
+    const isAnthropicProtocol = isAnthropicEndpoint(endpoint, customEndpoints)
+    const validation = getEndpointValidation(endpoint, config, customEndpoints)
+    const claudeValidationEnabled = isAnthropicProtocol && validation?.mode === 'claude-code'
 
     return (
       <section className={surfaceCardClass}>
@@ -1268,7 +1355,7 @@ export default function ModelManagementPage() {
           </div>
         </div>
 
-        {endpoint === 'anthropic' && (
+        {isAnthropicProtocol && (
           <div className="mt-6 rounded-xl border border-blue-200/60 bg-blue-50/60 p-4 dark:border-blue-500/40 dark:bg-blue-900/30 backdrop-blur-sm">
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-3">
@@ -1285,7 +1372,7 @@ export default function ModelManagementPage() {
                     type="checkbox"
                     className="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
                     checked={Boolean(claudeValidationEnabled)}
-                    onChange={(event) => handleToggleClaudeValidation(event.target.checked)}
+                    onChange={(event) => handleToggleClaudeValidation(endpoint, event.target.checked)}
                     disabled={savingClaudeValidation}
                   />
                   <span className="text-xs font-medium text-blue-700 dark:text-blue-200">
