@@ -267,6 +267,13 @@ export function getRegisteredPaths(endpointId: string): string[] {
 }
 
 /**
+ * 清理已注册的路由（仅用于测试）
+ */
+export function clearRegisteredRoutes(): void {
+  registeredRoutes.clear()
+}
+
+/**
  * 实时获取endpoint配置，并验证其有效性
  * 返回null表示endpoint已被删除、禁用或路径不匹配
  */
@@ -1154,10 +1161,27 @@ async function handleOpenAIChatProtocol(
         temperature: payload.temperature
       })
     } else {
-      providerBody = buildProviderBody(normalized, {
-        maxTokens: payload.max_tokens,
-        temperature: payload.temperature
-      })
+      providerBody = { ...payload }
+      if (providerBody.max_output_tokens == null && typeof providerBody.max_tokens === 'number') {
+        providerBody.max_output_tokens = providerBody.max_tokens
+      }
+      delete providerBody.max_tokens
+
+      if (typeof providerBody.thinking === 'boolean') {
+        delete providerBody.thinking
+      }
+      if (typeof providerBody.reasoning === 'boolean') {
+        delete providerBody.reasoning
+      }
+      if (providerBody.tool_choice === undefined) {
+        delete providerBody.tool_choice
+      }
+      if (providerBody.tools === undefined) {
+        delete providerBody.tools
+      }
+      if (providerBody.response_format === undefined) {
+        delete providerBody.response_format
+      }
     }
     providerBody.model = target.modelId
     if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
@@ -1542,10 +1566,27 @@ async function handleOpenAIResponsesProtocol(
         temperature: payload.temperature
       })
     } else {
-      providerBody = buildProviderBody(normalized, {
-        maxTokens: payload.max_tokens,
-        temperature: payload.temperature
-      })
+      providerBody = { ...payload }
+      if (providerBody.max_output_tokens == null && typeof providerBody.max_tokens === 'number') {
+        providerBody.max_output_tokens = providerBody.max_tokens
+      }
+      delete providerBody.max_tokens
+
+      if (typeof providerBody.thinking === 'boolean') {
+        delete providerBody.thinking
+      }
+      if (typeof providerBody.reasoning === 'boolean') {
+        delete providerBody.reasoning
+      }
+      if (providerBody.tool_choice === undefined) {
+        delete providerBody.tool_choice
+      }
+      if (providerBody.tools === undefined) {
+        delete providerBody.tools
+      }
+      if (providerBody.response_format === undefined) {
+        delete providerBody.response_format
+      }
     }
     providerBody.model = target.modelId
     if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
