@@ -18,6 +18,7 @@ import { resolveApiKey, ApiKeyError, recordApiKeyUsage } from '../api-keys/servi
 import { encryptSecret } from '../security/encryption.js'
 import { validateAnthropicRequest } from './anthropic-validator.js'
 import { recordEvent } from '../events/service.js'
+import { buildModelsResponse } from './shared/models-handler.js'
 import type { ProviderConnector } from '../providers/types.js'
 
 function resolveHeaderValue(value: string | string[] | undefined): string | undefined {
@@ -55,17 +56,20 @@ function getPathsToRegister(basePath: string, protocol: EndpointProtocol): strin
     case 'openai-auto':
       // OpenAI Auto：同时注册 chat 和 responses 路径
       return [
+        `${basePath}/v1/models`,
         `${basePath}/v1/chat/completions`,
         `${basePath}/v1/responses`
       ]
     case 'openai-chat':
       // OpenAI Chat Completions
       return [
+        `${basePath}/v1/models`,
         `${basePath}/v1/chat/completions`
       ]
     case 'openai-responses':
       // OpenAI Responses API
       return [
+        `${basePath}/v1/models`,
         `${basePath}/v1/responses`
       ]
     default:
@@ -235,8 +239,14 @@ export async function registerCustomEndpoint(
       }
       registeredRoutes.get(endpointId)!.set(encodedPath, protocol)
 
+      const isModelsPath = endpointPath.endsWith('/v1/models')
+
       // 注册统一的动态处理器（使用编码后的路径）
-      await registerUnifiedHandler(app, encodedPath, endpointId)
+      if (isModelsPath) {
+        await registerModelsHandler(app, encodedPath, endpointId)
+      } else {
+        await registerUnifiedHandler(app, encodedPath, endpointId)
+      }
     }
   }
 }
@@ -310,6 +320,48 @@ function getCurrentEndpointConfig(
   }
 
   return endpoint
+}
+
+/**
+ * 为 OpenAI 协议的自定义端点注册 /v1/models
+ */
+async function registerModelsHandler(app: FastifyInstance, path: string, endpointId: string): Promise<void> {
+  const handler = async (request: any, reply: any) => {
+    const endpoint = getCurrentEndpointConfig(endpointId, request.url, app)
+    if (!endpoint) {
+      reply.code(404)
+      return { error: 'Endpoint not found, disabled, or path changed' }
+    }
+
+    const providedApiKey = extractApiKeyFromRequest(request)
+
+    try {
+      await resolveApiKey(providedApiKey, { ipAddress: request.ip })
+    } catch (error) {
+      if (error instanceof ApiKeyError) {
+        reply.code(401)
+        return {
+          error: {
+            code: 'invalid_api_key',
+            message: error.message
+          }
+        }
+      }
+      throw error
+    }
+
+    const configSnapshot = getConfig()
+    const data = buildModelsResponse(configSnapshot)
+
+    reply.header('content-type', 'application/json')
+    return {
+      object: 'list',
+      data
+    }
+  }
+
+  app.get(path, handler)
+  app.log.debug(`Registered GET models handler for path: ${path}`)
 }
 
 /**
