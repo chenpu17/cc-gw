@@ -71,7 +71,7 @@ vi.mock('../../src/server/api-keys/service.ts', () => {
 })
 
 const { default: Fastify } = await import('fastify')
-const { registerCustomEndpoint } = await import('../../src/server/routes/custom-endpoint.ts')
+const { registerCustomEndpoint, clearRegisteredRoutes } = await import('../../src/server/routes/custom-endpoint.ts')
 const { getConfig } = await import('../../src/server/config/manager.ts')
 const { resolveApiKey } = await import('../../src/server/api-keys/service.ts')
 
@@ -82,9 +82,13 @@ describe('custom openai endpoint /v1/models', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedGetConfig.mockReturnValue(baseConfig)
+    // 清理全局路由注册状态
+    if (typeof clearRegisteredRoutes === 'function') {
+      clearRegisteredRoutes()
+    }
   })
 
-  it('returns merged model list without duplicate provider entries', async () => {
+  it('returns models from routing configuration', async () => {
     const app = Fastify()
     await registerCustomEndpoint(app, customEndpoint)
 
@@ -103,14 +107,91 @@ describe('custom openai endpoint /v1/models', () => {
       const body = response.json()
       expect(body.object).toBe('list')
 
+      // gpt-4o 应该从 defaults.completion 中提取到
       const gpt4o = body.data.find((item: any) => item.id === 'gpt-4o')
       expect(gpt4o).toBeTruthy()
-      const providerIds = gpt4o.metadata.providers.map((p: any) => p.id)
-      expect(new Set(providerIds).size).toBe(2)
-      const providerACount = gpt4o.metadata.providers.filter((p: any) => p.id === 'provider-a').length
-      expect(providerACount).toBe(1)
-      const providerADefault = gpt4o.metadata.providers.find((p: any) => p.id === 'provider-a')
-      expect(providerADefault.isDefault).toBe(true)
+
+      // 新的数据结构：metadata.routes 包含路由信息
+      expect(gpt4o.metadata.routes).toBeTruthy()
+      expect(Array.isArray(gpt4o.metadata.routes)).toBe(true)
+      expect(gpt4o.metadata.routes.length).toBeGreaterThan(0)
+
+      // 验证路由信息格式 - gpt-4o 可能从多个端点配置，检查是否包含 custom endpoint
+      const hasCustomRoute = gpt4o.metadata.routes.some(
+        (r: any) => r.endpoint === 'custom:openai-custom'
+      )
+      expect(hasCustomRoute).toBe(true)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('returns models from modelRoutes configuration', async () => {
+    // 创建配置了 modelRoutes 的端点
+    const configWithRoutes: GatewayConfig = {
+      ...baseConfig,
+      endpointRouting: {
+        ...baseConfig.endpointRouting,
+        anthropic: {
+          defaults: { ...defaults, completion: null, reasoning: null, background: null } as any,
+          modelRoutes: {}
+        },
+        openai: {
+          defaults: { ...defaults, completion: null, reasoning: null, background: null } as any,
+          modelRoutes: {}
+        }
+      },
+      customEndpoints: [
+        {
+          id: 'openai-custom',
+          label: 'Custom OpenAI',
+          paths: [{ path: '/custom/openai', protocol: 'openai-auto' as const }],
+          enabled: true,
+          routing: {
+            defaults: { ...defaults, completion: null, reasoning: null, background: null } as any,
+            modelRoutes: {
+              'my-model': 'provider-a:gpt-4o',
+              'alias-model': 'provider-b:gpt-4o'
+            }
+          }
+        }
+      ]
+    }
+
+    mockedGetConfig.mockReturnValue(configWithRoutes)
+    clearRegisteredRoutes()
+
+    const app = Fastify()
+    await registerCustomEndpoint(app, configWithRoutes.customEndpoints![0])
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/custom/openai/v1/models',
+        headers: {
+          authorization: 'Bearer test-key'
+        }
+      })
+
+      expect(response.statusCode).toBe(200)
+
+      const body = response.json()
+
+      // 应该返回来源模型（modelRoutes 的 key），而不是目标模型
+      const myModel = body.data.find((item: any) => item.id === 'my-model')
+      expect(myModel).toBeTruthy()
+      expect(myModel.metadata.routes[0].target).toBe('provider-a:gpt-4o')
+
+      const aliasModel = body.data.find((item: any) => item.id === 'alias-model')
+      expect(aliasModel).toBeTruthy()
+      expect(aliasModel.metadata.routes[0].target).toBe('provider-b:gpt-4o')
+
+      // 模型列表只包含路由配置中的来源模型
+      const models = body.data.map((item: any) => item.id)
+      expect(models).toContain('my-model')
+      expect(models).toContain('alias-model')
+      // gpt-4o 不应该出现（因为所有 defaults 都设为 null）
+      expect(models).not.toContain('gpt-4o')
     } finally {
       await app.close()
     }
