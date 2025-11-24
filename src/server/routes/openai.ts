@@ -1796,7 +1796,7 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
     }
 
     const configSnapshot = getConfig()
-    const data = buildModelsResponse(configSnapshot)
+    const data = buildModelsResponse(configSnapshot, 'openai')
 
     reply.header('content-type', 'application/json')
     return {

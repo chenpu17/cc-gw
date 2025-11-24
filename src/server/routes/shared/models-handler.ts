@@ -3,14 +3,15 @@ import type { GatewayConfig } from '../../config/types.js'
 /**
  * 构建 OpenAI /v1/models 响应数据
  *
- * 返回客户端可以请求的模型列表，严格遵循路由配置中的显式规则：
- * 1. 路由规则中配置的来源模型（modelRoutes 的 key）
- * 2. 过滤通配符（如 `*`、`claude-*`），因为它们是路由模式而非具体模型名
- * 3. 不包含 defaults 配置，因为那是内部默认路由
+ * 返回指定端点配置的路由规则中的所有来源模型（modelRoutes 的 key）
  *
- * 这样客户端看到的是"我可以显式请求哪些模型名"，与 Web UI 配置完全一致
+ * @param configSnapshot - 全局配置快照
+ * @param endpointId - 端点标识符，格式：
+ *   - 'openai' - 系统 OpenAI 端点
+ *   - 'anthropic' - 系统 Anthropic 端点
+ *   - 'custom:xxx' - 自定义端点（xxx 为 customEndpoint.id）
  */
-export function buildModelsResponse(configSnapshot: GatewayConfig) {
+export function buildModelsResponse(configSnapshot: GatewayConfig, endpointId: string) {
   const now = Math.floor(Date.now() / 1000)
   const models = new Map<
     string,
@@ -24,28 +25,24 @@ export function buildModelsResponse(configSnapshot: GatewayConfig) {
         permission?: unknown[]
       }
       routedTo: Array<{
-        endpoint: string
         targetProvider: string
         targetModel: string
       }>
     }
   >()
 
-  const addModel = (modelId: string, endpoint: string, targetProvider: string, targetModel: string) => {
+  const addModel = (modelId: string, targetProvider: string, targetModel: string) => {
     const trimmed = modelId.trim()
     if (!trimmed) return
-
-    // 过滤通配符：不应该把通配符路由规则当成模型名称
-    if (trimmed.includes('*')) return
 
     const existing = models.get(trimmed)
     if (existing) {
       // 添加路由目标信息
       const routeExists = existing.routedTo.some(
-        (r) => r.endpoint === endpoint && r.targetProvider === targetProvider
+        (r) => r.targetProvider === targetProvider && r.targetModel === targetModel
       )
       if (!routeExists) {
-        existing.routedTo.push({ endpoint, targetProvider, targetModel })
+        existing.routedTo.push({ targetProvider, targetModel })
       }
       return
     }
@@ -58,47 +55,33 @@ export function buildModelsResponse(configSnapshot: GatewayConfig) {
         owned_by: 'gateway',
         permission: []
       },
-      routedTo: [{ endpoint, targetProvider, targetModel }]
+      routedTo: [{ targetProvider, targetModel }]
     })
   }
 
-  // 1. 从 endpointRouting 中提取路由规则（只提取 modelRoutes 的 key）
-  const endpointRouting = configSnapshot.endpointRouting ?? {}
+  // 判断是系统端点还是自定义端点
+  if (endpointId.startsWith('custom:')) {
+    // 自定义端点：从 customEndpoints 中查找
+    const customId = endpointId.slice(7) // 去掉 'custom:' 前缀
+    const customEndpoint = configSnapshot.customEndpoints?.find((e) => e.id === customId)
 
-  for (const [endpointName, routing] of Object.entries(endpointRouting)) {
-    if (!routing?.modelRoutes) continue
-
-    for (const [sourceModel, target] of Object.entries(routing.modelRoutes)) {
-      // 解析目标：providerId:modelId
-      const [providerId, targetModel] = target.split(':')
-      if (providerId && targetModel) {
-        addModel(sourceModel, endpointName, providerId, targetModel)
+    if (customEndpoint?.routing?.modelRoutes) {
+      for (const [sourceModel, target] of Object.entries(customEndpoint.routing.modelRoutes)) {
+        const [providerId, targetModel] = target.split(':')
+        if (providerId && targetModel) {
+          addModel(sourceModel, providerId, targetModel)
+        }
       }
     }
-  }
+  } else {
+    // 系统端点：从 endpointRouting 中查找
+    const routing = configSnapshot.endpointRouting?.[endpointId]
 
-  // 2. 从 customEndpoints 中提取路由规则（只提取 modelRoutes 的 key）
-  const customEndpoints = configSnapshot.customEndpoints ?? []
-  for (const customEndpoint of customEndpoints) {
-    if (!customEndpoint.routing?.modelRoutes) continue
-
-    for (const [sourceModel, target] of Object.entries(customEndpoint.routing.modelRoutes)) {
-      const [providerId, targetModel] = target.split(':')
-      if (providerId && targetModel) {
-        addModel(sourceModel, `custom:${customEndpoint.id}`, providerId, targetModel)
-      }
-    }
-  }
-
-  // 3. 如果没有任何路由规则，fallback 到 provider 的模型（兼容旧版本）
-  if (models.size === 0) {
-    for (const provider of configSnapshot.providers) {
-      if (provider.defaultModel) {
-        addModel(provider.defaultModel, 'fallback', provider.id, provider.defaultModel)
-      }
-      if (Array.isArray(provider.models)) {
-        for (const model of provider.models) {
-          addModel(model.id, 'fallback', provider.id, model.id)
+    if (routing?.modelRoutes) {
+      for (const [sourceModel, target] of Object.entries(routing.modelRoutes)) {
+        const [providerId, targetModel] = target.split(':')
+        if (providerId && targetModel) {
+          addModel(sourceModel, providerId, targetModel)
         }
       }
     }
@@ -109,7 +92,6 @@ export function buildModelsResponse(configSnapshot: GatewayConfig) {
     .map(({ entry, routedTo }) => {
       const metadata: Record<string, unknown> = {
         routes: routedTo.map((r) => ({
-          endpoint: r.endpoint,
           target: `${r.targetProvider}:${r.targetModel}`
         }))
       }

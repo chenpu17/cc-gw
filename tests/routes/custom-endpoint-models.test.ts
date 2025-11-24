@@ -118,11 +118,9 @@ describe('custom openai endpoint /v1/models', () => {
       expect(Array.isArray(gpt4o.metadata.routes)).toBe(true)
       expect(gpt4o.metadata.routes.length).toBeGreaterThan(0)
 
-      // 验证路由信息格式 - gpt-4o 可能从多个端点配置，检查是否包含 custom endpoint
-      const hasCustomRoute = gpt4o.metadata.routes.some(
-        (r: any) => r.endpoint === 'custom:openai-custom'
-      )
-      expect(hasCustomRoute).toBe(true)
+      // 验证路由信息格式
+      const route = gpt4o.metadata.routes[0]
+      expect(route.target).toBe('provider-a:gpt-4o')
     } finally {
       await app.close()
     }

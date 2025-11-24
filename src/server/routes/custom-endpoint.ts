@@ -358,7 +358,7 @@ async function registerModelsHandler(app: FastifyInstance, path: string, endpoin
     }
 
     const configSnapshot = getConfig()
-    const data = buildModelsResponse(configSnapshot)
+    const data = buildModelsResponse(configSnapshot, `custom:${endpointId}`)
 
     reply.header('content-type', 'application/json')
     return {
