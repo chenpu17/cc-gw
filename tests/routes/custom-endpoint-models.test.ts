@@ -15,7 +15,9 @@ const customEndpoint = {
   enabled: true,
   routing: {
     defaults,
-    modelRoutes: {}
+    modelRoutes: {
+      'gpt-4o': 'provider-a:gpt-4o'
+    }
   }
 }
 
@@ -107,7 +109,7 @@ describe('custom openai endpoint /v1/models', () => {
       const body = response.json()
       expect(body.object).toBe('list')
 
-      // gpt-4o 应该从 defaults.completion 中提取到
+      // gpt-4o 应该从 modelRoutes 中提取到
       const gpt4o = body.data.find((item: any) => item.id === 'gpt-4o')
       expect(gpt4o).toBeTruthy()
 
