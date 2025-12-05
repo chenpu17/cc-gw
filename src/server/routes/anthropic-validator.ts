@@ -26,7 +26,7 @@ export interface AnthropicValidationContext {
 }
 
 const ALLOWED_ROLES = new Set(['user', 'assistant'])
-const KNOWN_BLOCK_TYPES = new Set(['text', 'tool_use', 'tool_result', 'thinking', 'output_text', 'input_text', 'image'])
+const KNOWN_BLOCK_TYPES = new Set(['text', 'tool_use', 'tool_result', 'thinking', 'output_text', 'input_text', 'image', 'document'])
 const ALLOWED_TYPE_PREFIXES = ['input_', 'output_', 'data_', 'media_']
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -156,6 +156,24 @@ function validateContentBlock(
       }
       if (block.source.media_type !== undefined && typeof block.source.media_type !== 'string') {
         return fail('image 块 source.media_type 必须是字符串', appendPath(opts.path, 'source.media_type'), 'invalid_content_block')
+      }
+      break
+    }
+    case 'document': {
+      if (!block.source || !isPlainObject(block.source)) {
+        return fail('document 块必须包含 source 对象', appendPath(opts.path, 'source'), 'invalid_content_block')
+      }
+      if (typeof block.source.type !== 'string') {
+        return fail('document 块 source.type 必须是字符串', appendPath(opts.path, 'source.type'), 'invalid_content_block')
+      }
+      if (block.source.media_type !== undefined && typeof block.source.media_type !== 'string') {
+        return fail('document 块 source.media_type 必须是字符串', appendPath(opts.path, 'source.media_type'), 'invalid_content_block')
+      }
+      if (block.title !== undefined && typeof block.title !== 'string') {
+        return fail('document 块 title 必须是字符串', appendPath(opts.path, 'title'), 'invalid_content_block')
+      }
+      if (block.context !== undefined && typeof block.context !== 'string') {
+        return fail('document 块 context 必须是字符串', appendPath(opts.path, 'context'), 'invalid_content_block')
       }
       break
     }

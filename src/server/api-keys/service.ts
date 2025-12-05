@@ -363,6 +363,29 @@ export async function decryptApiKeyValue(value: string | null): Promise<string |
   return decryptSecret(value)
 }
 
+export async function revealApiKey(id: number): Promise<{ key: string } | null> {
+  const row = await getOne<{
+    id: number
+    key_ciphertext: string | null
+    is_wildcard: number
+  }>('SELECT id, key_ciphertext, is_wildcard FROM api_keys WHERE id = ?', [id])
+
+  if (!row) {
+    return null
+  }
+
+  if (row.is_wildcard) {
+    return null
+  }
+
+  const decrypted = await decryptSecret(row.key_ciphertext)
+  if (!decrypted) {
+    return null
+  }
+
+  return { key: decrypted }
+}
+
 export async function ensureWildcardMetadata(): Promise<void> {
   const wildcard = await fetchWildcard()
   if (!wildcard) {

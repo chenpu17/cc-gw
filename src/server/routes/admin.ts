@@ -31,7 +31,8 @@ import {
   setApiKeyEnabled,
   deleteApiKey,
   ensureWildcardMetadata,
-  decryptApiKeyValue
+  decryptApiKeyValue,
+  revealApiKey
 } from '../api-keys/service.js'
 import { createPasswordRecord, revokeAllSessions, sanitizeUsername } from '../security/webAuth.js'
 
@@ -1065,6 +1066,26 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         reply.code(400)
       }
       return { error: error instanceof Error ? error.message : 'Failed to delete API key' }
+    }
+  })
+
+  app.get('/api/keys/:id/reveal', async (request, reply) => {
+    const id = Number((request.params as any).id)
+    if (!Number.isFinite(id)) {
+      reply.code(400)
+      return { error: 'Invalid id' }
+    }
+
+    try {
+      const result = await revealApiKey(id)
+      if (!result) {
+        reply.code(404)
+        return { error: 'API key not found or cannot be revealed' }
+      }
+      return result
+    } catch (error) {
+      reply.code(500)
+      return { error: error instanceof Error ? error.message : 'Failed to reveal API key' }
     }
   })
 

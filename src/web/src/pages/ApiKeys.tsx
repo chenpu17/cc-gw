@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
-import { Key, Copy, Trash2, Plus, Check } from 'lucide-react'
+import { Key, Copy, Trash2, Plus, Check, Eye, EyeOff } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import { Loader } from '@/components/Loader'
@@ -34,6 +34,8 @@ export default function ApiKeysPage() {
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<NewApiKeyResponse | null>(null)
   const [isDeleting, setIsDeleting] = useState<number | null>(null)
   const [rangeDays, setRangeDays] = useState<number>(7)
+  const [revealedKeys, setRevealedKeys] = useState<Map<number, string>>(new Map())
+  const [isRevealing, setIsRevealing] = useState<number | null>(null)
 
   const keysQuery = useApiQuery<ApiKeySummary[], ApiError>(
     ['api-keys'],
@@ -125,9 +127,45 @@ export default function ApiKeysPage() {
     }
   }
 
-  const handleCopyKey = (key: string) => {
-    navigator.clipboard.writeText(key)
-    pushToast({ title: t('apiKeys.toast.keyCopied'), variant: 'success' })
+  const handleRevealKey = async (id: number) => {
+    if (revealedKeys.has(id)) {
+      return
+    }
+
+    setIsRevealing(id)
+    try {
+      const response = await apiClient.get<{ key: string }>(`/api/keys/${id}/reveal`)
+      setRevealedKeys((prev) => new Map(prev).set(id, response.data.key))
+    } catch (error: any) {
+      pushToast({
+        title: t('apiKeys.toast.revealFailure'),
+        description: error.response?.data?.error || error.message,
+        variant: 'error'
+      })
+    } finally {
+      setIsRevealing(null)
+    }
+  }
+
+  const handleHideKey = (id: number) => {
+    setRevealedKeys((prev) => {
+      const next = new Map(prev)
+      next.delete(id)
+      return next
+    })
+  }
+
+  const handleCopyKey = async (key: string) => {
+    try {
+      await navigator.clipboard.writeText(key)
+      pushToast({ title: t('apiKeys.toast.keyCopied'), variant: 'success' })
+    } catch (error) {
+      pushToast({
+        title: t('apiKeys.toast.copyFailure'),
+        description: error instanceof Error ? error.message : t('common.unknownError'),
+        variant: 'error'
+      })
+    }
   }
 
   const formatDate = (isoString: string | null) => {
@@ -268,6 +306,8 @@ export default function ApiKeysPage() {
           <div className="grid gap-4">
             {keys.map((key) => {
               const totalTokens = (key.totalInputTokens + key.totalOutputTokens).toLocaleString()
+              const revealedKey = revealedKeys.get(key.id)
+              const isKeyRevealing = isRevealing === key.id
               return (
                 <div key={key.id} className={cn(surfaceCardClass, 'space-y-4')}>
                   <div className="flex flex-wrap items-start justify-between gap-4">
@@ -283,9 +323,53 @@ export default function ApiKeysPage() {
                           {key.enabled ? t('apiKeys.status.enabled') : t('apiKeys.status.disabled')}
                         </StatusBadge>
                       </div>
-                      <code className="inline-flex items-center rounded-2xl bg-slate-900/90 px-4 py-2 font-mono text-sm text-slate-50 shadow-inner shadow-slate-900/30 dark:bg-slate-800/80">
-                        {key.isWildcard ? t('apiKeys.wildcard') : key.maskedKey ?? '********'}
-                      </code>
+                      <div className="flex items-center gap-2">
+                        <code className="inline-flex items-center rounded-2xl bg-slate-900/90 px-4 py-2 font-mono text-sm text-slate-50 shadow-inner shadow-slate-900/30 dark:bg-slate-800/80">
+                          {key.isWildcard
+                            ? t('apiKeys.wildcard')
+                            : revealedKey ?? key.maskedKey ?? '********'}
+                        </code>
+                        {!key.isWildcard && (
+                          <div className="flex items-center gap-1">
+                            {revealedKey ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleCopyKey(revealedKey)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/80 dark:text-slate-300 dark:hover:bg-slate-700/80"
+                                  aria-label={t('common.actions.copy')}
+                                  title={t('common.actions.copy')}
+                                >
+                                  <Copy className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleHideKey(key.id)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/80 dark:text-slate-300 dark:hover:bg-slate-700/80"
+                                  aria-label={t('apiKeys.actions.hide')}
+                                  title={t('apiKeys.actions.hide')}
+                                >
+                                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => void handleRevealKey(key.id)}
+                                disabled={isKeyRevealing}
+                                className={cn(
+                                  'inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/80 dark:text-slate-300 dark:hover:bg-slate-700/80',
+                                  isKeyRevealing && 'cursor-wait opacity-50'
+                                )}
+                                aria-label={t('apiKeys.actions.reveal')}
+                                title={t('apiKeys.actions.reveal')}
+                              >
+                                <Eye className="h-4 w-4" aria-hidden="true" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       {key.isWildcard ? (
                         <p className={cn(mutedTextClass, 'text-sm text-purple-600 dark:text-purple-200')}>
                           {t('apiKeys.wildcardHint')}
@@ -428,7 +512,7 @@ export default function ApiKeysPage() {
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => handleCopyKey(newlyCreatedKey.key)}
+                onClick={() => void handleCopyKey(newlyCreatedKey.key)}
                 className={cn(primaryButtonClass, 'h-10 rounded-full px-4')}
               >
                 <Copy className="h-4 w-4" aria-hidden="true" />

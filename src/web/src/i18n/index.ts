@@ -71,7 +71,8 @@ const resources = {
           ms: 'ms',
           token: 'Tokens',
           msPerToken: 'ms/Token'
-        }
+        },
+        unknownError: '未知错误'
       },
       login: {
         title: '登录 cc-gw 控制台',
@@ -952,7 +953,7 @@ const resources = {
         keyDescriptionPlaceholder: '例如：仅供内部测试环境使用',
         keyNamePlaceholder: '输入密钥名称',
         keyCreated: 'API 密钥已创建',
-        saveKeyWarning: '这是唯一一次看到完整密钥的机会，请妥善保存！',
+        saveKeyWarning: '请妥善保管此密钥。您也可以随时通过密钥列表查看完整密钥。',
         wildcard: '通配符',
         wildcardHint: '启用该密钥后，任何自定义密钥与空密钥都可以通过认证；如需限制访问，可随时禁用该密钥。',
         status: {
@@ -962,7 +963,9 @@ const resources = {
         actions: {
           enable: '启用',
           disable: '禁用',
-          delete: '删除'
+          delete: '删除',
+          reveal: '显示完整密钥',
+          hide: '隐藏密钥'
         },
         created: '创建时间',
         lastUsed: '最后使用',
@@ -1008,7 +1011,9 @@ const resources = {
           keyCopied: '密钥已复制到剪贴板',
           createFailure: '创建失败：{{message}}',
           updateFailure: '更新失败：{{message}}',
-          deleteFailure: '删除失败：{{message}}'
+          deleteFailure: '删除失败：{{message}}',
+          revealFailure: '获取密钥失败',
+          copyFailure: '复制失败'
         }
       },
       endpoints: {
@@ -1141,7 +1146,8 @@ const resources = {
           ms: 'ms',
           token: 'tokens',
           msPerToken: 'ms/token'
-        }
+        },
+        unknownError: 'Unknown error'
       },
       login: {
         title: 'Sign in to cc-gw',
@@ -1960,7 +1966,7 @@ const resources = {
         keyDescriptionPlaceholder: 'e.g. Internal staging access only',
         keyNamePlaceholder: 'Enter key name',
         keyCreated: 'API Key Created',
-        saveKeyWarning: 'This is the only time you\'ll see the full key. Save it securely!',
+        saveKeyWarning: 'Keep this key secure. You can also reveal the full key anytime from the key list.',
         wildcard: 'Any Key',
         wildcardHint: 'When enabled, any custom key — including an empty key — is accepted. Disable this key to enforce strict authentication.',
         status: {
@@ -1970,7 +1976,9 @@ const resources = {
         actions: {
           enable: 'Enable',
           disable: 'Disable',
-          delete: 'Delete'
+          delete: 'Delete',
+          reveal: 'Reveal key',
+          hide: 'Hide key'
         },
         created: 'Created',
         lastUsed: 'Last Used',
@@ -2016,7 +2024,9 @@ const resources = {
           keyCopied: 'Key copied to clipboard',
           createFailure: 'Failed to create: {{message}}',
           updateFailure: 'Failed to update: {{message}}',
-          deleteFailure: 'Failed to delete: {{message}}'
+          deleteFailure: 'Failed to delete: {{message}}',
+          revealFailure: 'Failed to reveal key',
+          copyFailure: 'Failed to copy'
         }
       },
 
