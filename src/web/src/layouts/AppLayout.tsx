@@ -33,17 +33,24 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             className={({ isActive }) =>
               cn(
-                'group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               )
             }
             end={item.to === '/'}
             title={t(item.labelKey)}
           >
-            <Icon className="h-4 w-4" aria-hidden="true" />
-            <span>{t(item.labelKey)}</span>
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-primary" />
+                )}
+                <Icon className={cn('h-4 w-4 transition-colors', isActive ? 'text-primary' : '')} aria-hidden="true" />
+                <span>{t(item.labelKey)}</span>
+              </>
+            )}
           </NavLink>
         )
       })}
@@ -65,16 +72,23 @@ function SidebarNavCompact({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             className={({ isActive }) =>
               cn(
-                'group relative flex items-center justify-center rounded-md p-2 transition-colors',
+                'group relative flex items-center justify-center rounded-lg p-2.5 transition-all duration-200',
                 isActive
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               )
             }
             end={item.to === '/'}
             title={t(item.labelKey)}
           >
-            <Icon className="h-5 w-5" aria-hidden="true" />
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-primary" />
+                )}
+                <Icon className={cn('h-5 w-5', isActive ? 'text-primary' : '')} aria-hidden="true" />
+              </>
+            )}
           </NavLink>
         )
       })}
@@ -113,9 +127,9 @@ export function AppLayout() {
       </a>
 
       {/* Desktop Sidebar - Compact */}
-      <aside className="hidden w-14 flex-col border-r bg-card lg:flex xl:hidden">
+      <aside className="hidden w-16 flex-col border-r bg-card lg:flex xl:hidden">
         <div className="flex h-14 items-center justify-center border-b">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-xs font-bold text-primary-foreground shadow-sm">
             GW
           </div>
         </div>
@@ -126,11 +140,11 @@ export function AppLayout() {
 
       {/* Desktop Sidebar - Full */}
       <aside className="hidden w-56 flex-col border-r bg-card xl:flex">
-        <div className="flex h-14 items-center gap-2 border-b px-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+        <div className="flex h-14 items-center gap-3 border-b px-4">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-xs font-bold text-primary-foreground shadow-sm">
             GW
           </div>
-          <span className="font-semibold">{t('app.title')}</span>
+          <span className="font-semibold text-foreground">{t('app.title')}</span>
         </div>
         <div className="flex-1 overflow-y-auto p-3">
           <SidebarNav />
@@ -184,7 +198,7 @@ export function AppLayout() {
           tabIndex={-1}
           className="flex-1 overflow-y-auto"
         >
-          <div className="container mx-auto max-w-7xl px-4 py-6 lg:px-8 lg:py-8">
+          <div className="container mx-auto max-w-7xl px-4 py-6 lg:px-8 lg:py-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
             <Outlet />
           </div>
         </main>

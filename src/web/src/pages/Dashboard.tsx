@@ -478,40 +478,46 @@ export default function DashboardPage() {
       {/* Statistics Cards */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
-          icon={<Activity className="h-4 w-4" />}
+          icon={<Activity className="h-5 w-5" />}
           title={t('dashboard.cards.todayRequests')}
           value={overview?.today.requests ?? 0}
           suffix={t('common.units.request')}
+          color="blue"
         />
         <StatCard
-          icon={<TrendingUp className="h-4 w-4" />}
+          icon={<TrendingUp className="h-5 w-5" />}
           title={t('dashboard.cards.todayInput')}
           value={overview?.today.inputTokens ?? 0}
           suffix={t('common.units.token')}
+          color="emerald"
         />
         <StatCard
-          icon={<Activity className="h-4 w-4" />}
+          icon={<Activity className="h-5 w-5" />}
           title={t('dashboard.cards.todayCacheRead')}
           value={overview?.today.cacheReadTokens ?? 0}
           suffix={t('common.units.token')}
+          color="violet"
         />
         <StatCard
-          icon={<Activity className="h-4 w-4" />}
+          icon={<Activity className="h-5 w-5" />}
           title={t('dashboard.cards.todayCacheCreation')}
           value={overview?.today.cacheCreationTokens ?? 0}
           suffix={t('common.units.token')}
+          color="rose"
         />
         <StatCard
-          icon={<BarChart3 className="h-4 w-4" />}
+          icon={<BarChart3 className="h-5 w-5" />}
           title={t('dashboard.cards.todayOutput')}
           value={overview?.today.outputTokens ?? 0}
           suffix={t('common.units.token')}
+          color="amber"
         />
         <StatCard
-          icon={<Timer className="h-4 w-4" />}
+          icon={<Timer className="h-5 w-5" />}
           title={t('dashboard.cards.avgLatency')}
           value={overview?.today.avgLatencyMs ?? 0}
           suffix={t('common.units.ms')}
+          color="cyan"
         />
       </div>
 
@@ -561,31 +567,69 @@ export default function DashboardPage() {
   )
 }
 
+type StatCardColor = 'blue' | 'emerald' | 'amber' | 'violet' | 'rose' | 'cyan'
+
+const colorConfig: Record<StatCardColor, { gradient: string; iconBg: string; iconColor: string }> = {
+  blue: {
+    gradient: 'bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent',
+    iconBg: 'bg-blue-500/15',
+    iconColor: 'text-blue-600 dark:text-blue-400'
+  },
+  emerald: {
+    gradient: 'bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent',
+    iconBg: 'bg-emerald-500/15',
+    iconColor: 'text-emerald-600 dark:text-emerald-400'
+  },
+  amber: {
+    gradient: 'bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent',
+    iconBg: 'bg-amber-500/15',
+    iconColor: 'text-amber-600 dark:text-amber-400'
+  },
+  violet: {
+    gradient: 'bg-gradient-to-br from-violet-500/10 via-violet-500/5 to-transparent',
+    iconBg: 'bg-violet-500/15',
+    iconColor: 'text-violet-600 dark:text-violet-400'
+  },
+  rose: {
+    gradient: 'bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent',
+    iconBg: 'bg-rose-500/15',
+    iconColor: 'text-rose-600 dark:text-rose-400'
+  },
+  cyan: {
+    gradient: 'bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent',
+    iconBg: 'bg-cyan-500/15',
+    iconColor: 'text-cyan-600 dark:text-cyan-400'
+  }
+}
+
 function StatCard({
   icon,
   title,
   value,
-  suffix
+  suffix,
+  color = 'blue'
 }: {
   icon?: React.ReactNode
   title: string
   value: number
   suffix?: string
+  color?: StatCardColor
 }) {
+  const config = colorConfig[color]
   return (
-    <Card>
-      <CardContent className="pt-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</span>
+    <Card variant="interactive" className={cn('overflow-hidden', config.gradient)}>
+      <CardContent className="pt-5">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</span>
           {icon && (
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl', config.iconBg, config.iconColor)}>
               {icon}
             </div>
           )}
         </div>
-        <p className="text-2xl font-semibold">
+        <p className="text-3xl font-bold tracking-tight">
           {value.toLocaleString()}
-          {suffix && <span className="ml-1 text-sm font-normal text-muted-foreground">{suffix}</span>}
+          {suffix && <span className="ml-1.5 text-sm font-medium text-muted-foreground">{suffix}</span>}
         </p>
       </CardContent>
     </Card>

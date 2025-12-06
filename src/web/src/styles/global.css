@@ -4,61 +4,91 @@
 
 @layer base {
   :root {
-    /* 柔和的浅色主题 - 使用温暖的灰色调 */
-    --background: 220 20% 97%;
-    --foreground: 220 20% 25%;
+    /* 现代简洁的浅色主题 - 蓝紫色调 */
+    --background: 220 25% 97%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 25%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 25%;
-    --primary: 221 83% 53%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 92%;
-    --secondary-foreground: 220 20% 35%;
-    --muted: 220 14% 94%;
-    --muted-foreground: 220 10% 50%;
-    --accent: 221 83% 95%;
-    --accent-foreground: 221 83% 40%;
-    --destructive: 0 72% 51%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 239 84% 97%;
+    --accent-foreground: 239 84% 50%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 88%;
-    --input: 220 13% 88%;
-    --ring: 221 83% 53%;
-    --radius: 0.5rem;
-    --chart-1: 221 83% 53%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 239 84% 67%;
+    --radius: 0.625rem;
+
+    /* 图表颜色 */
+    --chart-1: 239 84% 67%;
     --chart-2: 142 71% 45%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 67% 55%;
     --chart-5: 340 75% 55%;
+
+    /* 扩展颜色变量 */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
+    /* 阴影变量 */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   }
 
   .dark,
   [data-theme="dark"] {
-    /* 柔和的深色主题 - 使用温暖的深灰色调 */
-    --background: 224 20% 12%;
-    --foreground: 220 14% 90%;
-    --card: 224 20% 15%;
-    --card-foreground: 220 14% 90%;
-    --popover: 224 20% 15%;
-    --popover-foreground: 220 14% 90%;
-    --primary: 221 83% 58%;
+    /* 现代深色主题 - 深蓝灰色调 */
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+    --card: 224 71% 7%;
+    --card-foreground: 213 31% 91%;
+    --popover: 224 71% 7%;
+    --popover-foreground: 213 31% 91%;
+    --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 224 14% 22%;
-    --secondary-foreground: 220 14% 85%;
-    --muted: 224 14% 20%;
-    --muted-foreground: 220 10% 60%;
-    --accent: 221 40% 25%;
-    --accent-foreground: 221 83% 70%;
-    --destructive: 0 62% 45%;
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 213 31% 91%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 239 40% 20%;
+    --accent-foreground: 239 84% 75%;
+    --destructive: 0 63% 31%;
     --destructive-foreground: 0 0% 100%;
-    --border: 224 14% 25%;
-    --input: 224 14% 25%;
-    --ring: 221 83% 58%;
-    --chart-1: 221 83% 58%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+    --ring: 239 84% 67%;
+    --chart-1: 239 84% 67%;
     --chart-2: 142 71% 50%;
     --chart-3: 38 92% 55%;
     --chart-4: 280 67% 60%;
     --chart-5: 340 75% 60%;
+
+    /* 扩展颜色变量 */
+    --success: 142 71% 50%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 55%;
+    --info-foreground: 0 0% 100%;
+
+    /* 深色模式阴影 */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
   }
 }
 
@@ -91,22 +121,25 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-muted/50;
-  border-radius: 4px;
+  @apply bg-transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/30;
-  border-radius: 4px;
+  @apply bg-muted-foreground/20 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/50;
+  @apply bg-muted-foreground/40;
 }
 
 /* Focus styles */
 *:focus-visible {
   @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+}
+
+/* Selection colors */
+::selection {
+  @apply bg-primary/20 text-foreground;
 }
 
 /* Loading spinner */
@@ -120,9 +153,64 @@
   animation: spin 1s linear infinite;
 }
 
-/* Selection colors */
-::selection {
-  @apply bg-primary/20 text-foreground;
+/* Slide in animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Scale in animation */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out;
+}
+
+/* Pulse animation for active states */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
 }
 
 /* Table container for horizontal scrolling */
@@ -133,17 +221,15 @@
 }
 
 .table-container::-webkit-scrollbar {
-  height: 8px;
+  height: 6px;
 }
 
 .table-container::-webkit-scrollbar-track {
-  @apply bg-muted/30;
-  border-radius: 4px;
+  @apply bg-transparent;
 }
 
 .table-container::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/20;
-  border-radius: 4px;
+  @apply bg-muted-foreground/20 rounded-full;
 }
 
 .table-container::-webkit-scrollbar-thumb:hover {
@@ -166,4 +252,64 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Gradient backgrounds for stat cards */
+@layer utilities {
+  .stat-gradient-blue {
+    @apply bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent;
+  }
+
+  .stat-gradient-emerald {
+    @apply bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent;
+  }
+
+  .stat-gradient-amber {
+    @apply bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent;
+  }
+
+  .stat-gradient-violet {
+    @apply bg-gradient-to-br from-violet-500/10 via-violet-500/5 to-transparent;
+  }
+
+  .stat-gradient-rose {
+    @apply bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent;
+  }
+
+  .stat-gradient-cyan {
+    @apply bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent;
+  }
+
+  /* Glass effect */
+  .glass {
+    @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm;
+  }
+
+  /* Glow effects */
+  .glow-primary {
+    box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.3);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 20px -5px hsl(var(--success) / 0.3);
+  }
+}
+
+/* Card hover effects */
+.card-hover {
+  @apply transition-all duration-200;
+}
+
+.card-hover:hover {
+  @apply shadow-md -translate-y-0.5;
+}
+
+/* Nav item active indicator */
+.nav-active-indicator {
+  @apply absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-primary;
+}
+
+/* Smooth transitions for theme switching */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
