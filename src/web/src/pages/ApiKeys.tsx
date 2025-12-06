@@ -8,10 +8,22 @@ import { useToast } from '@/providers/ToastProvider'
 import { Loader } from '@/components/Loader'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
-import { FormField, Input, Button, StatusBadge } from '@/components'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
 import { apiClient, type ApiError } from '@/services/api'
-import { cn } from '@/utils/cn'
-import { mutedTextClass, primaryButtonClass, subtleButtonClass, surfaceCardClass, loadingStateClass, emptyStateClass, chartContainerClass } from '@/styles/theme'
+import { cn } from '@/lib/utils'
 import type {
   ApiKeySummary,
   NewApiKeyResponse,
@@ -56,9 +68,9 @@ export default function ApiKeysPage() {
   const overview = overviewQuery.data
   const usage = usageQuery.data ?? []
   const hasWildcard = keys.some((item) => item.isWildcard)
-  const totalKeysValue = overview ? overview.totalKeys.toLocaleString() : '–'
-  const enabledKeysValue = overview ? overview.enabledKeys.toLocaleString() : '–'
-  const activeKeysValue = overview ? overview.activeKeys.toLocaleString() : '–'
+  const totalKeysValue = overview ? overview.totalKeys.toLocaleString() : '-'
+  const enabledKeysValue = overview ? overview.enabledKeys.toLocaleString() : '-'
+  const activeKeysValue = overview ? overview.activeKeys.toLocaleString() : '-'
 
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) {
@@ -185,7 +197,7 @@ export default function ApiKeysPage() {
           name: t('apiKeys.analytics.requestsSeries'),
           type: 'bar',
           data: usage.map((item) => item.requests),
-          itemStyle: { color: '#2563eb' }
+          itemStyle: { color: 'hsl(var(--primary))' }
         }
       ]
     }
@@ -225,19 +237,14 @@ export default function ApiKeysPage() {
   }
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <PageHeader
-        icon={<Key className="h-6 w-6" aria-hidden="true" />}
+        icon={<Key className="h-5 w-5" aria-hidden="true" />}
         title={t('apiKeys.title')}
         description={t('apiKeys.description')}
         actions={
-          <Button
-            onClick={() => setIsCreateDialogOpen(true)}
-            variant="primary"
-            size="lg"
-            icon={<Plus className="h-4 w-4" aria-hidden="true" />}
-            className="rounded-full"
-          >
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             {t('apiKeys.createNew')}
           </Button>
         }
@@ -247,7 +254,7 @@ export default function ApiKeysPage() {
         title={t('apiKeys.analytics.title')}
         description={t('apiKeys.analytics.description', { days: rangeDays })}
         actions={
-          <div className="flex items-center gap-2 rounded-full bg-white/70 px-2 py-1 shadow-sm shadow-slate-200/60 ring-1 ring-slate-200/60 backdrop-blur dark:bg-slate-900/70 dark:ring-slate-700/60">
+          <div className="flex items-center gap-1 rounded-lg border p-1">
             {RANGE_OPTIONS.map((option) => {
               const active = rangeDays === option.value
               return (
@@ -256,10 +263,10 @@ export default function ApiKeysPage() {
                   type="button"
                   onClick={() => setRangeDays(option.value)}
                   className={cn(
-                    'inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition',
+                    'inline-flex h-7 items-center rounded-md px-3 text-xs font-medium transition-colors',
                     active
-                      ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
-                      : 'text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-slate-800/60'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-muted'
                   )}
                 >
                   {t(option.labelKey)}
@@ -268,39 +275,39 @@ export default function ApiKeysPage() {
             })}
           </div>
         }
-        contentClassName="gap-6"
       >
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <MetricCard label={t('apiKeys.analytics.cards.total')} value={totalKeysValue} />
-          <MetricCard label={t('apiKeys.analytics.cards.enabled')} value={enabledKeysValue} />
-          <MetricCard label={t('apiKeys.analytics.cards.active', { days: rangeDays })} value={activeKeysValue} />
-        </div>
-        <div className="grid gap-6 lg:grid-cols-2">
-          <AnalyticsChartCard
-            title={t('apiKeys.analytics.charts.requests')}
-            loading={usageQuery.isLoading}
-            empty={usage.length === 0}
-            emptyText={t('apiKeys.analytics.empty')}
-            option={requestsChartOption}
-          />
-          <AnalyticsChartCard
-            title={t('apiKeys.analytics.charts.tokens')}
-            loading={usageQuery.isLoading}
-            empty={usage.length === 0}
-            emptyText={t('apiKeys.analytics.empty')}
-            option={tokensChartOption}
-          />
+        <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <MetricCard label={t('apiKeys.analytics.cards.total')} value={totalKeysValue} />
+            <MetricCard label={t('apiKeys.analytics.cards.enabled')} value={enabledKeysValue} />
+            <MetricCard label={t('apiKeys.analytics.cards.active', { days: rangeDays })} value={activeKeysValue} />
+          </div>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <AnalyticsChartCard
+              title={t('apiKeys.analytics.charts.requests')}
+              loading={usageQuery.isLoading}
+              empty={usage.length === 0}
+              emptyText={t('apiKeys.analytics.empty')}
+              option={requestsChartOption}
+            />
+            <AnalyticsChartCard
+              title={t('apiKeys.analytics.charts.tokens')}
+              loading={usageQuery.isLoading}
+              empty={usage.length === 0}
+              emptyText={t('apiKeys.analytics.empty')}
+              option={tokensChartOption}
+            />
+          </div>
         </div>
       </PageSection>
 
       <PageSection
         title={t('apiKeys.list.title')}
         description={hasWildcard ? t('apiKeys.wildcardHint') : undefined}
-        contentClassName="gap-4"
       >
         {keys.length === 0 ? (
-          <div className={cn(surfaceCardClass, 'p-6 text-center')}>
-            <p className={cn(mutedTextClass, 'text-sm')}>{t('apiKeys.list.empty')}</p>
+          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
+            <p className="text-sm text-muted-foreground">{t('apiKeys.list.empty')}</p>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -309,236 +316,227 @@ export default function ApiKeysPage() {
               const revealedKey = revealedKeys.get(key.id)
               const isKeyRevealing = isRevealing === key.id
               return (
-                <div key={key.id} className={cn(surfaceCardClass, 'space-y-4')}>
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{key.name}</h3>
+                <Card key={key.id}>
+                  <CardContent className="space-y-4 pt-4">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-semibold">{key.name}</h3>
+                          {key.isWildcard && (
+                            <Badge variant="secondary">{t('apiKeys.wildcard')}</Badge>
+                          )}
+                          <Badge variant={key.enabled ? 'default' : 'outline'}>
+                            {key.enabled ? t('apiKeys.status.enabled') : t('apiKeys.status.disabled')}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <code className="rounded-md bg-muted px-3 py-1.5 font-mono text-sm">
+                            {key.isWildcard
+                              ? t('apiKeys.wildcard')
+                              : revealedKey ?? key.maskedKey ?? '********'}
+                          </code>
+                          {!key.isWildcard && (
+                            <div className="flex items-center gap-1">
+                              {revealedKey ? (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => void handleCopyKey(revealedKey)}
+                                    aria-label={t('common.actions.copy')}
+                                    title={t('common.actions.copy')}
+                                  >
+                                    <Copy className="h-4 w-4" aria-hidden="true" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleHideKey(key.id)}
+                                    aria-label={t('apiKeys.actions.hide')}
+                                    title={t('apiKeys.actions.hide')}
+                                  >
+                                    <EyeOff className="h-4 w-4" aria-hidden="true" />
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => void handleRevealKey(key.id)}
+                                  disabled={isKeyRevealing}
+                                  aria-label={t('apiKeys.actions.reveal')}
+                                  title={t('apiKeys.actions.reveal')}
+                                >
+                                  <Eye className="h-4 w-4" aria-hidden="true" />
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         {key.isWildcard ? (
-                          <span className="inline-flex items-center rounded-full bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-600 dark:bg-purple-500/20 dark:text-purple-200">
-                            {t('apiKeys.wildcard')}
-                          </span>
+                          <p className="text-sm text-muted-foreground">
+                            {t('apiKeys.wildcardHint')}
+                          </p>
+                        ) : key.description ? (
+                          <p className="whitespace-pre-wrap text-sm text-muted-foreground">{key.description}</p>
                         ) : null}
-                        <StatusBadge variant={key.enabled ? 'success' : 'info'}>
-                          {key.enabled ? t('apiKeys.status.enabled') : t('apiKeys.status.disabled')}
-                        </StatusBadge>
+                        <div className="grid gap-3 text-sm sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {t('apiKeys.created')}
+                            </span>
+                            <p className="font-medium">{formatDate(key.createdAt)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {t('apiKeys.lastUsed')}
+                            </span>
+                            <p className="font-medium">{formatDate(key.lastUsedAt)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {t('apiKeys.requestCount')}
+                            </span>
+                            <p className="font-medium">{key.requestCount.toLocaleString()}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {t('apiKeys.totalTokens')}
+                            </span>
+                            <p className="font-medium">{totalTokens}</p>
+                          </div>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <code className="inline-flex items-center rounded-2xl bg-slate-900/90 px-4 py-2 font-mono text-sm text-slate-50 shadow-inner shadow-slate-900/30 dark:bg-slate-800/80">
-                          {key.isWildcard
-                            ? t('apiKeys.wildcard')
-                            : revealedKey ?? key.maskedKey ?? '********'}
-                        </code>
-                        {!key.isWildcard && (
-                          <div className="flex items-center gap-1">
-                            {revealedKey ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleCopyKey(revealedKey)}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/80 dark:text-slate-300 dark:hover:bg-slate-700/80"
-                                  aria-label={t('common.actions.copy')}
-                                  title={t('common.actions.copy')}
-                                >
-                                  <Copy className="h-4 w-4" aria-hidden="true" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleHideKey(key.id)}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/80 dark:text-slate-300 dark:hover:bg-slate-700/80"
-                                  aria-label={t('apiKeys.actions.hide')}
-                                  title={t('apiKeys.actions.hide')}
-                                >
-                                  <EyeOff className="h-4 w-4" aria-hidden="true" />
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => void handleRevealKey(key.id)}
-                                disabled={isKeyRevealing}
-                                className={cn(
-                                  'inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200/80 dark:text-slate-300 dark:hover:bg-slate-700/80',
-                                  isKeyRevealing && 'cursor-wait opacity-50'
-                                )}
-                                aria-label={t('apiKeys.actions.reveal')}
-                                title={t('apiKeys.actions.reveal')}
-                              >
-                                <Eye className="h-4 w-4" aria-hidden="true" />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {key.isWildcard ? (
-                        <p className={cn(mutedTextClass, 'text-sm text-purple-600 dark:text-purple-200')}>
-                          {t('apiKeys.wildcardHint')}
-                        </p>
-                      ) : key.description ? (
-                        <p className={cn(mutedTextClass, 'whitespace-pre-wrap text-sm')}>{key.description}</p>
-                      ) : null}
-                      <div className="grid gap-3 text-sm sm:grid-cols-2">
-                        <div className={cn(mutedTextClass, 'flex flex-col gap-1')}>
-                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {t('apiKeys.created')}
-                          </span>
-                          <span className="font-medium text-slate-800 dark:text-slate-100">{formatDate(key.createdAt)}</span>
-                        </div>
-                        <div className={cn(mutedTextClass, 'flex flex-col gap-1')}>
-                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {t('apiKeys.lastUsed')}
-                          </span>
-                          <span className="font-medium text-slate-800 dark:text-slate-100">{formatDate(key.lastUsedAt)}</span>
-                        </div>
-                        <div className={cn(mutedTextClass, 'flex flex-col gap-1')}>
-                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {t('apiKeys.requestCount')}
-                          </span>
-                          <span className="font-medium text-slate-800 dark:text-slate-100">
-                            {key.requestCount.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className={cn(mutedTextClass, 'flex flex-col gap-1')}>
-                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {t('apiKeys.totalTokens')}
-                          </span>
-                          <span className="font-medium text-slate-800 dark:text-slate-100">{totalTokens}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleEnabled(key.id, key.enabled)}
-                        className={cn(
-                          'inline-flex h-9 items-center rounded-full px-4 text-sm font-semibold transition',
-                          key.enabled
-                            ? 'bg-slate-200/80 text-slate-700 hover:bg-slate-300 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700/70'
-                            : 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30 hover:bg-emerald-500/90'
-                        )}
-                      >
-                        {key.enabled ? t('apiKeys.actions.disable') : t('apiKeys.actions.enable')}
-                      </button>
-                      {!key.isWildcard ? (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteKey(key.id)}
-                          disabled={isDeleting === key.id}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-red-500 transition hover:bg-red-500/10 disabled:opacity-50"
-                          aria-label={t('apiKeys.actions.delete')}
+                        <Button
+                          variant={key.enabled ? 'outline' : 'default'}
+                          size="sm"
+                          onClick={() => handleToggleEnabled(key.id, key.enabled)}
                         >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </button>
-                      ) : null}
+                          {key.enabled ? t('apiKeys.actions.disable') : t('apiKeys.actions.enable')}
+                        </Button>
+                        {!key.isWildcard && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => handleDeleteKey(key.id)}
+                            disabled={isDeleting === key.id}
+                            aria-label={t('apiKeys.actions.delete')}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               )
             })}
           </div>
         )}
       </PageSection>
 
-      {isCreateDialogOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className={cn(surfaceCardClass, 'w-full max-w-md space-y-5 p-6 shadow-xl shadow-slate-900/30 dark:shadow-black/40')}>
+      {/* Create Key Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('apiKeys.createNew')}</DialogTitle>
+            <DialogDescription>{t('apiKeys.createDescription')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
             <div className="space-y-2">
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">{t('apiKeys.createNew')}</h2>
-              <p className={cn(mutedTextClass, 'text-sm')}>{t('apiKeys.createDescription')}</p>
-            </div>
-            <div className="space-y-4">
-              <FormField label={t('apiKeys.keyNamePlaceholder')} required>
-                <Input
-                  value={newKeyName}
-                  onChange={(event) => setNewKeyName(event.target.value)}
-                  placeholder={t('apiKeys.keyNamePlaceholder')}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      void handleCreateKey()
-                    }
-                  }}
-                />
-              </FormField>
-              <FormField label={t('apiKeys.descriptionLabel')}>
-                <textarea
-                  value={newKeyDescription}
-                  onChange={(event) => setNewKeyDescription(event.target.value)}
-                  placeholder={t('apiKeys.keyDescriptionPlaceholder')}
-                  className="w-full rounded-2xl border border-slate-200/50 bg-white/90 px-4 py-3 text-sm text-slate-800 shadow-sm shadow-slate-200/30 transition-all duration-200 focus:border-blue-400/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/20 focus:shadow-md focus:shadow-blue-200/40 dark:border-slate-700/50 dark:bg-slate-900/90 dark:text-slate-200 dark:shadow-lg dark:shadow-slate-900/30 dark:focus:border-blue-400/70 dark:focus:ring-blue-400/20 min-h-[96px] resize-none"
-                />
-              </FormField>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                onClick={() => {
-                  setIsCreateDialogOpen(false)
-                  setNewKeyName('')
-                  setNewKeyDescription('')
+              <Label htmlFor="keyName">{t('apiKeys.keyNamePlaceholder')} *</Label>
+              <Input
+                id="keyName"
+                value={newKeyName}
+                onChange={(event) => setNewKeyName(event.target.value)}
+                placeholder={t('apiKeys.keyNamePlaceholder')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void handleCreateKey()
+                  }
                 }}
-                variant="subtle"
-                className="rounded-full"
-              >
-                {t('common.actions.cancel')}
-              </Button>
-              <Button
-                onClick={() => void handleCreateKey()}
-                variant="primary"
-                className="rounded-full"
-              >
-                {t('apiKeys.createAction')}
-              </Button>
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="keyDescription">{t('apiKeys.descriptionLabel')}</Label>
+              <Textarea
+                id="keyDescription"
+                value={newKeyDescription}
+                onChange={(event) => setNewKeyDescription(event.target.value)}
+                placeholder={t('apiKeys.keyDescriptionPlaceholder')}
+                rows={3}
+              />
             </div>
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCreateDialogOpen(false)
+                setNewKeyName('')
+                setNewKeyDescription('')
+              }}
+            >
+              {t('common.actions.cancel')}
+            </Button>
+            <Button onClick={() => void handleCreateKey()}>
+              {t('apiKeys.createAction')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {newlyCreatedKey && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className={cn(surfaceCardClass, 'w-full max-w-md space-y-5 p-6 shadow-xl shadow-slate-900/30 dark:shadow-black/40')}>
+      {/* Key Created Success Dialog */}
+      <Dialog open={!!newlyCreatedKey} onOpenChange={() => setNewlyCreatedKey(null)}>
+        <DialogContent>
+          <DialogHeader>
             <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-500/20 text-emerald-600 dark:bg-emerald-500/30 dark:text-emerald-200">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
                 <Check className="h-5 w-5" aria-hidden="true" />
               </div>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">{t('apiKeys.keyCreated')}</h2>
+              <DialogTitle>{t('apiKeys.keyCreated')}</DialogTitle>
             </div>
-            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">{t('apiKeys.saveKeyWarning')}</p>
-            <div className="rounded-2xl bg-slate-900/95 px-4 py-3 font-mono text-sm text-slate-50 shadow-inner shadow-slate-900/40 dark:bg-slate-800/90">
-              {newlyCreatedKey.key}
-            </div>
-            {newlyCreatedKey.description ? (
-              <p className={cn(mutedTextClass, 'whitespace-pre-wrap text-sm')}>{newlyCreatedKey.description}</p>
-            ) : null}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => void handleCopyKey(newlyCreatedKey.key)}
-                className={cn(primaryButtonClass, 'h-10 rounded-full px-4')}
-              >
-                <Copy className="h-4 w-4" aria-hidden="true" />
-                {t('common.actions.copy')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setNewlyCreatedKey(null)}
-                className={cn(subtleButtonClass, 'h-10 rounded-full px-4')}
-              >
-                {t('common.actions.close')}
-              </button>
-            </div>
+          </DialogHeader>
+          <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+            {t('apiKeys.saveKeyWarning')}
+          </p>
+          <div className="rounded-md bg-muted px-4 py-3 font-mono text-sm">
+            {newlyCreatedKey?.key}
           </div>
-        </div>
-      )}
+          {newlyCreatedKey?.description && (
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+              {newlyCreatedKey.description}
+            </p>
+          )}
+          <DialogFooter>
+            <Button onClick={() => void handleCopyKey(newlyCreatedKey?.key ?? '')}>
+              <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t('common.actions.copy')}
+            </Button>
+            <Button variant="outline" onClick={() => setNewlyCreatedKey(null)}>
+              {t('common.actions.close')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className={cn(surfaceCardClass, 'p-6')}>
-      <p className={cn(mutedTextClass, 'text-xs font-semibold uppercase tracking-[0.18em]')}>{label}</p>
-      <p className="mt-3 text-3xl font-semibold text-slate-900 dark:text-slate-50">{value}</p>
-    </div>
+    <Card>
+      <CardContent className="pt-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className="mt-2 text-2xl font-semibold">{value}</p>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -554,25 +552,26 @@ function AnalyticsChartCard({ title, option, loading, empty, emptyText }: Analyt
   const { t } = useTranslation()
 
   return (
-    <div className={cn(surfaceCardClass, 'space-y-4 p-6')}>
-      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{title}</h3>
-      {loading ? (
-        <div className={loadingStateClass}>
-          <span className={cn(mutedTextClass, 'text-sm')}>{t('common.loadingShort')}</span>
-        </div>
-      ) : empty ? (
-        <div className={emptyStateClass}>
-          <span className={cn(mutedTextClass, 'text-sm')}>{emptyText}</span>
-        </div>
-      ) : (
-        <ReactECharts
-          option={option}
-          style={{ height: 280 }}
-          notMerge
-          lazyUpdate
-          className={chartContainerClass}
-        />
-      )}
-    </div>
+    <Card>
+      <CardContent className="space-y-4 pt-4">
+        <h3 className="text-base font-semibold">{title}</h3>
+        {loading ? (
+          <div className="flex h-[280px] items-center justify-center">
+            <span className="text-sm text-muted-foreground">{t('common.loadingShort')}</span>
+          </div>
+        ) : empty ? (
+          <div className="flex h-[280px] items-center justify-center rounded-lg border border-dashed">
+            <span className="text-sm text-muted-foreground">{emptyText}</span>
+          </div>
+        ) : (
+          <ReactECharts
+            option={option}
+            style={{ height: 280 }}
+            notMerge
+            lazyUpdate
+          />
+        )}
+      </CardContent>
+    </Card>
   )
 }

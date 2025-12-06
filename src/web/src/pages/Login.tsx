@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/providers/AuthProvider'
 import { Loader } from '@/components/Loader'
-import { cn } from '@/utils/cn'
-import { mutedTextClass, primaryButtonClass, inputClass } from '@/styles/theme'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface LocationState {
   from?: {
@@ -54,21 +56,14 @@ export default function LoginPage() {
     }
   }
 
-  const renderBackground = (children: React.ReactNode) => (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-slate-100 via-white to-slate-200 px-4 dark:from-slate-950/95 dark:via-slate-950 dark:to-slate-900">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-10 top-20 h-48 w-48 rounded-full bg-slate-200/40 blur-3xl dark:bg-slate-700/30" />
-        <div className="absolute right-16 bottom-32 h-56 w-56 rounded-full bg-slate-300/35 blur-3xl dark:bg-slate-800/30" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_55%)]" />
-      </div>
-      <div className="relative z-10 w-full max-w-lg">{children}</div>
-    </div>
-  )
-
   if (loading) {
-    return renderBackground(
-      <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-blue-200/60 bg-white/90 shadow-2xl shadow-blue-200/50 backdrop-blur-xl dark:border-slate-800/50 dark:bg-slate-900/80 dark:shadow-slate-900/60">
-        <Loader />
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex min-h-[320px] items-center justify-center">
+            <Loader />
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -77,67 +72,62 @@ export default function LoginPage() {
     return null
   }
 
-  return renderBackground(
-    <main className="rounded-3xl border border-slate-200/70 bg-white/95 px-8 pb-10 pt-9 shadow-2xl shadow-slate-200/40 backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-900/85 dark:shadow-slate-900/60">
-      <header className="mb-8 flex flex-col items-center gap-3 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 text-xl font-bold text-white shadow-lg shadow-slate-400/30 dark:from-blue-500 dark:via-blue-600 dark:to-indigo-600 dark:shadow-blue-900/40">
-          GW
-        </div>
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-50">{t('login.title')}</h1>
-          <p className={cn(mutedTextClass, 'text-sm leading-relaxed max-w-[360px]')}>
-            {t('login.description')}
-          </p>
-        </div>
-      </header>
-
-      <form className="space-y-5" onSubmit={handleSubmit}>
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            {t('login.fields.username')}
-          </span>
-          <input
-            value={form.username}
-            autoComplete="username"
-            autoFocus
-            onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))}
-            placeholder={t('login.fields.usernamePlaceholder')}
-            className={cn(inputClass, 'h-11 font-medium')}
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            {t('login.fields.password')}
-          </span>
-          <input
-            type="password"
-            value={form.password}
-            autoComplete="current-password"
-            onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
-            placeholder={t('login.fields.passwordPlaceholder')}
-            className={cn(inputClass, 'h-11')}
-          />
-        </div>
-        {(formError || error) ? (
-          <div className="rounded-2xl border border-red-200/70 bg-red-50/80 px-4 py-3 text-sm font-medium text-red-600 shadow-sm shadow-red-200/40 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-100">
-            {formError || error}
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">
+            GW
           </div>
-        ) : null}
+          <CardTitle className="text-2xl">{t('login.title')}</CardTitle>
+          <CardDescription className="text-sm">
+            {t('login.description')}
+          </CardDescription>
+        </CardHeader>
 
-        <button
-          type="submit"
-          className={cn(primaryButtonClass, 'w-full justify-center rounded-full py-3 text-sm font-semibold')}
-          disabled={submitting}
-        >
-          {submitting ? t('common.actions.loading') : t('login.actions.submit')}
-        </button>
-      </form>
+        <CardContent>
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="username">{t('login.fields.username')}</Label>
+              <Input
+                id="username"
+                value={form.username}
+                autoComplete="username"
+                autoFocus
+                onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))}
+                placeholder={t('login.fields.usernamePlaceholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">{t('login.fields.password')}</Label>
+              <Input
+                id="password"
+                type="password"
+                value={form.password}
+                autoComplete="current-password"
+                onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
+                placeholder={t('login.fields.passwordPlaceholder')}
+              />
+            </div>
 
-      <footer className="mt-7 text-center text-xs">
-        <p className={cn(mutedTextClass, 'leading-relaxed')}>
-          {t('login.hint')}
-        </p>
-      </footer>
-    </main>
+            {(formError || error) && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {formError || error}
+              </div>
+            )}
+
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? t('common.actions.loading') : t('login.actions.submit')}
+            </Button>
+          </form>
+        </CardContent>
+
+        <CardFooter className="justify-center">
+          <p className="text-center text-xs text-muted-foreground">
+            {t('login.hint')}
+          </p>
+        </CardFooter>
+      </Card>
+    </div>
   )
 }

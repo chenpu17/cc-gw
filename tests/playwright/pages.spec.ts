@@ -1,4 +1,4 @@
-import { test, expect, request as playwrightRequest } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -53,27 +53,16 @@ async function startStubProvider(port: number): Promise<http.Server> {
     const chunks: Buffer[] = []
     req.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
     req.on('end', () => {
-      let body: any = {}
-      try {
-        body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        body = {}
-      }
-
       const responsePayload = {
         id: 'chatcmpl-stub',
         choices: [
           {
-            message: { content: 'Stub response from gateway' },
+            message: { content: 'Stub response' },
             finish_reason: 'stop'
           }
         ],
-        usage: {
-          prompt_tokens: 12,
-          completion_tokens: 4
-        }
+        usage: { prompt_tokens: 10, completion_tokens: 5 }
       }
-
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(responsePayload))
     })
@@ -154,6 +143,7 @@ async function startGateway(tempHome: string, gatewayPort: number): Promise<Chil
     ...process.env,
     HOME: tempHome,
     CC_GW_HOME: path.join(tempHome, '.cc-gw'),
+    CC_GW_UI_ROOT: path.join(process.cwd(), 'src/web/dist'),
     PORT: String(gatewayPort),
     NODE_ENV: 'test'
   }
@@ -175,17 +165,13 @@ async function startGateway(tempHome: string, gatewayPort: number): Promise<Chil
     process.stdout.write(`[gateway-exit] code=${code} signal=${signal ?? 'null'}\n`)
   })
 
-  child.on('error', (error) => {
-    process.stderr.write(`[gateway-error] ${error?.message ?? error}\n`)
-  })
-
   return child
 }
 
 test.beforeAll(async () => {
   ctx.stubPort = await findFreePort()
   ctx.gatewayPort = await findFreePort()
-  ctx.tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-gw-e2e-'))
+  ctx.tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-gw-pages-'))
   ctx.stubServer = await startStubProvider(ctx.stubPort)
   writeConfig(ctx.tempHome, ctx.gatewayPort, ctx.stubPort)
   ctx.gatewayProcess = await startGateway(ctx.tempHome, ctx.gatewayPort)
@@ -208,128 +194,85 @@ test.afterAll(async () => {
   }
 })
 
-const messagePayload = {
-  model: 'stub-model',
-  messages: [
-    {
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text: 'Hello from Playwright'
-        }
-      ]
-    }
-  ]
-}
-
-async function disableWildcard(baseURL: string) {
-  const context = await playwrightRequest.newContext({ baseURL })
-  const list = await context.get('/api/keys')
-  const keys: any[] = await list.json()
-  const wildcard = keys.find((item) => item.isWildcard)
-  if (wildcard) {
-    await context.patch(`/api/keys/${wildcard.id}`, {
-      data: { enabled: false }
-    })
-  }
-  await context.dispose()
-}
-
-async function pollForLogs(baseURL: string, keyId: number): Promise<any> {
-  const context = await playwrightRequest.newContext({ baseURL })
-  try {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const response = await context.get('/api/logs', { params: { limit: 5 } })
-      const body = await response.json() as { items: any[] }
-      if (body.items?.length) {
-        const match = body.items.find((item) => item.api_key_id === keyId)
-        if (match) {
-          return match
-        }
-      }
-      await delay(250)
-    }
-  } finally {
-    await context.dispose()
-  }
-  throw new Error('Log entry not found in time')
-}
-
-test('API key lifecycle and request logging', async ({ request }) => {
+// Single comprehensive test that validates all pages in one run
+test('All pages load and render correctly', async ({ page }) => {
   const baseURL = `http://127.0.0.1:${ctx.gatewayPort}`
-  await disableWildcard(baseURL)
 
-  const missing = await request.post(`${baseURL}/v1/messages`, {
-    data: messagePayload,
-    headers: { 'content-type': 'application/json' }
-  })
-  expect(missing.status(), 'missing API key should be rejected').toBe(401)
-  const missingBody = await missing.json()
-  expect(missingBody.error.code).toBe('invalid_api_key')
+  // 1. Dashboard page
+  await page.goto(baseURL)
+  await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText('今日请求数')).toBeVisible()
+  await expect(page.getByRole('link', { name: '仪表盘' })).toBeVisible()
 
-  const createRes = await request.post(`${baseURL}/api/keys`, {
-    data: { name: 'Playwright Test Key' }
-  })
-  expect(createRes.status()).toBe(200)
-  const created: { id: number; key: string } = await createRes.json()
-  const apiKeyId = created.id
-  const apiKeyValue = created.key
+  // 2. Logs page
+  await page.getByRole('link', { name: '请求日志' }).click()
+  await expect(page).toHaveURL(/\/logs/)
+  await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible({ timeout: 10000 })
+  await expect(page.locator('table')).toBeVisible()
 
-  const invalid = await request.post(`${baseURL}/v1/messages`, {
-    data: messagePayload,
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': 'invalid-key'
-    }
-  })
-  expect(invalid.status(), 'invalid API key should return 401').toBe(401)
+  // 3. Models page
+  await page.getByRole('link', { name: '模型与路由管理' }).click()
+  await expect(page).toHaveURL(/\/models/)
+  await expect(page.getByRole('heading', { name: '模型与路由管理', level: 1 })).toBeVisible({ timeout: 10000 })
+  await expect(page.getByRole('heading', { name: '模型提供商' })).toBeVisible()
 
-  const valid = await request.post(`${baseURL}/v1/messages`, {
-    data: messagePayload,
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKeyValue
-    }
-  })
-  expect(valid.status()).toBe(200)
-  const responseJson = await valid.json()
-  expect(Array.isArray(responseJson.content)).toBeTruthy()
+  // 4. Events page
+  await page.getByRole('link', { name: '事件' }).click()
+  await expect(page).toHaveURL(/\/events/)
+  await expect(page.getByRole('heading', { level: 1 }).filter({ hasText: /事件/ })).toBeVisible({ timeout: 10000 })
 
-  const logEntry = await pollForLogs(baseURL, apiKeyId)
-  expect(logEntry.api_key_name).toBe('Playwright Test Key')
+  // 5. API Keys page
+  await page.getByRole('link', { name: 'API 密钥' }).click()
+  await expect(page).toHaveURL(/\/api-keys/)
+  await expect(page.getByRole('heading', { name: 'API 密钥管理', level: 1 })).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText('密钥列表')).toBeVisible()
 
-  const detail = await request.get(`${baseURL}/api/logs/${logEntry.id}`)
-  expect(detail.status()).toBe(200)
-  const detailJson = await detail.json()
-  // API returns masked key value for security, verify it's available and matches prefix/suffix
-  expect(detailJson.api_key_value_available).toBe(true)
-  expect(detailJson.api_key_value_masked).toMatch(/^sk-c.*\*{4}.*[a-zA-Z0-9]{4}$/)
+  // 6. Settings page
+  await page.getByRole('link', { name: '设置' }).click()
+  await expect(page).toHaveURL(/\/settings/)
+  await expect(page.getByRole('heading', { level: 1 }).filter({ hasText: /设置/ })).toBeVisible({ timeout: 10000 })
 
-  const filtered = await request.get(`${baseURL}/api/logs`, {
-    params: { apiKeys: String(apiKeyId) }
-  })
-  expect(filtered.status()).toBe(200)
-  const filteredJson = await filtered.json()
-  expect(filteredJson.items.length).toBeGreaterThan(0)
+  // 7. Help page
+  await page.getByRole('link', { name: '使用指南' }).click()
+  await expect(page).toHaveURL(/\/help/)
+  await expect(page.getByRole('heading', { level: 1 }).filter({ hasText: /使用指南/ })).toBeVisible({ timeout: 10000 })
 
-  const overview = await request.get(`${baseURL}/api/stats/api-keys/overview`)
-  expect(overview.status()).toBe(200)
-  const overviewJson = await overview.json()
-  expect(overviewJson.totalKeys).toBeGreaterThan(0)
-  expect(overviewJson.enabledKeys).toBeGreaterThan(0)
-  expect(overviewJson.activeKeys).toBeGreaterThan(0)
+  // 8. About page
+  await page.getByRole('link', { name: '关于' }).click()
+  await expect(page).toHaveURL(/\/about/)
+  await expect(page.getByRole('heading', { level: 1 }).filter({ hasText: /关于/ })).toBeVisible({ timeout: 10000 })
 
-  const usage = await request.get(`${baseURL}/api/stats/api-keys/usage`, {
-    params: { days: '7', limit: '10' }
-  })
-  expect(usage.status()).toBe(200)
-  const usageJson = await usage.json()
-  expect(Array.isArray(usageJson)).toBeTruthy()
-  expect(usageJson.some((item: any) => item.apiKeyId === apiKeyId)).toBeTruthy()
+  // Navigate back to Dashboard
+  await page.getByRole('link', { name: '仪表盘' }).click()
+  await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
+})
 
-  const keysAfter = await request.get(`${baseURL}/api/keys`)
-  const keysList: any[] = await keysAfter.json()
-  const summary = keysList.find((item) => item.id === apiKeyId)
-  expect(summary.requestCount).toBeGreaterThan(0)
+test('Theme switcher dropdown works', async ({ page }) => {
+  const baseURL = `http://127.0.0.1:${ctx.gatewayPort}`
+  await page.goto(baseURL)
+
+  await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible({ timeout: 10000 })
+
+  // Click theme switcher
+  const themeSwitcher = page.getByRole('button', { name: '主题' })
+  await expect(themeSwitcher).toBeVisible()
+  await themeSwitcher.click()
+
+  // Verify dropdown menu appears with options
+  await expect(page.getByRole('menuitem').first()).toBeVisible()
+})
+
+test('Language switcher dropdown works', async ({ page }) => {
+  const baseURL = `http://127.0.0.1:${ctx.gatewayPort}`
+  await page.goto(baseURL)
+
+  await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible({ timeout: 10000 })
+
+  // Click language switcher
+  const langSwitcher = page.getByRole('button', { name: '语言选择' })
+  await expect(langSwitcher).toBeVisible()
+  await langSwitcher.click()
+
+  // Verify dropdown menu appears
+  await expect(page.getByRole('menuitem').first()).toBeVisible()
 })

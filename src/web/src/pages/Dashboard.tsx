@@ -6,13 +6,29 @@ import type { EChartsOption } from 'echarts'
 import { Loader } from '@/components/Loader'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
-import { Select, StatusBadge } from '@/components'
 import { useToast } from '@/providers/ToastProvider'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { apiClient, type ApiError, toApiError } from '@/services/api'
 import type { LogListResponse, LogRecord } from '@/types/logs'
-import { cn } from '@/utils/cn'
-import { mutedTextClass, sectionTitleClass, surfaceCardClass, glassCardClass, badgeClass, statusIndicatorClass, loadingStateClass, emptyStateClass, loadingSpinnerClass, chartContainerClass, subtleButtonClass, responsiveGridClass, responsiveTextClass, enhancedLoadingClass } from '@/styles/theme'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from '@/components/ui/table'
 
 interface OverviewStats {
   totals: {
@@ -250,87 +266,51 @@ export default function DashboardPage() {
     const cacheReadLabel = t('dashboard.charts.lineCacheRead')
     const cacheCreationLabel = t('dashboard.charts.lineCacheCreation')
     return {
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        borderColor: 'rgba(59, 130, 246, 0.3)',
-        textStyle: { color: '#e2e8f0' }
-      },
+      tooltip: { trigger: 'axis' },
       legend: {
-        data: [requestLabel, inputLabel, outputLabel, cacheReadLabel, cacheCreationLabel],
-        textStyle: { color: '#64748b' }
+        data: [requestLabel, inputLabel, outputLabel, cacheReadLabel, cacheCreationLabel]
       },
       grid: { left: 60, right: 40, top: 60, bottom: 60 },
-      xAxis: {
-        type: 'category',
-        data: dates,
-        axisLabel: { color: '#64748b' },
-        axisLine: { lineStyle: { color: '#334155' } }
-      },
-      yAxis: {
-        type: 'value',
-        axisLabel: { color: '#64748b' },
-        axisLine: { lineStyle: { color: '#334155' } },
-        splitLine: { lineStyle: { color: '#1e293b' } }
-      },
+      xAxis: { type: 'category', data: dates },
+      yAxis: { type: 'value' },
       series: [
         {
           name: requestLabel,
           type: 'bar',
           data: daily.map((item) => item.requestCount),
-          itemStyle: {
-            color: '#3b82f6',
-            borderRadius: [4, 4, 0, 0]
-          },
-          emphasis: {
-            itemStyle: {
-              color: '#2563eb'
-            }
-          }
+          itemStyle: { color: 'hsl(var(--primary))', borderRadius: [4, 4, 0, 0] }
         },
         {
           name: inputLabel,
           type: 'line',
-          yAxisIndex: 0,
           data: daily.map((item) => item.inputTokens),
           smooth: true,
           itemStyle: { color: '#10b981' },
-          lineStyle: { width: 3 },
-          symbol: 'circle',
-          symbolSize: 6
+          lineStyle: { width: 2 }
         },
         {
           name: outputLabel,
           type: 'line',
-          yAxisIndex: 0,
           data: daily.map((item) => item.outputTokens),
           smooth: true,
           itemStyle: { color: '#f59e0b' },
-          lineStyle: { width: 3 },
-          symbol: 'circle',
-          symbolSize: 6
+          lineStyle: { width: 2 }
         },
         {
           name: cacheReadLabel,
           type: 'line',
-          yAxisIndex: 0,
           data: daily.map((item) => item.cacheReadTokens),
           smooth: true,
           itemStyle: { color: '#8b5cf6' },
-          lineStyle: { width: 3 },
-          symbol: 'circle',
-          symbolSize: 6
+          lineStyle: { width: 2 }
         },
         {
           name: cacheCreationLabel,
           type: 'line',
-          yAxisIndex: 0,
           data: daily.map((item) => item.cacheCreationTokens),
           smooth: true,
           itemStyle: { color: '#ec4899' },
-          lineStyle: { width: 3 },
-          symbol: 'circle',
-          symbolSize: 6
+          lineStyle: { width: 2 }
         }
       ]
     }
@@ -343,52 +323,24 @@ export default function DashboardPage() {
     const outputLabel = t('dashboard.charts.lineOutput')
 
     return {
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        borderColor: 'rgba(59, 130, 246, 0.3)',
-        textStyle: { color: '#e2e8f0' }
-      },
-      legend: {
-        data: [requestLabel, inputLabel, outputLabel],
-        textStyle: { color: '#64748b' }
-      },
+      tooltip: { trigger: 'axis' },
+      legend: { data: [requestLabel, inputLabel, outputLabel] },
       grid: { left: 80, right: 60, top: 60, bottom: 100 },
       xAxis: {
         type: 'category',
         data: categories,
-        axisLabel: {
-          rotate: 30,
-          color: '#64748b'
-        },
-        axisLine: { lineStyle: { color: '#334155' } }
+        axisLabel: { rotate: 30 }
       },
       yAxis: [
-        {
-          type: 'value',
-          name: requestLabel,
-          axisLabel: { color: '#64748b' },
-          axisLine: { lineStyle: { color: '#334155' } },
-          splitLine: { lineStyle: { color: '#1e293b' } }
-        },
-        {
-          type: 'value',
-          name: t('dashboard.charts.axisTokens'),
-          position: 'right',
-          axisLabel: { color: '#64748b' },
-          axisLine: { lineStyle: { color: '#334155' } }
-        }
+        { type: 'value', name: requestLabel },
+        { type: 'value', name: t('dashboard.charts.axisTokens'), position: 'right' }
       ],
       series: [
         {
           name: requestLabel,
           type: 'bar',
           data: models.map((item) => item.requests),
-          itemStyle: {
-            color: '#6366f1',
-            borderRadius: [4, 4, 0, 0]
-          },
-          yAxisIndex: 0
+          itemStyle: { color: '#6366f1', borderRadius: [4, 4, 0, 0] }
         },
         {
           name: inputLabel,
@@ -396,8 +348,7 @@ export default function DashboardPage() {
           yAxisIndex: 1,
           smooth: true,
           data: models.map((item) => item.inputTokens ?? 0),
-          itemStyle: { color: '#10b981' },
-          lineStyle: { width: 3 }
+          itemStyle: { color: '#10b981' }
         },
         {
           name: outputLabel,
@@ -405,8 +356,7 @@ export default function DashboardPage() {
           yAxisIndex: 1,
           smooth: true,
           data: models.map((item) => item.outputTokens ?? 0),
-          itemStyle: { color: '#f59e0b' },
-          lineStyle: { width: 3 }
+          itemStyle: { color: '#f59e0b' }
         }
       ]
     }
@@ -417,45 +367,16 @@ export default function DashboardPage() {
     const ttftLabel = t('dashboard.charts.ttftLabel')
 
     return {
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        borderColor: 'rgba(59, 130, 246, 0.3)',
-        textStyle: { color: '#e2e8f0' },
-        formatter(params) {
-          if (!Array.isArray(params) || params.length === 0) return ''
-          const index = params[0]?.dataIndex ?? 0
-          const metric = models[index]
-          if (!metric) return ''
-          return `<strong>${categories[index]}</strong><br/>${ttftLabel}: ${formatLatencyValue(metric.avgTtftMs, t('common.units.ms'))}`
-        }
-      },
+      tooltip: { trigger: 'axis' },
       grid: { left: 80, right: 50, top: 60, bottom: 100 },
-      xAxis: {
-        type: 'category',
-        data: categories,
-        axisLabel: {
-          rotate: 30,
-          color: '#64748b'
-        },
-        axisLine: { lineStyle: { color: '#334155' } }
-      },
-      yAxis: {
-        type: 'value',
-        name: t('dashboard.charts.ttftAxis'),
-        axisLabel: { color: '#64748b' },
-        axisLine: { lineStyle: { color: '#334155' } },
-        splitLine: { lineStyle: { color: '#1e293b' } }
-      },
+      xAxis: { type: 'category', data: categories, axisLabel: { rotate: 30 } },
+      yAxis: { type: 'value', name: t('dashboard.charts.ttftAxis') },
       series: [
         {
           name: ttftLabel,
           type: 'bar',
           data: models.map((item) => item.avgTtftMs ?? 0),
-          itemStyle: {
-            color: '#3b82f6',
-            borderRadius: [4, 4, 0, 0]
-          }
+          itemStyle: { color: 'hsl(var(--primary))', borderRadius: [4, 4, 0, 0] }
         }
       ]
     }
@@ -466,45 +387,16 @@ export default function DashboardPage() {
     const tpotLabel = t('dashboard.charts.tpotLabel')
 
     return {
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        borderColor: 'rgba(59, 130, 246, 0.3)',
-        textStyle: { color: '#e2e8f0' },
-        formatter(params) {
-          if (!Array.isArray(params) || params.length === 0) return ''
-          const index = params[0]?.dataIndex ?? 0
-          const metric = models[index]
-          if (!metric) return ''
-          return `<strong>${categories[index]}</strong><br/>${tpotLabel}: ${formatLatencyValue(metric.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}`
-        }
-      },
+      tooltip: { trigger: 'axis' },
       grid: { left: 80, right: 50, top: 60, bottom: 100 },
-      xAxis: {
-        type: 'category',
-        data: categories,
-        axisLabel: {
-          rotate: 30,
-          color: '#64748b'
-        },
-        axisLine: { lineStyle: { color: '#334155' } }
-      },
-      yAxis: {
-        type: 'value',
-        name: t('dashboard.charts.tpotAxis'),
-        axisLabel: { color: '#64748b' },
-        axisLine: { lineStyle: { color: '#334155' } },
-        splitLine: { lineStyle: { color: '#1e293b' } }
-      },
+      xAxis: { type: 'category', data: categories, axisLabel: { rotate: 30 } },
+      yAxis: { type: 'value', name: t('dashboard.charts.tpotAxis') },
       series: [
         {
           name: tpotLabel,
           type: 'bar',
           data: models.map((item) => item.avgTpotMs ?? 0),
-          itemStyle: {
-            color: '#f59e0b',
-            borderRadius: [4, 4, 0, 0]
-          }
+          itemStyle: { color: '#f59e0b', borderRadius: [4, 4, 0, 0] }
         }
       ]
     }
@@ -515,139 +407,116 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <PageHeader
-        icon={<BarChart3 className="h-7 w-7" aria-hidden="true" />}
+        icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
         title={t('nav.dashboard')}
         description={t('dashboard.description')}
         actions={
-          <div className="flex items-center gap-4 rounded-2xl bg-white/90 px-4 py-3 shadow-lg shadow-slate-200/30 ring-1 ring-slate-200/40 backdrop-blur-lg dark:bg-slate-900/90 dark:shadow-xl dark:shadow-slate-900/30 dark:ring-slate-700/40">
-            <label
-              htmlFor="dashboard-endpoint-filter"
-              className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300"
-            >
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-muted-foreground">
               {t('dashboard.filters.endpoint')}
-            </label>
-            <div className="relative">
-              <Select
-                id="dashboard-endpoint-filter"
-                value={endpointFilter}
-                onChange={(event) => setEndpointFilter(event.target.value as 'all' | 'anthropic' | 'openai')}
-                options={[
-                  { value: 'all', label: t('dashboard.filters.endpointAll') },
-                  { value: 'anthropic', label: t('dashboard.filters.endpointAnthropic') },
-                  { value: 'openai', label: t('dashboard.filters.endpointOpenAI') }
-                ]}
-              />
-            </div>
+            </span>
+            <Select
+              value={endpointFilter}
+              onValueChange={(value) => setEndpointFilter(value as 'all' | 'anthropic' | 'openai')}
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('dashboard.filters.endpointAll')}</SelectItem>
+                <SelectItem value="anthropic">{t('dashboard.filters.endpointAnthropic')}</SelectItem>
+                <SelectItem value="openai">{t('dashboard.filters.endpointOpenAI')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         }
       />
 
       {/* Service Status */}
-      {status ? (
-        <section
-          className={cn(
-            glassCardClass,
-            'flex flex-wrap items-center gap-4 text-sm leading-relaxed animate-slide-up'
-          )}
-          aria-live="polite"
-        >
-          <span className={cn(statusIndicatorClass.success, 'inline-flex items-center gap-2 rounded-full px-4 py-2 font-semibold')}>
-            <span className="h-2 w-2 rounded-full bg-current shadow-lg" aria-hidden="true" />
-            {t('dashboard.status.listening', {
-              host: status.host ?? '0.0.0.0',
-              port: status.port
-            })}
-          </span>
-          <span className={cn(badgeClass.default, 'font-semibold')}>
-            {t('dashboard.status.providers', { value: status.providers.toLocaleString() })}
-          </span>
-          <span className={cn(badgeClass.primary, 'font-semibold')}>
-            {t('dashboard.status.todayRequests', {
-              value: (overview?.today.requests ?? 0).toLocaleString()
-            })}
-          </span>
-          <span className={cn(badgeClass.default, 'font-semibold')}>
-            {t('dashboard.status.active', {
-              value: (status.activeRequests ?? 0).toLocaleString()
-            })}
-          </span>
-          <span className={cn(badgeClass.default, 'font-semibold')}>
-            {t('dashboard.status.dbSize', {
-              value: dbSizeDisplay
-            })}
-          </span>
-          <span className={cn(badgeClass.default, 'font-semibold')}>
-            {t('dashboard.status.memory', {
-              value: memoryDisplay
-            })}
-          </span>
-          <button
-            type="button"
-            onClick={handleCompact}
-            disabled={compacting}
-            className={cn(
-              subtleButtonClass,
-              'h-9 rounded-full px-4 text-xs font-semibold',
-              compacting ? 'cursor-wait opacity-70' : ''
-            )}
-          >
-            {compacting ? t('dashboard.actions.compacting') : t('dashboard.actions.compact')}
-          </button>
-        </section>
-      ) : null}
+      {status && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-3 pt-4">
+            <Badge variant="default" className="bg-emerald-500">
+              {t('dashboard.status.listening', {
+                host: status.host ?? '0.0.0.0',
+                port: status.port
+              })}
+            </Badge>
+            <Badge variant="secondary">
+              {t('dashboard.status.providers', { value: status.providers.toLocaleString() })}
+            </Badge>
+            <Badge variant="secondary">
+              {t('dashboard.status.todayRequests', {
+                value: (overview?.today.requests ?? 0).toLocaleString()
+              })}
+            </Badge>
+            <Badge variant="outline">
+              {t('dashboard.status.active', {
+                value: (status.activeRequests ?? 0).toLocaleString()
+              })}
+            </Badge>
+            <Badge variant="outline">
+              {t('dashboard.status.dbSize', { value: dbSizeDisplay })}
+            </Badge>
+            <Badge variant="outline">
+              {t('dashboard.status.memory', { value: memoryDisplay })}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCompact}
+              disabled={compacting}
+            >
+              {compacting ? t('dashboard.actions.compacting') : t('dashboard.actions.compact')}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Statistics Cards */}
-      <section className={cn(responsiveGridClass.auto, 'gap-4 sm:gap-6')}>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
-          icon={<Activity className="h-5 w-5" />}
+          icon={<Activity className="h-4 w-4" />}
           title={t('dashboard.cards.todayRequests')}
           value={overview?.today.requests ?? 0}
           suffix={t('common.units.request')}
-          trend="+12%"
-          trendDirection="up"
         />
         <StatCard
-          icon={<TrendingUp className="h-5 w-5" />}
+          icon={<TrendingUp className="h-4 w-4" />}
           title={t('dashboard.cards.todayInput')}
           value={overview?.today.inputTokens ?? 0}
           suffix={t('common.units.token')}
-          trend="+8%"
-          trendDirection="up"
         />
         <StatCard
-          icon={<Activity className="h-5 w-5" />}
+          icon={<Activity className="h-4 w-4" />}
           title={t('dashboard.cards.todayCacheRead')}
           value={overview?.today.cacheReadTokens ?? 0}
           suffix={t('common.units.token')}
         />
         <StatCard
-          icon={<Activity className="h-5 w-5" />}
+          icon={<Activity className="h-4 w-4" />}
           title={t('dashboard.cards.todayCacheCreation')}
           value={overview?.today.cacheCreationTokens ?? 0}
           suffix={t('common.units.token')}
         />
         <StatCard
-          icon={<BarChart3 className="h-5 w-5" />}
+          icon={<BarChart3 className="h-4 w-4" />}
           title={t('dashboard.cards.todayOutput')}
           value={overview?.today.outputTokens ?? 0}
           suffix={t('common.units.token')}
-          trend="+15%"
-          trendDirection="up"
         />
         <StatCard
-          icon={<Timer className="h-5 w-5" />}
+          icon={<Timer className="h-4 w-4" />}
           title={t('dashboard.cards.avgLatency')}
           value={overview?.today.avgLatencyMs ?? 0}
           suffix={t('common.units.ms')}
-          trend="-5%"
-          trendDirection="down"
         />
-      </section>
+      </div>
 
       {/* Charts Grid */}
-      <div className={cn(responsiveGridClass.fixed[2], 'gap-6 sm:gap-8')}>
+      <div className="grid gap-6 lg:grid-cols-2">
         <ChartCard
           title={t('dashboard.charts.requestsTitle')}
           description={t('dashboard.charts.requestsDesc')}
@@ -666,7 +535,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className={cn(responsiveGridClass.fixed[2], 'gap-6 sm:gap-8')}>
+      <div className="grid gap-6 lg:grid-cols-2">
         <ChartCard
           title={t('dashboard.charts.ttftTitle')}
           description={t('dashboard.charts.ttftDesc')}
@@ -696,47 +565,30 @@ function StatCard({
   icon,
   title,
   value,
-  suffix,
-  trend,
-  trendDirection
+  suffix
 }: {
   icon?: React.ReactNode
   title: string
   value: number
   suffix?: string
-  trend?: string
-  trendDirection?: 'up' | 'down'
 }) {
   return (
-    <div className={cn(glassCardClass, 'group hover-lift animate-slide-up')}>
-      <div className="flex items-center justify-between mb-4">
-        <div className={cn(mutedTextClass, 'text-xs font-bold uppercase tracking-[0.15em]')}>{title}</div>
-        {icon && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600/15 to-indigo-600/10 text-blue-600 ring-1 ring-blue-500/20 dark:from-blue-500/25 dark:to-indigo-500/15 dark:text-blue-200 dark:ring-blue-400/20">
-            {icon}
-          </div>
-        )}
-      </div>
-      <div className="flex items-end justify-between">
-        <div>
-          <p className="text-3xl font-bold text-slate-900 dark:text-slate-50">
-            {value.toLocaleString()}
-            {suffix ? (
-              <span className={cn(mutedTextClass, 'ml-2 text-base sm:text-lg font-medium')}>{suffix}</span>
-            ) : null}
-          </p>
-          {trend && (
-            <div className={cn(
-              'mt-2 flex items-center gap-1 text-xs font-semibold',
-              trendDirection === 'up' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-            )}>
-              <span>{trend}</span>
-              <span className="text-slate-500">vs last period</span>
+    <Card>
+      <CardContent className="pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</span>
+          {icon && (
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              {icon}
             </div>
           )}
         </div>
-      </div>
-    </div>
+        <p className="text-2xl font-semibold">
+          {value.toLocaleString()}
+          {suffix && <span className="ml-1 text-sm font-normal text-muted-foreground">{suffix}</span>}
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -757,36 +609,26 @@ function ChartCard({
 }) {
   const { t } = useTranslation()
   return (
-    <div className={cn(glassCardClass, 'space-y-4 sm:space-y-6 hover-lift animate-slide-up')}>
-      <div>
-        <p className="text-xl font-bold text-slate-900 dark:text-slate-50">{title}</p>
-        <p className={cn(mutedTextClass, 'mt-2 text-xs sm:text-sm leading-relaxed')}>{description}</p>
-      </div>
-      {loading ? (
-        <div className={enhancedLoadingClass.container}>
-          <div className="text-center">
-            <div className={enhancedLoadingClass.spinner}></div>
-            <span className={cn(enhancedLoadingClass.text)}>{t('common.loadingShort')}</span>
-          </div>
+    <Card>
+      <CardContent className="space-y-4 pt-4">
+        <div>
+          <p className="text-base font-semibold">{title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
-      ) : empty ? (
-        <div className={emptyStateClass}>
-          <div className="text-center">
-            <BarChart3 className="mx-auto h-12 w-12 text-slate-300 dark:text-slate-600 mb-4" />
-            <span className={cn(mutedTextClass, 'text-sm')}>{emptyText ?? t('dashboard.charts.empty')}</span>
+        {loading ? (
+          <div className="flex h-[320px] items-center justify-center">
+            <span className="text-sm text-muted-foreground">{t('common.loadingShort')}</span>
           </div>
-        </div>
-      ) : (
-        <ReactECharts
-          option={option}
-          style={{ height: 320 }}
-          notMerge
-          lazyUpdate
-          theme={undefined}
-          className={chartContainerClass}
-        />
-      )}
-    </div>
+        ) : empty ? (
+          <div className="flex h-[320px] flex-col items-center justify-center rounded-lg border border-dashed">
+            <BarChart3 className="mb-2 h-10 w-10 text-muted-foreground/50" />
+            <span className="text-sm text-muted-foreground">{emptyText ?? t('dashboard.charts.empty')}</span>
+          </div>
+        ) : (
+          <ReactECharts option={option} style={{ height: 320 }} notMerge lazyUpdate />
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -796,52 +638,54 @@ function ModelMetricsTable({ models, loading }: { models: ModelUsageMetric[]; lo
 
   return (
     <PageSection
-      title={<span className="text-sm font-semibold text-slate-900 dark:text-slate-50">{t('dashboard.modelTable.title')}</span>}
+      title={t('dashboard.modelTable.title')}
       description={t('dashboard.modelTable.description')}
-      contentClassName="gap-0 overflow-hidden p-0"
     >
       {loading ? (
-        <div className={loadingStateClass}>
-          <span className={cn(mutedTextClass, 'text-sm')}>{t('common.loadingShort')}</span>
+        <div className="flex h-32 items-center justify-center">
+          <span className="text-sm text-muted-foreground">{t('common.loadingShort')}</span>
         </div>
       ) : !hasData ? (
-        <div className={emptyStateClass}>
-          <span className={cn(mutedTextClass, 'text-sm')}>{t('dashboard.modelTable.empty')}</span>
+        <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
+          <span className="text-sm text-muted-foreground">{t('dashboard.modelTable.empty')}</span>
         </div>
       ) : (
-        <div className="max-h-80 overflow-auto">
-          <table className="min-w-full divide-y divide-slate-200/70 text-sm dark:divide-slate-700/60">
-            <caption className="sr-only">{t('dashboard.modelTable.title')}</caption>
-            <thead className="bg-slate-100/70 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
-              <tr>
-                <th className="px-5 py-3 font-semibold">{t('dashboard.modelTable.columns.model')}</th>
-                <th className="px-5 py-3 text-right font-semibold">{t('dashboard.modelTable.columns.requests')}</th>
-                <th className="px-5 py-3 text-right font-semibold">{t('dashboard.modelTable.columns.latency')}</th>
-                <th className="px-5 py-3 text-right font-semibold">{t('dashboard.modelTable.columns.ttft')}</th>
-                <th className="px-5 py-3 text-right font-semibold">{t('dashboard.modelTable.columns.tpot')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
+        <div className="max-h-80 overflow-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('dashboard.modelTable.columns.model')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.modelTable.columns.requests')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.modelTable.columns.latency')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.modelTable.columns.ttft')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.modelTable.columns.tpot')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {models.map((item) => (
-                <tr key={`${item.provider}/${item.model}`} className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-                  <td className="px-5 py-3">
+                <TableRow key={`${item.provider}/${item.model}`}>
+                  <TableCell>
                     <div className="flex flex-col">
-                      <span className="font-semibold text-slate-800 dark:text-slate-50">{item.provider}</span>
-                      <span className={cn(mutedTextClass, 'text-xs')}>{item.model}</span>
+                      <span className="font-medium">{item.provider}</span>
+                      <span className="text-xs text-muted-foreground">{item.model}</span>
                     </div>
-                  </td>
-                  <td className="px-5 py-3 text-right font-medium text-slate-800 dark:text-slate-50">
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
                     {item.requests.toLocaleString()}
-                  </td>
-                  <td className="px-5 py-3 text-right">{formatLatencyValue(item.avgLatencyMs, t('common.units.ms'))}</td>
-                  <td className="px-5 py-3 text-right">{formatLatencyValue(item.avgTtftMs, t('common.units.ms'))}</td>
-                  <td className="px-5 py-3 text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatLatencyValue(item.avgLatencyMs, t('common.units.ms'))}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatLatencyValue(item.avgTtftMs, t('common.units.ms'))}
+                  </TableCell>
+                  <TableCell className="text-right">
                     {formatLatencyValue(item.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </PageSection>
@@ -852,69 +696,63 @@ function RecentRequestsTable({ records, loading }: { records: LogRecord[]; loadi
   const { t } = useTranslation()
   return (
     <PageSection
-      title={<span className="text-sm font-semibold text-slate-900 dark:text-slate-50">{t('dashboard.recent.title')}</span>}
+      title={t('dashboard.recent.title')}
       description={t('dashboard.recent.subtitle', { count: 5 })}
-      contentClassName="gap-0 overflow-hidden p-0"
     >
       {loading ? (
-        <div className={loadingStateClass}>
-          <span className={cn(mutedTextClass, 'text-sm')}>{t('dashboard.recent.loading')}</span>
+        <div className="flex h-32 items-center justify-center">
+          <span className="text-sm text-muted-foreground">{t('dashboard.recent.loading')}</span>
         </div>
       ) : records.length === 0 ? (
-        <div className={emptyStateClass}>
-          <span className={cn(mutedTextClass, 'text-sm')}>{t('dashboard.recent.empty')}</span>
+        <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
+          <span className="text-sm text-muted-foreground">{t('dashboard.recent.empty')}</span>
         </div>
       ) : (
-        <div className="max-h-80 overflow-auto">
-          <table className="min-w-full divide-y divide-slate-200/70 text-sm dark:divide-slate-700/60">
-            <caption className="sr-only">{t('dashboard.recent.title')}</caption>
-            <thead className="bg-slate-100/70 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
-              <tr>
-                <th className="px-5 py-3 font-semibold">{t('dashboard.recent.columns.time')}</th>
-                <th className="px-5 py-3 font-semibold">{t('dashboard.recent.columns.endpoint')}</th>
-                <th className="px-5 py-3 font-semibold">{t('dashboard.recent.columns.provider')}</th>
-                <th className="px-5 py-3 font-semibold">{t('dashboard.recent.columns.route')}</th>
-                <th className="px-5 py-3 text-right font-semibold">{t('dashboard.recent.columns.latency')}</th>
-                <th className="px-5 py-3 text-left font-semibold">{t('dashboard.recent.columns.status')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
+        <div className="max-h-80 overflow-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('dashboard.recent.columns.time')}</TableHead>
+                <TableHead>{t('dashboard.recent.columns.endpoint')}</TableHead>
+                <TableHead>{t('dashboard.recent.columns.provider')}</TableHead>
+                <TableHead>{t('dashboard.recent.columns.route')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.recent.columns.latency')}</TableHead>
+                <TableHead>{t('dashboard.recent.columns.status')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {records.map((item) => (
-                <tr key={item.id} className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-                  <td className="px-5 py-3 text-xs font-medium text-slate-600 dark:text-slate-300">
+                <TableRow key={item.id}>
+                  <TableCell className="text-xs">
                     {new Date(item.timestamp).toLocaleString()}
-                  </td>
-                  <td className="px-5 py-3 text-xs text-slate-500 dark:text-slate-400">
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
                     {item.endpoint === 'anthropic'
                       ? t('logs.table.endpointAnthropic')
                       : item.endpoint === 'openai'
                       ? t('logs.table.endpointOpenAI')
                       : item.endpoint}
-                  </td>
-                  <td className="px-5 py-3 text-sm font-medium text-slate-800 dark:text-slate-50">{item.provider}</td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  </TableCell>
+                  <TableCell className="font-medium">{item.provider}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <span>{item.client_model ?? t('dashboard.recent.routePlaceholder')}</span>
-                      <span aria-hidden="true" className="text-slate-400">
-                        →
-                      </span>
-                      <span className="font-semibold text-slate-700 dark:text-slate-100">{item.model}</span>
+                      <span>→</span>
+                      <span className="font-medium text-foreground">{item.model}</span>
                     </div>
-                  </td>
-                  <td className="px-5 py-3 text-right text-sm font-medium text-slate-800 dark:text-slate-100">
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
                     {formatLatencyValue(item.latency_ms, t('common.units.ms'))}
-                  </td>
-                  <td className="px-5 py-3">
-                    <StatusBadge variant={item.error ? 'error' : 'success'}>
-                      <span className="h-2 w-2 rounded-full bg-current" aria-hidden="true" />
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={item.error ? 'destructive' : 'default'}>
                       {(item.status_code ?? (item.error ? 500 : 200)).toString()}
-                      <span>{item.error ? t('common.status.error') : t('common.status.success')}</span>
-                    </StatusBadge>
-                  </td>
-                </tr>
+                    </Badge>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </PageSection>

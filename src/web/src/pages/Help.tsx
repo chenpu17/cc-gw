@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { BookOpen, Info, Terminal, Code } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
-import { cn } from '@/utils/cn'
-import { mutedTextClass } from '@/styles/theme'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 
 interface HelpSection {
   title: string
@@ -47,91 +47,83 @@ export default function HelpPage(): JSX.Element {
   const faqItems = t('help.faq.items', { returnObjects: true }) as Array<{ q: string; a: string }>
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
-        icon={<BookOpen className="h-6 w-6" aria-hidden="true" />}
+        icon={<BookOpen className="h-5 w-5" aria-hidden="true" />}
         title={t('help.title')}
         description={t('help.intro')}
       />
 
-      <div className="rounded-3xl border border-blue-200/40 bg-gradient-to-br from-blue-50/90 via-white/90 to-purple-50/80 p-6 shadow-lg shadow-blue-100/40 backdrop-blur-sm dark:border-blue-900/30 dark:from-blue-900/40 dark:via-slate-900/70 dark:to-indigo-900/30 dark:shadow-indigo-900/40">
-        <div className="flex flex-wrap items-start gap-4">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-200">
-            <Info className="h-6 w-6" aria-hidden="true" />
+      <Card>
+        <CardContent className="flex items-start gap-4 pt-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Info className="h-5 w-5" aria-hidden="true" />
           </div>
-          <p className={cn(mutedTextClass, 'text-sm leading-6')}>
+          <p className="text-sm text-muted-foreground">
             {t('help.note')}
           </p>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      <div className="space-y-8">
-        {/* 基础配置流程 */}
-        <PageSection title={sections[0].title} className="animate-slide-up" contentClassName="gap-4">
+      <div className="space-y-6">
+        {/* Basic configuration */}
+        <PageSection title={sections[0].title}>
           <StepList items={sections[0].items} />
         </PageSection>
 
-        {/* 客户端配置标题 */}
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('help.clientConfig.title')}</h2>
-          <p className={cn(mutedTextClass, 'text-sm')}>{t('help.clientConfig.subtitle')}</p>
+        {/* Client configuration header */}
+        <div className="space-y-1 text-center">
+          <h2 className="text-xl font-semibold">{t('help.clientConfig.title')}</h2>
+          <p className="text-sm text-muted-foreground">{t('help.clientConfig.subtitle')}</p>
         </div>
 
-        {/* Claude Code 和 Codex 配置区域 */}
+        {/* Claude Code and Codex configuration */}
         <div className="grid gap-6 lg:grid-cols-2">
-          <PageSection
-            title={sections[1].title}
-            className="h-full animate-slide-up border-2 border-blue-200/60 bg-gradient-to-br from-blue-50/80 via-white/60 to-indigo-50/60 dark:border-blue-700/60 dark:from-blue-900/30 dark:via-slate-900/50 dark:to-indigo-900/30 shadow-lg shadow-blue-100/50 dark:shadow-blue-900/30"
-            contentClassName="gap-4"
-          >
-            <div className="flex items-center gap-3 mb-6 p-3 bg-blue-100/50 rounded-xl dark:bg-blue-900/20">
-              <div className="h-10 w-10 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
-                <Code className="h-5 w-5 text-white" />
+          <PageSection title={sections[1].title}>
+            <div className="mb-4 flex items-center gap-3 rounded-lg bg-primary/5 p-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <Code className="h-4 w-4" />
               </div>
               <div>
-                <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">Claude Code</span>
-                <p className="text-xs text-blue-600 dark:text-blue-400">IDE 插件配置</p>
+                <span className="text-sm font-medium">Claude Code</span>
+                <p className="text-xs text-muted-foreground">IDE 插件配置</p>
               </div>
             </div>
             <StepList items={sections[1].items} />
           </PageSection>
 
-          <PageSection
-            title={sections[2].title}
-            className="h-full animate-slide-up border-2 border-green-200/60 bg-gradient-to-br from-green-50/80 via-white/60 to-emerald-50/60 dark:border-green-700/60 dark:from-green-900/30 dark:via-slate-900/50 dark:to-emerald-900/30 shadow-lg shadow-green-100/50 dark:shadow-green-900/30"
-            contentClassName="gap-4"
-          >
-            <div className="flex items-center gap-3 mb-6 p-3 bg-green-100/50 rounded-xl dark:bg-green-900/20">
-              <div className="h-10 w-10 rounded-xl bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/30">
-                <Terminal className="h-5 w-5 text-white" />
+          <PageSection title={sections[2].title}>
+            <div className="mb-4 flex items-center gap-3 rounded-lg bg-emerald-500/5 p-3 dark:bg-emerald-500/10">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 text-white">
+                <Terminal className="h-4 w-4" />
               </div>
               <div>
-                <span className="text-sm font-semibold text-green-700 dark:text-green-300">Codex CLI</span>
-                <p className="text-xs text-green-600 dark:text-green-400">命令行工具配置</p>
+                <span className="text-sm font-medium">Codex CLI</span>
+                <p className="text-xs text-muted-foreground">命令行工具配置</p>
               </div>
             </div>
             <StepList items={sections[2].items} />
           </PageSection>
         </div>
 
-        {/* 使用指南和技巧 */}
-        <div className="mt-12">
-          <div className="text-center space-y-2 mb-8">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{t('help.advancedGuide.title')}</h2>
-            <p className={cn(mutedTextClass, 'text-sm')}>{t('help.advancedGuide.subtitle')}</p>
+        {/* Usage guide and tips */}
+        <div className="mt-8">
+          <div className="mb-6 space-y-1 text-center">
+            <h2 className="text-lg font-semibold">{t('help.advancedGuide.title')}</h2>
+            <p className="text-sm text-muted-foreground">{t('help.advancedGuide.subtitle')}</p>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
-            <PageSection title={sections[3].title} className="h-full animate-slide-up" contentClassName="gap-4">
+            <PageSection title={sections[3].title}>
               <StepList items={sections[3].items} />
             </PageSection>
-            <PageSection title={sections[4].title} className="h-full animate-slide-up" contentClassName="gap-4">
+            <PageSection title={sections[4].title}>
               <StepList items={sections[4].items} />
             </PageSection>
           </div>
         </div>
       </div>
 
-      <PageSection title={t('help.faq.title')} contentClassName="gap-4">
+      <PageSection title={t('help.faq.title')}>
         <FaqList items={faqItems} />
       </PageSection>
     </div>
@@ -140,16 +132,16 @@ export default function HelpPage(): JSX.Element {
 
 function StepList({ items }: { items: string[] }) {
   return (
-    <ol className="flex flex-col gap-4">
+    <ol className="flex flex-col gap-3">
       {items.map((item, index) => (
         <li
           key={`${index}-${item}`}
-          className="group flex gap-4 rounded-3xl border border-slate-200/60 bg-white p-4 shadow-sm shadow-slate-200/30 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200/60 hover:shadow-md hover:shadow-blue-200/40 dark:border-slate-700/60 dark:bg-slate-900/80 dark:shadow-slate-900/40 dark:hover:border-blue-500/40"
+          className="flex gap-3 rounded-lg border p-3"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 text-sm font-semibold text-white shadow-lg shadow-blue-500/30 dark:from-blue-400 dark:to-indigo-400 flex-shrink-0">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-medium text-primary-foreground">
             {index + 1}
           </span>
-          <div className={cn(mutedTextClass, 'text-sm leading-6 flex-1')}>
+          <div className="flex-1 text-sm text-muted-foreground">
             <StepContent content={item} />
           </div>
         </li>
@@ -160,37 +152,39 @@ function StepList({ items }: { items: string[] }) {
 
 function StepContent({ content }: { content: string }) {
   const { t } = useTranslation()
-  // 处理包含代码块的内容
+  // Handle content with code blocks
   if (content.includes('```')) {
     const parts = content.split('```')
     return (
       <div className="space-y-2">
         {parts.map((part, index) => {
           if (index % 2 === 0) {
-            // 普通文本
+            // Regular text
             return part ? (
               <div key={index} className="whitespace-pre-line">
                 {formatTextWithEmoji(part)}
               </div>
             ) : null
           } else {
-            // 代码块
+            // Code block
             const [language, ...codeLines] = part.split('\n')
             const code = codeLines.join('\n')
             return (
               <div key={index} className="relative">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">
                     {language || 'bash'}
                   </span>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
                     onClick={() => navigator.clipboard.writeText(code)}
-                    className="text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                   >
                     {t('common.actions.copy')}
-                  </button>
+                  </Button>
                 </div>
-                <pre className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3 overflow-x-auto text-xs">
+                <pre className="overflow-x-auto rounded-md border bg-muted p-3 text-xs">
                   <code>{code}</code>
                 </pre>
               </div>
@@ -201,7 +195,7 @@ function StepContent({ content }: { content: string }) {
     )
   }
 
-  // 处理包含换行符的普通文本
+  // Handle content with line breaks
   if (content.includes('\n')) {
     return (
       <div className="whitespace-pre-line">
@@ -210,17 +204,17 @@ function StepContent({ content }: { content: string }) {
     )
   }
 
-  // 普通文本
+  // Regular text
   return <div>{formatTextWithEmoji(content)}</div>
 }
 
 function formatTextWithEmoji(text: string) {
-  // 保留emoji，处理加粗标记
+  // Preserve emoji, handle bold markers
   const parts = text.split(/(\*\*[^*]+\*\*)/g)
 
   return parts.map((part, index) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={index} className="font-semibold text-slate-700 dark:text-slate-200">{part.slice(2, -2)}</strong>
+      return <strong key={index} className="font-medium text-foreground">{part.slice(2, -2)}</strong>
     }
     return <span key={index}>{part}</span>
   })
@@ -231,17 +225,16 @@ function FaqList({ items }: { items: Array<{ q: string; a: string }> }) {
     return null
   }
   return (
-    <dl className="flex flex-col gap-4">
+    <dl className="flex flex-col gap-3">
       {items.map((item) => (
-        <div
-          key={item.q}
-          className="rounded-3xl border border-slate-200/60 bg-white p-5 shadow-sm shadow-slate-200/30 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200/60 hover:shadow-md hover:shadow-blue-200/40 dark:border-slate-700/60 dark:bg-slate-900/80 dark:shadow-slate-900/40 dark:hover:border-blue-500/40"
-        >
-          <dt className="text-sm font-semibold text-slate-900 dark:text-slate-100">{item.q}</dt>
-          <dd className={cn(mutedTextClass, 'mt-2 text-sm leading-6')}>
-            <FaqAnswer content={item.a} />
-          </dd>
-        </div>
+        <Card key={item.q}>
+          <CardContent className="pt-4">
+            <dt className="text-sm font-medium">{item.q}</dt>
+            <dd className="mt-2 text-sm text-muted-foreground">
+              <FaqAnswer content={item.a} />
+            </dd>
+          </CardContent>
+        </Card>
       ))}
     </dl>
   )
@@ -249,22 +242,22 @@ function FaqList({ items }: { items: Array<{ q: string; a: string }> }) {
 
 function FaqAnswer({ content }: { content: string }) {
   const { t } = useTranslation()
-  // 处理包含编号列表的内容
+  // Handle content with numbered list
   if (content.includes('1)') || content.includes('2)')) {
     const lines = content.split('\n').filter(line => line.trim())
 
-    // 检查是否是编号列表
+    // Check if it's a numbered list
     const isNumberedList = lines.some(line => /^\d+\)/.test(line.trim()))
 
     if (isNumberedList) {
       return (
-        <div className="space-y-2">
+        <div className="space-y-1">
           {lines.map((line, index) => {
             const match = line.match(/^\d+\)\s*(.*)/)
             if (match) {
               return (
                 <div key={index} className="flex gap-2">
-                  <span className="text-slate-500 dark:text-slate-400">•</span>
+                  <span className="text-muted-foreground">•</span>
                   <span>{match[1]}</span>
                 </div>
               )
@@ -276,37 +269,39 @@ function FaqAnswer({ content }: { content: string }) {
     }
   }
 
-  // 处理包含代码块的内容
+  // Handle content with code blocks
   if (content.includes('```')) {
     const parts = content.split('```')
     return (
       <div className="space-y-2">
         {parts.map((part, index) => {
           if (index % 2 === 0) {
-            // 普通文本
+            // Regular text
             return part ? (
               <div key={index} className="whitespace-pre-line">
                 {part}
               </div>
             ) : null
           } else {
-            // 代码块
+            // Code block
             const [language, ...codeLines] = part.split('\n')
             const code = codeLines.join('\n')
             return (
               <div key={index} className="relative">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">
                     {language || 'bash'}
                   </span>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
                     onClick={() => navigator.clipboard.writeText(code)}
-                    className="text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                   >
                     {t('common.actions.copy')}
-                  </button>
+                  </Button>
                 </div>
-                <pre className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3 overflow-x-auto text-xs">
+                <pre className="overflow-x-auto rounded-md border bg-muted p-3 text-xs">
                   <code>{code}</code>
                 </pre>
               </div>
@@ -317,7 +312,7 @@ function FaqAnswer({ content }: { content: string }) {
     )
   }
 
-  // 处理包含换行符的普通文本
+  // Handle content with line breaks
   if (content.includes('\n')) {
     return (
       <div className="whitespace-pre-line">
@@ -326,6 +321,6 @@ function FaqAnswer({ content }: { content: string }) {
     )
   }
 
-  // 普通文本
+  // Regular text
   return <div>{content}</div>
 }

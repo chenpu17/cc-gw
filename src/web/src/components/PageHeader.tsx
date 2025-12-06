@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { cn } from '@/utils/cn'
-import { mutedTextClass, pageHeaderShellClass, pillClass, plainPageHeaderShellClass } from '@/styles/theme'
+import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 
 interface PageHeaderProps {
   icon?: ReactNode
@@ -9,8 +9,6 @@ interface PageHeaderProps {
   badge?: ReactNode
   actions?: ReactNode
   className?: string
-  disableAnimation?: boolean
-  variant?: 'default' | 'plain'
 }
 
 export function PageHeader({
@@ -19,39 +17,35 @@ export function PageHeader({
   description,
   badge,
   actions,
-  className,
-  disableAnimation,
-  variant = 'default'
+  className
 }: PageHeaderProps) {
-  const baseClass = variant === 'plain' ? plainPageHeaderShellClass : pageHeaderShellClass
-
   return (
-    <div className={cn(baseClass, !disableAnimation && 'animate-slide-up', className)}>
-      <div className="flex flex-1 flex-wrap items-start gap-6">
-        {icon ? (
-          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-blue-600/15 to-indigo-600/10 text-blue-600 shadow-lg shadow-blue-200/30 ring-1 ring-blue-500/20 backdrop-blur-sm dark:from-blue-500/25 dark:to-indigo-500/15 dark:text-blue-200 dark:shadow-xl dark:shadow-blue-500/20 dark:ring-blue-400/20">
+    <div className={cn('flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between', className)}>
+      <div className="flex flex-1 flex-wrap items-start gap-4">
+        {icon && (
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
             {icon}
           </div>
-        ) : null}
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 gradient-text">
+        )}
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight">
               {title}
             </h1>
-            {badge ? <span className={cn(pillClass, 'shadow-md')}>{badge}</span> : null}
+            {badge && <Badge variant="secondary">{badge}</Badge>}
           </div>
-          {description ? (
-            <div className={cn(mutedTextClass, 'max-w-3xl text-base leading-relaxed')}>
+          {description && (
+            <p className="max-w-2xl text-sm text-muted-foreground">
               {description}
-            </div>
-          ) : null}
+            </p>
+          )}
         </div>
       </div>
-      {actions ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-4">
+      {actions && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {actions}
         </div>
-      ) : null}
+      )}
     </div>
   )
 }

@@ -6,9 +6,8 @@ import { useToast } from '@/providers/ToastProvider'
 import type { ApiError } from '@/services/api'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
-import { Button } from '@/components'
-import { cn } from '@/utils/cn'
-import { mutedTextClass } from '@/styles/theme'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import packageJson from '../../../../package.json' assert { type: 'json' }
 
 interface StatusResponse {
@@ -29,20 +28,21 @@ function InfoGrid({ items }: { items: InfoGridItem[] }) {
     return null
   }
   return (
-    <dl className="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
+    <dl className="grid gap-4 sm:grid-cols-2">
       {items.map((item) => (
-        <div
-          key={item.label}
-          className="rounded-2xl border border-slate-200/50 bg-white p-4 shadow-sm shadow-slate-200/30 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-200/70 hover:shadow-md hover:shadow-slate-200/40 dark:border-slate-700/50 dark:bg-slate-900/80 dark:shadow-lg dark:shadow-slate-900/30 dark:hover:border-slate-600/70"
-        >
-          <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-            {item.label}
-          </dt>
-          <dd className="mt-2 text-base font-semibold text-slate-900 dark:text-slate-100">
-            {item.value}
-          </dd>
-          {item.hint ? <p className={cn(mutedTextClass, 'mt-2 text-xs leading-relaxed')}>{item.hint}</p> : null}
-        </div>
+        <Card key={item.label}>
+          <CardContent className="pt-4">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {item.label}
+            </dt>
+            <dd className="mt-1 text-sm font-semibold">
+              {item.value}
+            </dd>
+            {item.hint && (
+              <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p>
+            )}
+          </CardContent>
+        </Card>
       ))}
     </dl>
   )
@@ -86,11 +86,11 @@ export default function AboutPage() {
     () => [
       {
         label: t('about.app.labels.name'),
-        value: <span className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">cc-gw</span>
+        value: <span className="font-mono">cc-gw</span>
       },
       {
         label: t('about.app.labels.version'),
-        value: <span className="font-mono text-sm font-semibold text-blue-700 dark:text-blue-200">v{appVersion}</span>
+        value: <span className="font-mono text-primary">v{appVersion}</span>
       },
       {
         label: t('about.app.labels.buildTime'),
@@ -99,7 +99,7 @@ export default function AboutPage() {
       },
       {
         label: t('about.app.labels.node'),
-        value: <span className="font-mono text-sm text-slate-800 dark:text-slate-200">{buildInfo.nodeVersion}</span>
+        value: <span className="font-mono">{buildInfo.nodeVersion}</span>
       }
     ],
     [appVersion, buildInfo.buildTime, buildInfo.nodeVersion, t]
@@ -138,18 +138,15 @@ export default function AboutPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
-        icon={<Info className="h-6 w-6" aria-hidden="true" />}
+        icon={<Info className="h-5 w-5" aria-hidden="true" />}
         title={t('about.title')}
         description={t('about.description')}
         badge={`v${appVersion}`}
         actions={
-          <Button
-            variant="primary"
-            icon={<Sparkles className="h-4 w-4" aria-hidden="true" />}
-            onClick={handleCheckUpdates}
-          >
+          <Button onClick={handleCheckUpdates}>
+            <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
             {t('about.support.actions.checkUpdates')}
           </Button>
         }
@@ -159,8 +156,6 @@ export default function AboutPage() {
         <PageSection
           title={t('about.app.title')}
           description={t('about.app.subtitle')}
-          className="h-full"
-          contentClassName="gap-4"
         >
           <InfoGrid items={infoItems} />
         </PageSection>
@@ -168,31 +163,29 @@ export default function AboutPage() {
         <PageSection
           title={t('about.status.title')}
           description={t('about.status.subtitle')}
-          className="h-full"
-          contentClassName="gap-4"
           actions={
             <Button
-              variant="subtle"
+              variant="outline"
               size="sm"
-              icon={<RefreshCw className="h-4 w-4" aria-hidden="true" />}
               onClick={() => statusQuery.refetch()}
-              loading={statusQuery.isFetching}
+              disabled={statusQuery.isFetching}
             >
+              <RefreshCw className={`mr-2 h-4 w-4 ${statusQuery.isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
               {statusQuery.isFetching ? t('common.actions.refreshing') : t('common.actions.refresh')}
             </Button>
           }
         >
           {statusQuery.isLoading ? (
-            <div className="flex h-36 flex-col items-center justify-center gap-3 text-center">
-              <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-blue-500/30 border-t-blue-600 dark:border-blue-400/20 dark:border-t-blue-300" />
-              <p className={cn(mutedTextClass, 'text-sm')}>{t('about.status.loading')}</p>
+            <div className="flex h-32 flex-col items-center justify-center gap-2 text-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-muted-foreground">{t('about.status.loading')}</p>
             </div>
           ) : runtimeItems.length > 0 ? (
             <InfoGrid items={runtimeItems} />
           ) : (
-            <div className="flex h-36 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200/60 bg-white p-6 text-center shadow-inner dark:border-slate-700/60 dark:bg-slate-900/60">
-              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t('about.status.empty')}</p>
-              <p className={cn(mutedTextClass, 'text-xs')}>{t('common.actions.refresh')}</p>
+            <div className="flex h-32 flex-col items-center justify-center gap-1 rounded-lg border border-dashed p-6 text-center">
+              <p className="text-sm font-medium">{t('about.status.empty')}</p>
+              <p className="text-xs text-muted-foreground">{t('common.actions.refresh')}</p>
             </div>
           )}
         </PageSection>
@@ -202,28 +195,28 @@ export default function AboutPage() {
         title={t('about.support.title')}
         description={
           <span className="space-y-1">
-            <span className="block text-sm font-semibold text-blue-600 dark:text-blue-300">
+            <span className="block text-sm font-medium text-primary">
               {t('about.support.subtitle')}
             </span>
             <span>{t('about.support.description')}</span>
           </span>
         }
-        className="relative overflow-hidden"
-        contentClassName="gap-6"
       >
-        <div className="flex flex-col gap-4 rounded-3xl border border-slate-200/50 bg-white p-6 shadow-lg shadow-slate-200/30 backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/80 dark:shadow-slate-900/40">
-          <div className="flex flex-wrap items-start gap-4">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 text-blue-600 shadow-inner dark:text-blue-200">
-              <LifeBuoy className="h-6 w-6" aria-hidden="true" />
+        <Card>
+          <CardContent className="flex flex-col gap-4 pt-4">
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <LifeBuoy className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <p className="flex-1 text-sm text-muted-foreground">
+                {t('about.support.tip')}
+              </p>
             </div>
-            <p className={cn(mutedTextClass, 'text-sm leading-6')}>
-              {t('about.support.tip')}
-            </p>
-          </div>
-          <code className="inline-flex items-center gap-2 self-start rounded-full border border-blue-200/50 bg-blue-50/80 px-4 py-2 text-xs font-semibold tracking-wide text-blue-700 shadow-sm dark:border-blue-500/30 dark:bg-blue-900/30 dark:text-blue-200">
-            ~/.cc-gw/config.json
-          </code>
-        </div>
+            <code className="inline-flex self-start rounded-md bg-muted px-3 py-1.5 text-xs font-medium">
+              ~/.cc-gw/config.json
+            </code>
+          </CardContent>
+        </Card>
       </PageSection>
     </div>
   )

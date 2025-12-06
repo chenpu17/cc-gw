@@ -1,15 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Settings as SettingsIcon, Copy, Shield, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Settings as SettingsIcon, Copy, Shield, AlertCircle } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import { Loader } from '@/components/Loader'
 import { PageHeader } from '@/components/PageHeader'
-import { PageSection } from '@/components/PageSection'
-import { cn } from '@/utils/cn'
-import { dangerButtonClass, mutedTextClass, primaryButtonClass, subtleButtonClass, inputClass } from '@/styles/theme'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { apiClient, type ApiError } from '@/services/api'
-import type { ConfigInfoResponse, GatewayConfig, WebAuthStatusResponse, HttpConfig, HttpsConfig } from '@/types/providers'
+import type { ConfigInfoResponse, GatewayConfig, WebAuthStatusResponse } from '@/types/providers'
 
 type LogLevel = NonNullable<GatewayConfig['logLevel']>
 
@@ -33,7 +43,6 @@ interface FormState {
   responseLogging: boolean
   bodyLimitMb: string
   enableRoutingFallback: boolean
-  // HTTP/HTTPS 协议配置
   httpEnabled: boolean
   httpPort: string
   httpHost: string
@@ -104,7 +113,6 @@ export default function SettingsPage() {
     responseLogging: true,
     bodyLimitMb: '10',
     enableRoutingFallback: false,
-    // HTTP/HTTPS 协议配置
     httpEnabled: true,
     httpPort: '4100',
     httpHost: '127.0.0.1',
@@ -173,7 +181,6 @@ export default function SettingsPage() {
           return '10'
         })(),
         enableRoutingFallback: cfg.enableRoutingFallback === true,
-        // HTTP/HTTPS 协议配置
         httpEnabled: cfg.http?.enabled !== false,
         httpPort: String(cfg.http?.port ?? cfg.port ?? 4100),
         httpHost: cfg.http?.host ?? cfg.host ?? '127.0.0.1',
@@ -225,12 +232,10 @@ export default function SettingsPage() {
   const validate = (): boolean => {
     const nextErrors: FormErrors = {}
 
-    // 协议验证: 至少启用一个
     if (!form.httpEnabled && !form.httpsEnabled) {
       nextErrors.protocol = '至少需要启用 HTTP 或 HTTPS 协议'
     }
 
-    // HTTP 端口验证
     if (form.httpEnabled) {
       const httpPortValue = Number(form.httpPort)
       if (!Number.isFinite(httpPortValue) || httpPortValue < 1 || httpPortValue > 65535) {
@@ -238,14 +243,12 @@ export default function SettingsPage() {
       }
     }
 
-    // HTTPS 端口验证
     if (form.httpsEnabled) {
       const httpsPortValue = Number(form.httpsPort)
       if (!Number.isFinite(httpsPortValue) || httpsPortValue < 1 || httpsPortValue > 65535) {
         nextErrors.httpsPort = 'HTTPS 端口必须在 1-65535 之间'
       }
 
-      // HTTPS 启用时需要证书路径
       if (!form.httpsKeyPath || !form.httpsCertPath) {
         nextErrors.protocol = 'HTTPS 已启用但缺少证书路径，请手动配置受信任的证书'
       }
@@ -311,7 +314,6 @@ export default function SettingsPage() {
 
       const nextConfig: GatewayConfig = {
         ...config,
-        // HTTP/HTTPS 协议配置
         http: {
           enabled: form.httpEnabled,
           port: Number(form.httpPort),
@@ -325,7 +327,6 @@ export default function SettingsPage() {
           certPath: form.httpsCertPath.trim(),
           caPath: form.httpsCaPath.trim() || undefined
         },
-        // 保留旧字段以兼容
         port: portValue,
         host: form.host.trim() || undefined,
         logRetentionDays: retentionValue,
@@ -341,7 +342,6 @@ export default function SettingsPage() {
       await apiClient.put('/api/config', payload)
       setConfig({ ...nextConfig, webAuth: config.webAuth })
 
-      // 检测是否修改了需要重启的配置
       const protocolChanged =
         config.http?.enabled !== nextConfig.http?.enabled ||
         config.http?.port !== nextConfig.http?.port ||
@@ -352,7 +352,7 @@ export default function SettingsPage() {
 
       if (protocolChanged) {
         pushToast({
-          title: '✅ 配置已保存！请执行 cc-gw restart --daemon 重启服务使协议配置生效',
+          title: '配置已保存！请执行 cc-gw restart --daemon 重启服务使协议配置生效',
           variant: 'success'
         })
       } else {
@@ -397,7 +397,16 @@ export default function SettingsPage() {
         }
         return '10'
       })(),
-      enableRoutingFallback: config.enableRoutingFallback === true
+      enableRoutingFallback: config.enableRoutingFallback === true,
+      httpEnabled: config.http?.enabled !== false,
+      httpPort: String(config.http?.port ?? config.port ?? 4100),
+      httpHost: config.http?.host ?? config.host ?? '127.0.0.1',
+      httpsEnabled: config.https?.enabled === true,
+      httpsPort: String(config.https?.port ?? 4443),
+      httpsHost: config.https?.host ?? config.host ?? '127.0.0.1',
+      httpsKeyPath: config.https?.keyPath ?? '',
+      httpsCertPath: config.https?.certPath ?? '',
+      httpsCaPath: config.https?.caPath ?? ''
     })
     setErrors({})
   }
@@ -514,655 +523,538 @@ export default function SettingsPage() {
   const isLoading = configQuery.isPending || (!config && configQuery.isFetching)
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <PageHeader
-        icon={<SettingsIcon className="h-6 w-6" aria-hidden="true" />}
+        icon={<SettingsIcon className="h-5 w-5" aria-hidden="true" />}
         title={t('settings.title')}
         description={t('settings.description')}
-        actions=
-          {config ? (
+        actions={
+          config ? (
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleReset}
-                className={cn(subtleButtonClass, 'h-10 rounded-full px-4')}
-                disabled={saving}
-              >
+              <Button variant="outline" onClick={handleReset} disabled={saving}>
                 {t('common.actions.reset')}
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                className={cn(primaryButtonClass, 'h-10 rounded-full px-4')}
-                disabled={saving}
-              >
+              </Button>
+              <Button onClick={() => void handleSave()} disabled={saving}>
                 {saving ? t('common.actions.saving') : t('common.actions.save')}
-              </button>
+              </Button>
             </div>
-          ) : null}
+          ) : null
+        }
       />
 
       {isLoading ? (
-        <PageSection className="flex min-h-[220px] items-center justify-center">
-          <Loader />
-        </PageSection>
+        <Card>
+          <CardContent className="flex min-h-[220px] items-center justify-center">
+            <Loader />
+          </CardContent>
+        </Card>
       ) : !config ? (
-        <PageSection>
-          <p className="text-sm font-medium text-red-500 dark:text-red-300">{t('settings.toast.missingConfig')}</p>
-        </PageSection>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm font-medium text-destructive">{t('settings.toast.missingConfig')}</p>
+          </CardContent>
+        </Card>
       ) : (
         <>
-          <PageSection title={t('settings.sections.basics')} contentClassName="grid w-full gap-5 md:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('settings.fields.port')}
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={65535}
-                value={form.port}
-                onChange={(event) => handleInputChange('port')(event.target.value)}
-                className={cn(inputClass, 'h-11')}
-                aria-invalid={Boolean(errors.port)}
-              />
-              {errors.port ? (
-                <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.port}</span>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('settings.fields.host')}
-              </span>
-              <input
-                value={form.host}
-                onChange={(event) => handleInputChange('host')(event.target.value)}
-                placeholder={t('settings.fields.hostPlaceholder')}
-                className={cn(inputClass, 'h-11')}
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('settings.fields.retention')}
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={365}
-                value={form.logRetentionDays}
-                onChange={(event) => handleInputChange('logRetentionDays')(event.target.value)}
-                className={cn(inputClass, 'h-11')}
-                aria-invalid={Boolean(errors.logRetentionDays)}
-              />
-              {errors.logRetentionDays ? (
-                <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.logRetentionDays}</span>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('settings.fields.bodyLimit')}
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={2048}
-                value={form.bodyLimitMb}
-                onChange={(event) => handleInputChange('bodyLimitMb')(event.target.value)}
-                className={cn(inputClass, 'h-11')}
-                aria-invalid={Boolean(errors.bodyLimitMb)}
-              />
-              <p className={cn(mutedTextClass, 'text-[11px] leading-relaxed')}>
-                {t('settings.fields.bodyLimitHint')}
-              </p>
-              {errors.bodyLimitMb ? (
-                <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.bodyLimitMb}</span>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('settings.fields.logLevel')}
-              </span>
-              <select
-                value={form.logLevel}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, logLevel: event.target.value as LogLevel }))
-                }
-                className="h-10"
-              >
-                {LOG_LEVEL_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(`settings.fields.logLevelOption.${option.labelKey}`)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="md:col-span-2 grid gap-4 sm:grid-cols-2">
-              <label className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/60 transition hover:border-slate-300 dark:border-slate-700/60 dark:bg-slate-900/70 dark:hover:border-slate-500/60">
-                <input
-                  type="checkbox"
-                  checked={form.storeRequestPayloads}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, storeRequestPayloads: event.target.checked }))
-                  }
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 dark:border-slate-600"
-                />
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-100">
-                    {t('settings.fields.storeRequestPayloads')}
-                  </span>
-                  <p className={cn(mutedTextClass, 'text-xs')}>{t('settings.fields.storeRequestPayloadsHint')}</p>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/60 transition hover:border-slate-300 dark:border-slate-700/60 dark:bg-slate-900/70 dark:hover:border-slate-500/60">
-                <input
-                  type="checkbox"
-                  checked={form.storeResponsePayloads}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, storeResponsePayloads: event.target.checked }))
-                  }
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 dark:border-slate-600"
-                />
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-100">
-                    {t('settings.fields.storeResponsePayloads')}
-                  </span>
-                  <p className={cn(mutedTextClass, 'text-xs')}>{t('settings.fields.storeResponsePayloadsHint')}</p>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/60 transition hover:border-slate-300 dark:border-slate-700/60 dark:bg-slate-900/70 dark:hover:border-slate-500/60">
-                <input
-                  type="checkbox"
-                  checked={form.requestLogging}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, requestLogging: event.target.checked }))
-                  }
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 dark:border-slate-600"
-                />
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-100">
-                    {t('settings.fields.requestLogging')}
-                  </span>
-                  <p className={cn(mutedTextClass, 'text-xs')}>{t('settings.fields.requestLoggingHint')}</p>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 shadow-sm shadow-slate-200/60 transition hover:border-slate-300 dark:border-slate-700/60 dark:bg-slate-900/70 dark:hover:border-slate-500/60">
-                <input
-                  type="checkbox"
-                  checked={form.responseLogging}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, responseLogging: event.target.checked }))
-                  }
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 dark:border-slate-600"
-                />
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-100">
-                    {t('settings.fields.responseLogging')}
-                  </span>
-                  <p className={cn(mutedTextClass, 'text-xs')}>{t('settings.fields.responseLoggingHint')}</p>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/80 px-4 py-3 shadow-sm shadow-amber-200/60 transition hover:border-amber-300 dark:border-amber-700/60 dark:bg-amber-900/30 dark:hover:border-amber-500/60">
-                <input
-                  type="checkbox"
-                  checked={form.enableRoutingFallback}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, enableRoutingFallback: event.target.checked }))
-                  }
-                  className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-400 dark:border-amber-500"
-                />
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold text-amber-700 dark:text-amber-200">
-                    {t('settings.fields.enableRoutingFallback')}
-                  </span>
-                  <p className={cn(mutedTextClass, 'text-xs text-amber-800/80 dark:text-amber-200/80')}>
-                    {t('settings.fields.enableRoutingFallbackHint')}
-                  </p>
-                </div>
-              </label>
-            </div>
-
-            <div className="md:col-span-2 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 text-sm text-slate-700 shadow-sm shadow-slate-200/60 dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-200">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('settings.fields.defaults')}
-              </span>
-              <p className="mt-2 text-sm">{defaultsSummary ?? t('settings.defaults.none')}</p>
-            </div>
-          </PageSection>
-
-          {/* 协议配置区域 */}
-          <PageSection
-            title={t('settings.sections.protocol')}
-            description={t('settings.protocol.description')}
-            contentClassName="space-y-6"
-          >
-            {/* 重启提示 */}
-            <div className="rounded-2xl border border-amber-200/70 bg-amber-50/80 px-4 py-3 shadow-sm dark:border-amber-700/60 dark:bg-amber-900/30">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+          {/* Basic Settings */}
+          <Card>
+            <CardContent className="pt-6">
+              <h3 className="mb-4 text-sm font-semibold">{t('settings.sections.basics')}</h3>
+              <div className="grid gap-5 md:grid-cols-2">
                 <div className="space-y-2">
-                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                    {t('settings.protocol.restartWarning')}
-                  </p>
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                    {t('settings.protocol.restartHint')}
-                  </p>
-                  <code className="block rounded-lg bg-amber-100/60 px-3 py-2 text-xs font-mono text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
-                    cc-gw restart --daemon
-                  </code>
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    {t('settings.protocol.restartTip')}
-                  </p>
+                  <Label>{t('settings.fields.port')}</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={form.port}
+                    onChange={(e) => handleInputChange('port')(e.target.value)}
+                    aria-invalid={Boolean(errors.port)}
+                  />
+                  {errors.port && (
+                    <p className="text-xs text-destructive">{errors.port}</p>
+                  )}
                 </div>
-              </div>
-            </div>
 
-            {errors.protocol && (
-              <div className="rounded-2xl border border-red-200/70 bg-red-50/80 px-4 py-3 text-sm text-red-700 dark:border-red-700/60 dark:bg-red-900/30 dark:text-red-200">
-                <AlertCircle className="inline h-4 w-4 mr-2" />
-                {errors.protocol}
-              </div>
-            )}
-
-            {/* HTTP 配置 */}
-            <div className="rounded-2xl border border-blue-200/70 bg-blue-50/50 p-5 dark:border-blue-700/60 dark:bg-blue-900/20">
-              <label className="flex cursor-pointer items-start gap-3 mb-4">
-                <input
-                  type="checkbox"
-                  checked={form.httpEnabled}
-                  onChange={(e) => setForm((prev) => ({ ...prev, httpEnabled: e.target.checked }))}
-                  className="mt-1 h-5 w-5 rounded border-blue-300 text-blue-600 focus:ring-blue-400 dark:border-blue-600"
-                />
-                <div className="flex-1">
-                  <span className="text-sm font-semibold text-blue-800 dark:text-blue-100">
-                    {t('settings.protocol.http.enable')}
-                  </span>
-                  <p className={cn(mutedTextClass, 'text-xs mt-1')}>
-                    {t('settings.protocol.http.hint')}
-                  </p>
+                <div className="space-y-2">
+                  <Label>{t('settings.fields.host')}</Label>
+                  <Input
+                    value={form.host}
+                    onChange={(e) => handleInputChange('host')(e.target.value)}
+                    placeholder={t('settings.fields.hostPlaceholder')}
+                  />
                 </div>
-              </label>
 
-              {form.httpEnabled && (
-                <div className="grid gap-4 sm:grid-cols-2 mt-4 pt-4 border-t border-blue-200 dark:border-blue-700">
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t('settings.protocol.http.port')}
-                    </span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={65535}
-                      value={form.httpPort}
-                      onChange={(e) => setForm((prev) => ({ ...prev, httpPort: e.target.value }))}
-                      className={cn(inputClass, 'h-11')}
-                      aria-invalid={Boolean(errors.httpPort)}
+                <div className="space-y-2">
+                  <Label>{t('settings.fields.retention')}</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={form.logRetentionDays}
+                    onChange={(e) => handleInputChange('logRetentionDays')(e.target.value)}
+                    aria-invalid={Boolean(errors.logRetentionDays)}
+                  />
+                  {errors.logRetentionDays && (
+                    <p className="text-xs text-destructive">{errors.logRetentionDays}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('settings.fields.bodyLimit')}</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={2048}
+                    value={form.bodyLimitMb}
+                    onChange={(e) => handleInputChange('bodyLimitMb')(e.target.value)}
+                    aria-invalid={Boolean(errors.bodyLimitMb)}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('settings.fields.bodyLimitHint')}</p>
+                  {errors.bodyLimitMb && (
+                    <p className="text-xs text-destructive">{errors.bodyLimitMb}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('settings.fields.logLevel')}</Label>
+                  <Select
+                    value={form.logLevel}
+                    onValueChange={(value) => setForm((prev) => ({ ...prev, logLevel: value as LogLevel }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOG_LEVEL_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {t(`settings.fields.logLevelOption.${option.labelKey}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="md:col-span-2 grid gap-4 sm:grid-cols-2">
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <Label className="text-sm font-medium">{t('settings.fields.storeRequestPayloads')}</Label>
+                      <p className="text-xs text-muted-foreground">{t('settings.fields.storeRequestPayloadsHint')}</p>
+                    </div>
+                    <Switch
+                      checked={form.storeRequestPayloads}
+                      onCheckedChange={(checked) => setForm((prev) => ({ ...prev, storeRequestPayloads: checked }))}
                     />
-                    {errors.httpPort && (
-                      <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.httpPort}</span>
-                    )}
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t('settings.protocol.http.host')}
-                    </span>
-                    <input
-                      value={form.httpHost}
-                      onChange={(e) => setForm((prev) => ({ ...prev, httpHost: e.target.value }))}
-                      placeholder="127.0.0.1"
-                      className={cn(inputClass, 'h-11')}
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <Label className="text-sm font-medium">{t('settings.fields.storeResponsePayloads')}</Label>
+                      <p className="text-xs text-muted-foreground">{t('settings.fields.storeResponsePayloadsHint')}</p>
+                    </div>
+                    <Switch
+                      checked={form.storeResponsePayloads}
+                      onCheckedChange={(checked) => setForm((prev) => ({ ...prev, storeResponsePayloads: checked }))}
                     />
                   </div>
+
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <Label className="text-sm font-medium">{t('settings.fields.requestLogging')}</Label>
+                      <p className="text-xs text-muted-foreground">{t('settings.fields.requestLoggingHint')}</p>
+                    </div>
+                    <Switch
+                      checked={form.requestLogging}
+                      onCheckedChange={(checked) => setForm((prev) => ({ ...prev, requestLogging: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <Label className="text-sm font-medium">{t('settings.fields.responseLogging')}</Label>
+                      <p className="text-xs text-muted-foreground">{t('settings.fields.responseLoggingHint')}</p>
+                    </div>
+                    <Switch
+                      checked={form.responseLogging}
+                      onCheckedChange={(checked) => setForm((prev) => ({ ...prev, responseLogging: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
+                    <div className="space-y-1">
+                      <Label className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                        {t('settings.fields.enableRoutingFallback')}
+                      </Label>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        {t('settings.fields.enableRoutingFallbackHint')}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={form.enableRoutingFallback}
+                      onCheckedChange={(checked) => setForm((prev) => ({ ...prev, enableRoutingFallback: checked }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="md:col-span-2 rounded-lg border bg-muted/50 p-4">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                    {t('settings.fields.defaults')}
+                  </Label>
+                  <p className="mt-2 text-sm">{defaultsSummary ?? t('settings.defaults.none')}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Protocol Settings */}
+          <Card>
+            <CardContent className="pt-6 space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold">{t('settings.sections.protocol')}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">{t('settings.protocol.description')}</p>
+              </div>
+
+              {/* Restart Warning */}
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                      {t('settings.protocol.restartWarning')}
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      {t('settings.protocol.restartHint')}
+                    </p>
+                    <code className="block rounded-md bg-amber-100 px-3 py-2 text-xs font-mono text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+                      cc-gw restart --daemon
+                    </code>
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      {t('settings.protocol.restartTip')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {errors.protocol && (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                  <AlertCircle className="inline h-4 w-4 mr-2" />
+                  {errors.protocol}
                 </div>
               )}
-            </div>
 
-            {/* HTTPS 配置 */}
-            <div className="rounded-2xl border border-green-200/70 bg-green-50/50 p-5 dark:border-green-700/60 dark:bg-green-900/20">
-              <label className="flex cursor-pointer items-start gap-3 mb-4">
-                <input
-                  type="checkbox"
-                  checked={form.httpsEnabled}
-                  onChange={(e) => setForm((prev) => ({ ...prev, httpsEnabled: e.target.checked }))}
-                  className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-400 dark:border-green-600"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-green-800 dark:text-green-100">
-                      {t('settings.protocol.https.enable')}
-                    </span>
-                    <Shield className="h-4 w-4 text-green-600 dark:text-green-300" />
+              {/* HTTP Config */}
+              <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-5 dark:border-blue-800 dark:bg-blue-950/50">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                      {t('settings.protocol.http.enable')}
+                    </Label>
+                    <p className="text-xs text-blue-600 dark:text-blue-400">
+                      {t('settings.protocol.http.hint')}
+                    </p>
                   </div>
-                  <p className={cn(mutedTextClass, 'text-xs mt-1')}>
-                    {t('settings.protocol.https.hint')}
-                  </p>
+                  <Switch
+                    checked={form.httpEnabled}
+                    onCheckedChange={(checked) => setForm((prev) => ({ ...prev, httpEnabled: checked }))}
+                  />
                 </div>
-              </label>
 
-              {form.httpsEnabled && (
-                <div className="space-y-4 mt-4 pt-4 border-t border-green-200 dark:border-green-700">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="flex flex-col gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {t('settings.protocol.https.port')}
-                      </span>
-                      <input
+                {form.httpEnabled && (
+                  <div className="grid gap-4 sm:grid-cols-2 mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
+                    <div className="space-y-2">
+                      <Label>{t('settings.protocol.http.port')}</Label>
+                      <Input
                         type="number"
                         min={1}
                         max={65535}
-                        value={form.httpsPort}
-                        onChange={(e) => setForm((prev) => ({ ...prev, httpsPort: e.target.value }))}
-                        className={cn(inputClass, 'h-11')}
-                        aria-invalid={Boolean(errors.httpsPort)}
+                        value={form.httpPort}
+                        onChange={(e) => setForm((prev) => ({ ...prev, httpPort: e.target.value }))}
+                        aria-invalid={Boolean(errors.httpPort)}
                       />
-                      {errors.httpsPort && (
-                        <span className="text-xs font-medium text-red-500 dark:text-red-300">{errors.httpsPort}</span>
+                      {errors.httpPort && (
+                        <p className="text-xs text-destructive">{errors.httpPort}</p>
                       )}
                     </div>
 
-                    <div className="flex flex-col gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {t('settings.protocol.https.host')}
-                      </span>
-                      <input
-                        value={form.httpsHost}
-                        onChange={(e) => setForm((prev) => ({ ...prev, httpsHost: e.target.value }))}
+                    <div className="space-y-2">
+                      <Label>{t('settings.protocol.http.host')}</Label>
+                      <Input
+                        value={form.httpHost}
+                        onChange={(e) => setForm((prev) => ({ ...prev, httpHost: e.target.value }))}
                         placeholder="127.0.0.1"
-                        className={cn(inputClass, 'h-11')}
                       />
                     </div>
                   </div>
+                )}
+              </div>
 
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t('settings.protocol.https.keyPath')}
-                    </span>
-                    <input
-                      value={form.httpsKeyPath}
-                      onChange={(e) => setForm((prev) => ({ ...prev, httpsKeyPath: e.target.value }))}
-                      placeholder="~/.cc-gw/certs/key.pem"
-                      className={cn(inputClass, 'h-11 font-mono text-xs')}
-                    />
+              {/* HTTPS Config */}
+              <div className="rounded-lg border border-green-200 bg-green-50/50 p-5 dark:border-green-800 dark:bg-green-950/50">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium text-green-800 dark:text-green-200">
+                        {t('settings.protocol.https.enable')}
+                      </Label>
+                      <Shield className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <p className="text-xs text-green-600 dark:text-green-400">
+                      {t('settings.protocol.https.hint')}
+                    </p>
                   </div>
+                  <Switch
+                    checked={form.httpsEnabled}
+                    onCheckedChange={(checked) => setForm((prev) => ({ ...prev, httpsEnabled: checked }))}
+                  />
+                </div>
 
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t('settings.protocol.https.certPath')}
-                    </span>
-                    <input
-                      value={form.httpsCertPath}
-                      onChange={(e) => setForm((prev) => ({ ...prev, httpsCertPath: e.target.value }))}
-                      placeholder="~/.cc-gw/certs/cert.pem"
-                      className={cn(inputClass, 'h-11 font-mono text-xs')}
-                    />
-                  </div>
+                {form.httpsEnabled && (
+                  <div className="space-y-4 mt-4 pt-4 border-t border-green-200 dark:border-green-800">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>{t('settings.protocol.https.port')}</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={65535}
+                          value={form.httpsPort}
+                          onChange={(e) => setForm((prev) => ({ ...prev, httpsPort: e.target.value }))}
+                          aria-invalid={Boolean(errors.httpsPort)}
+                        />
+                        {errors.httpsPort && (
+                          <p className="text-xs text-destructive">{errors.httpsPort}</p>
+                        )}
+                      </div>
 
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t('settings.protocol.https.caPath')}
-                    </span>
-                    <input
-                      value={form.httpsCaPath}
-                      onChange={(e) => setForm((prev) => ({ ...prev, httpsCaPath: e.target.value }))}
-                      placeholder="留空则不使用"
-                      className={cn(inputClass, 'h-11 font-mono text-xs')}
-                    />
-                  </div>
-
-                  {/* HTTPS 证书说明 */}
-                  <div className="rounded-xl border border-amber-200/70 bg-amber-50/60 p-4 dark:border-amber-700/60 dark:bg-amber-900/20">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                      <div className="space-y-2 flex-1">
-                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                          {t('settings.protocol.https.warning')}
-                        </p>
-                        <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-                          <strong>{t('settings.protocol.https.invalidCert')}</strong>{t('settings.protocol.https.invalidCertDetail')}
-                        </p>
-                        <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-                          <strong>{t('settings.protocol.https.recommended')}</strong>{t('settings.protocol.https.recommendedDetail')}
-                        </p>
-                        <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
-                          {t('settings.protocol.https.tip')}
-                        </p>
+                      <div className="space-y-2">
+                        <Label>{t('settings.protocol.https.host')}</Label>
+                        <Input
+                          value={form.httpsHost}
+                          onChange={(e) => setForm((prev) => ({ ...prev, httpsHost: e.target.value }))}
+                          placeholder="127.0.0.1"
+                        />
                       </div>
                     </div>
+
+                    <div className="space-y-2">
+                      <Label>{t('settings.protocol.https.keyPath')}</Label>
+                      <Input
+                        value={form.httpsKeyPath}
+                        onChange={(e) => setForm((prev) => ({ ...prev, httpsKeyPath: e.target.value }))}
+                        placeholder="~/.cc-gw/certs/key.pem"
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{t('settings.protocol.https.certPath')}</Label>
+                      <Input
+                        value={form.httpsCertPath}
+                        onChange={(e) => setForm((prev) => ({ ...prev, httpsCertPath: e.target.value }))}
+                        placeholder="~/.cc-gw/certs/cert.pem"
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{t('settings.protocol.https.caPath')}</Label>
+                      <Input
+                        value={form.httpsCaPath}
+                        onChange={(e) => setForm((prev) => ({ ...prev, httpsCaPath: e.target.value }))}
+                        placeholder="留空则不使用"
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    {/* HTTPS Certificate Warning */}
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                        <div className="space-y-2 flex-1">
+                          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                            {t('settings.protocol.https.warning')}
+                          </p>
+                          <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                            <strong>{t('settings.protocol.https.invalidCert')}</strong>
+                            {t('settings.protocol.https.invalidCertDetail')}
+                          </p>
+                          <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                            <strong>{t('settings.protocol.https.recommended')}</strong>
+                            {t('settings.protocol.https.recommendedDetail')}
+                          </p>
+                          <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                            {t('settings.protocol.https.tip')}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Security Settings */}
+          <Card>
+            <CardContent className="pt-6 space-y-5">
+              <div>
+                <h3 className="text-sm font-semibold">{t('settings.sections.security')}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">{t('settings.auth.description')}</p>
+              </div>
+
+              {authQuery.isPending && !authSettings ? (
+                <div className="flex min-h-[120px] items-center justify-center">
+                  <Loader />
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">{t('settings.auth.enable')}</Label>
+                      <p className="text-xs text-muted-foreground">{t('settings.auth.enableHint')}</p>
+                      <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+                        <span className="rounded-full bg-muted px-3 py-1">/ui</span>
+                        <span className="rounded-full bg-muted px-3 py-1">/api/*</span>
+                        <span className="rounded-full bg-muted px-3 py-1">Cookie Session</span>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={authForm.enabled}
+                      onCheckedChange={(checked) => setAuthForm((prev) => ({ ...prev, enabled: checked }))}
+                    />
+                  </div>
+
+                  <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label>{t('settings.auth.username')}</Label>
+                        <Input
+                          value={authForm.username}
+                          onChange={(e) => setAuthForm((prev) => ({ ...prev, username: e.target.value }))}
+                          placeholder={t('settings.auth.usernamePlaceholder')}
+                        />
+                        {authErrors.username && (
+                          <p className="text-xs text-destructive">{authErrors.username}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>{t('settings.auth.password')}</Label>
+                        <Input
+                          type="password"
+                          value={authForm.password}
+                          disabled={!authForm.enabled}
+                          onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))}
+                          placeholder={t('settings.auth.passwordPlaceholder')}
+                        />
+                        {authErrors.password ? (
+                          <p className="text-xs text-destructive">{authErrors.password}</p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {t(needsPassword ? 'settings.auth.passwordHintRequired' : 'settings.auth.passwordHintOptional')}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>{t('settings.auth.confirmPassword')}</Label>
+                        <Input
+                          type="password"
+                          value={authForm.confirmPassword}
+                          disabled={!authForm.enabled}
+                          onChange={(e) => setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                          placeholder={t('settings.auth.confirmPasswordPlaceholder')}
+                        />
+                        {authErrors.confirmPassword && (
+                          <p className="text-xs text-destructive">{authErrors.confirmPassword}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-4">
+                      <div className="rounded-lg border bg-card p-4">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          {t('settings.auth.status')}
+                        </p>
+                        <p className="mt-2 text-base font-semibold">
+                          {authSettings?.enabled
+                            ? t('settings.auth.statusEnabled')
+                            : t('settings.auth.statusDisabled')}
+                        </p>
+                        {authSettings?.username && (
+                          <div className="mt-3 rounded-md bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
+                            {t('settings.auth.username')}: {authSettings.username}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-lg border bg-muted/50 p-4 text-xs text-muted-foreground">
+                        {t(needsPassword ? 'settings.auth.passwordHintRequired' : 'settings.auth.passwordHintOptional')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-end gap-3">
+                    <Button onClick={() => void handleAuthSave()} disabled={savingAuth}>
+                      {savingAuth ? t('common.actions.saving') : t('settings.auth.actions.save')}
+                    </Button>
+                    <Button variant="outline" onClick={handleAuthReset} disabled={savingAuth}>
+                      {t('common.actions.reset')}
+                    </Button>
                   </div>
                 </div>
               )}
-            </div>
-          </PageSection>
+            </CardContent>
+          </Card>
 
-        <PageSection
-          title={t('settings.sections.security')}
-          description={t('settings.auth.description')}
-          contentClassName="space-y-5"
-        >
-          {authQuery.isPending && !authSettings ? (
-            <div className="flex min-h-[120px] items-center justify-center">
-              <Loader />
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-200/50 transition dark:border-slate-700/60 dark:bg-slate-900/80 dark:shadow-slate-900/40">
-                <label className="flex cursor-pointer select-none items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={authForm.enabled}
-                    onChange={(event) =>
-                      setAuthForm((prev) => ({ ...prev, enabled: event.target.checked }))
-                    }
-                    className="mt-1 h-5 w-5 rounded border-slate-300 bg-white text-blue-600 shadow-sm transition focus:ring-blue-400/40 dark:border-slate-600 dark:bg-slate-900 dark:text-blue-200"
-                  />
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                      {t('settings.auth.enable')}
-                    </span>
-                    <p className={cn(mutedTextClass, 'text-xs leading-relaxed')}>
-                      {t('settings.auth.enableHint')}
-                    </p>
-                    <div className="flex flex-wrap gap-2 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                      <span className="rounded-full bg-slate-100/90 px-3 py-1 shadow-sm shadow-slate-200/40 dark:bg-slate-800/70">
-                        /ui
-                      </span>
-                      <span className="rounded-full bg-slate-100/90 px-3 py-1 shadow-sm shadow-slate-200/40 dark:bg-slate-800/70">
-                        /api/*
-                      </span>
-                      <span className="rounded-full bg-slate-100/90 px-3 py-1 shadow-sm shadow-slate-200/40 dark:bg-slate-800/70">
-                        Cookie Session
-                      </span>
-                    </div>
-                  </div>
-                </label>
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex flex-col gap-2 sm:col-span-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t('settings.auth.username')}
-                    </span>
-                    <input
-                      value={authForm.username}
-                      onChange={(event) =>
-                        setAuthForm((prev) => ({ ...prev, username: event.target.value }))
-                      }
-                      placeholder={t('settings.auth.usernamePlaceholder')}
-                      className={cn(inputClass, 'h-11 font-medium')}
-                    />
-                    {authErrors.username ? (
-                      <span className="text-xs font-medium text-red-500 dark:text-red-300">
-                        {authErrors.username}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t('settings.auth.password')}
-                    </span>
-                    <input
-                      type="password"
-                      value={authForm.password}
-                      disabled={!authForm.enabled}
-                      onChange={(event) =>
-                        setAuthForm((prev) => ({ ...prev, password: event.target.value }))
-                      }
-                      placeholder={t('settings.auth.passwordPlaceholder')}
-                      className={cn(
-                        inputClass,
-                        'h-11 disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-slate-900/40'
-                      )}
-                    />
-                    {authErrors.password ? (
-                      <span className="text-xs font-medium text-red-500 dark:text-red-300">
-                        {authErrors.password}
-                      </span>
-                    ) : (
-                      <span className={cn(mutedTextClass, 'text-xs leading-relaxed')}>
-                        {t(
-                          needsPassword
-                            ? 'settings.auth.passwordHintRequired'
-                            : 'settings.auth.passwordHintOptional'
-                        )}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t('settings.auth.confirmPassword')}
-                    </span>
-                    <input
-                      type="password"
-                      value={authForm.confirmPassword}
-                      disabled={!authForm.enabled}
-                      onChange={(event) =>
-                        setAuthForm((prev) => ({ ...prev, confirmPassword: event.target.value }))
-                      }
-                      placeholder={t('settings.auth.confirmPasswordPlaceholder')}
-                      className={cn(
-                        inputClass,
-                        'h-11 disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-slate-900/40'
-                      )}
-                    />
-                    {authErrors.confirmPassword ? (
-                      <span className="text-xs font-medium text-red-500 dark:text-red-300">
-                        {authErrors.confirmPassword}
-                      </span>
-                    ) : null}
-                  </div>
+          {/* Config File */}
+          <Card>
+            <CardContent className="pt-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold">{t('settings.sections.configFile')}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('settings.file.description')}</p>
                 </div>
-
-                <div className="flex flex-col gap-4">
-                  <div className="rounded-2xl border border-slate-200/70 bg-white/95 px-5 py-4 text-sm shadow-sm shadow-slate-200/40 dark:border-slate-700/60 dark:bg-slate-900/75 dark:text-slate-200 dark:shadow-slate-900/40">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500/90 dark:text-slate-400">
-                      {t('settings.auth.status')}
-                    </div>
-                    <div className="mt-2 text-base font-semibold text-slate-800 dark:text-slate-100">
-                      {authSettings?.enabled
-                        ? t('settings.auth.statusEnabled')
-                        : t('settings.auth.statusDisabled')}
-                    </div>
-                    {authSettings?.username ? (
-                      <div className="mt-3 rounded-2xl bg-blue-50/80 px-3 py-2 text-xs font-medium text-blue-700 shadow-sm shadow-blue-200/40 dark:bg-blue-500/20 dark:text-blue-100">
-                        {t('settings.auth.username')}: {authSettings.username}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200/60 bg-slate-50/80 px-5 py-4 text-xs leading-relaxed text-slate-600 shadow-sm shadow-slate-200/40 dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300">
-                    {t(
-                      needsPassword
-                        ? 'settings.auth.passwordHintRequired'
-                        : 'settings.auth.passwordHintOptional'
-                    )}
-                  </div>
-                </div>
+                <Button variant="outline" size="sm" onClick={() => void handleCopyPath()}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  {t('common.actions.copy')}
+                </Button>
               </div>
+              <code className="block break-all rounded-lg border bg-muted px-4 py-3 text-xs">
+                {configPath || t('settings.file.unknown')}
+              </code>
+            </CardContent>
+          </Card>
 
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={handleAuthSave}
-                  className={cn(primaryButtonClass, 'h-10 rounded-full px-6')}
-                  disabled={savingAuth}
-                >
-                  {savingAuth ? t('common.actions.saving') : t('settings.auth.actions.save')}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAuthReset}
-                  className={cn(subtleButtonClass, 'h-10 rounded-full px-4')}
-                  disabled={savingAuth}
-                >
-                  {t('common.actions.reset')}
-                </button>
+          {/* Cleanup */}
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold">{t('settings.sections.cleanup')}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">{t('settings.cleanup.description')}</p>
               </div>
-            </div>
-          )}
-        </PageSection>
-
-          <PageSection
-            title={t('settings.sections.configFile')}
-            description={t('settings.file.description')}
-            actions={
-              <button
-                type="button"
-                onClick={handleCopyPath}
-                className={cn(subtleButtonClass, 'h-10 rounded-full px-4')}
-              >
-                <Copy className="h-4 w-4" aria-hidden="true" />
-                {t('common.actions.copy')}
-              </button>
-            }
-            contentClassName="gap-3"
-          >
-            <code className="block break-all rounded-2xl border border-slate-200/60 bg-slate-100 px-4 py-3 text-xs text-slate-700 dark:border-slate-700/60 dark:bg-slate-900 dark:text-slate-200">
-              {configPath || t('settings.file.unknown')}
-            </code>
-          </PageSection>
-
-          <PageSection
-            title={t('settings.sections.cleanup')}
-            description={t('settings.cleanup.description')}
-            contentClassName="flex flex-col gap-4"
-          >
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={handleCleanupLogs}
-                className={cn(dangerButtonClass, 'px-5')}
-                disabled={cleaning}
-              >
-                {cleaning ? t('common.actions.cleaning') : t('common.actions.cleanup')}
-              </button>
-              <button
-                type="button"
-                onClick={handleClearAllLogs}
-                className={cn(
-                  dangerButtonClass,
-                  'px-5 border-red-500/70 bg-red-600 text-white hover:bg-red-600/90 dark:border-red-500 dark:bg-red-500 dark:text-white'
-                )}
-                disabled={clearingAll}
-              >
-                {clearingAll ? t('settings.cleanup.clearingAll') : t('settings.cleanup.clearAll')}
-              </button>
-            </div>
-            <p className="text-xs font-medium text-red-500 dark:text-red-300">
-              {t('settings.cleanup.clearAllWarning')}
-            </p>
-          </PageSection>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => void handleCleanupLogs()}
+                  disabled={cleaning}
+                  className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                >
+                  {cleaning ? t('common.actions.cleaning') : t('common.actions.cleanup')}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => void handleClearAllLogs()}
+                  disabled={clearingAll}
+                >
+                  {clearingAll ? t('settings.cleanup.clearingAll') : t('settings.cleanup.clearAll')}
+                </Button>
+              </div>
+              <p className="text-xs text-destructive">
+                {t('settings.cleanup.clearAllWarning')}
+              </p>
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

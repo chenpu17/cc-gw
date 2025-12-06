@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { cn } from '@/utils/cn'
-import { mutedTextClass, sectionTitleClass, surfaceCardClass, plainSurfaceCardClass } from '@/styles/theme'
+import { cn } from '@/lib/utils'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface PageSectionProps {
   title?: ReactNode
@@ -9,8 +9,6 @@ interface PageSectionProps {
   className?: string
   contentClassName?: string
   children: ReactNode
-  disableAnimation?: boolean
-  variant?: 'default' | 'plain'
 }
 
 export function PageSection({
@@ -19,36 +17,38 @@ export function PageSection({
   actions,
   className,
   contentClassName,
-  children,
-  disableAnimation,
-  variant = 'default'
+  children
 }: PageSectionProps) {
-  const baseClass = variant === 'plain' ? plainSurfaceCardClass : surfaceCardClass
+  const hasHeader = title || description || actions
 
   return (
-    <section className={cn(baseClass, !disableAnimation && 'animate-slide-up', className)}>
-      {(title || description || actions) && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-6">
-          <div className="space-y-3">
+    <Card className={className}>
+      {hasHeader && (
+        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <div className="space-y-1.5">
             {typeof title === 'string' ? (
-              <h2 className={cn(sectionTitleClass, 'text-base font-bold')}>{title}</h2>
-            ) : title}
-            {description ? (
-              <div className={cn(mutedTextClass, 'max-w-3xl text-sm leading-relaxed')}>
-                {description}
-              </div>
-            ) : null}
+              <CardTitle className="text-base">{title}</CardTitle>
+            ) : (
+              title
+            )}
+            {description && (
+              typeof description === 'string' ? (
+                <CardDescription>{description}</CardDescription>
+              ) : (
+                <div className="text-sm text-muted-foreground">{description}</div>
+              )
+            )}
           </div>
-          {actions ? (
-            <div className="flex shrink-0 items-center gap-3">
+          {actions && (
+            <div className="flex shrink-0 items-center gap-2">
               {actions}
             </div>
-          ) : null}
-        </div>
+          )}
+        </CardHeader>
       )}
-      <div className={cn('flex flex-col gap-6', contentClassName)}>
+      <CardContent className={cn(!hasHeader && 'pt-6', contentClassName)}>
         {children}
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   )
 }

@@ -1,13 +1,36 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Layers, Plus, RefreshCw, X } from 'lucide-react'
 import { apiClient, customEndpointsApi, toApiError, type ApiError } from '@/services/api'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
+import { PageHeader } from '@/components/PageHeader'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
 import type { EndpointRoutingConfig, GatewayConfig, ProviderConfig, ProviderModelConfig, RoutingPreset } from '@/types/providers'
 import type { CustomEndpoint, EndpointProtocol } from '@/types/endpoints'
 import { ProviderDrawer } from './providers/ProviderDrawer'
-import { pageHeaderShellClass, surfaceCardClass, primaryButtonClass, subtleButtonClass, dangerButtonClass, inputClass, selectClass, badgeClass, statusBadgeClass } from '@/styles/theme'
 
 interface ModelRouteEntry {
   id: string
@@ -74,11 +97,9 @@ function deriveRoutesFromConfig(
   const result: Record<string, ModelRouteEntry[]> = {}
   const routing = config.endpointRouting ?? {}
 
-  // System endpoints
   result.anthropic = mapRoutesToEntries(routing.anthropic?.modelRoutes ?? config.modelRoutes ?? {})
   result.openai = mapRoutesToEntries(routing.openai?.modelRoutes ?? {})
 
-  // Custom endpoints
   for (const endpoint of customEndpoints) {
     if (endpoint.routing?.modelRoutes) {
       result[endpoint.id] = mapRoutesToEntries(endpoint.routing.modelRoutes)
@@ -90,9 +111,6 @@ function deriveRoutesFromConfig(
   return result
 }
 
-/**
- * 判断端点是否使用 Anthropic 协议
- */
 function isAnthropicEndpoint(endpoint: string, customEndpoints: CustomEndpoint[]): boolean {
   if (endpoint === 'anthropic') {
     return true
@@ -101,17 +119,12 @@ function isAnthropicEndpoint(endpoint: string, customEndpoints: CustomEndpoint[]
   if (!customEndpoint) {
     return false
   }
-  // 检查新格式 (paths)
   if (customEndpoint.paths && customEndpoint.paths.length > 0) {
     return customEndpoint.paths.some((p) => p.protocol === 'anthropic')
   }
-  // 检查旧格式 (protocol)
   return customEndpoint.protocol === 'anthropic'
 }
 
-/**
- * 获取端点的 validation 配置
- */
 function getEndpointValidation(
   endpoint: string,
   config: GatewayConfig | null,
@@ -137,7 +150,6 @@ export default function ModelManagementPage() {
     { url: '/api/config', method: 'GET' }
   )
 
-  // Fetch custom endpoints
   const { data: customEndpointsData } = useQuery({
     queryKey: ['custom-endpoints'],
     queryFn: customEndpointsApi.list,
@@ -146,9 +158,8 @@ export default function ModelManagementPage() {
 
   const customEndpoints = customEndpointsData?.endpoints ?? []
 
-  type Endpoint = string // Can be 'anthropic', 'openai', or custom endpoint ID
+  type Endpoint = string
 
-  // Generate tabs dynamically
   const tabs = useMemo(() => {
     const baseTabs: Array<{ key: string; label: string; description: string; isSystem: boolean; canDelete: boolean; protocols?: string[] }> = [
       { key: 'providers', label: t('modelManagement.tabs.providers'), description: t('modelManagement.tabs.providersDesc'), isSystem: true, canDelete: false },
@@ -157,18 +168,14 @@ export default function ModelManagementPage() {
     ]
 
     const customTabs = customEndpoints.map((endpoint) => {
-      // 支持新旧两种格式
       let pathsText: string
       let protocols: string[] = []
 
       if (endpoint.paths && endpoint.paths.length > 0) {
-        // 新格式：显示所有路径
         const pathsList = endpoint.paths.map(p => `${p.path} (${p.protocol})`).join(', ')
         pathsText = `${t('modelManagement.tabs.customEndpoint')}: ${pathsList}`
-        // 收集所有协议
         protocols = [...new Set(endpoint.paths.map(p => p.protocol))]
       } else if (endpoint.path) {
-        // 旧格式：单个路径
         const protocol = endpoint.protocol || 'anthropic'
         pathsText = `${t('modelManagement.tabs.customEndpoint')}: ${endpoint.path} (${protocol})`
         protocols = [protocol]
@@ -196,11 +203,9 @@ export default function ModelManagementPage() {
   const [editingProvider, setEditingProvider] = useState<ProviderConfig | undefined>(undefined)
   const [testingProviderId, setTestingProviderId] = useState<string | null>(null)
 
-  // Endpoint drawer for adding custom endpoints
   const [endpointDrawerOpen, setEndpointDrawerOpen] = useState(false)
   const [editingEndpoint, setEditingEndpoint] = useState<CustomEndpoint | undefined>(undefined)
 
-  // Store routes for all endpoints (including custom ones)
   const [routesByEndpoint, setRoutesByEndpoint] = useState<Record<string, ModelRouteEntry[]>>({})
   const [routeError, setRouteError] = useState<Record<string, string | null>>({})
   const [savingRouteFor, setSavingRouteFor] = useState<string | null>(null)
@@ -236,13 +241,11 @@ export default function ModelManagementPage() {
       setRoutesByEndpoint(deriveRoutesFromConfig(incoming, customEndpoints))
       setRouteError({})
 
-      // Load presets for system endpoints
       const presetsMap: Record<string, RoutingPreset[]> = {
         anthropic: incoming.routingPresets?.anthropic ?? [],
         openai: incoming.routingPresets?.openai ?? []
       }
 
-      // Load presets for custom endpoints
       for (const endpoint of customEndpoints) {
         presetsMap[endpoint.id] = endpoint.routingPresets ?? []
       }
@@ -332,7 +335,6 @@ export default function ModelManagementPage() {
     setConfig((prev) => {
       if (!prev) return prev
 
-      // 系统端点：保存到 config.routingPresets
       if (endpoint === 'anthropic' || endpoint === 'openai') {
         return {
           ...prev,
@@ -343,7 +345,6 @@ export default function ModelManagementPage() {
         }
       }
 
-      // 自定义端点：保存到 customEndpoints[i].routingPresets
       const customEndpoints = prev.customEndpoints ?? []
       const endpointIndex = customEndpoints.findIndex((e) => e.id === endpoint)
       if (endpointIndex === -1) return prev
@@ -368,17 +369,6 @@ export default function ModelManagementPage() {
       return false
     }
     return true
-  }
-
-  const ensureUniqueProviderId = (baseId: string): string => {
-    if (!config) return baseId
-    let candidate = baseId
-    let suffix = 1
-    while (config.providers.some((provider) => provider.id === candidate)) {
-      candidate = `${baseId}-${suffix}`
-      suffix += 1
-    }
-    return candidate
   }
 
   const handlePresetNameChange = (endpoint: Endpoint, value: string) => {
@@ -455,7 +445,6 @@ export default function ModelManagementPage() {
         setConfig(updatedConfig)
         setRoutesByEndpoint(deriveRoutesFromConfig(updatedConfig, customEndpoints))
 
-        // Update presets for all endpoints
         const presetsMap: Record<string, RoutingPreset[]> = {
           anthropic: updatedConfig.routingPresets?.anthropic ?? [],
           openai: updatedConfig.routingPresets?.openai ?? []
@@ -567,7 +556,6 @@ export default function ModelManagementPage() {
         title: t('modelManagement.deleteEndpointSuccess'),
         variant: 'success'
       })
-      // Switch to providers tab if deleted endpoint was active
       if (activeTab === endpointId) {
         setActiveTab('providers')
       }
@@ -685,7 +673,6 @@ export default function ModelManagementPage() {
       const lower = key.toLowerCase()
       const matchedOption = recognized.get(lower)
       if (matchedOption && testDialogUsePreset) {
-        // User explicitly selected the recommended value; skip preserved override.
         continue
       }
       selectedHeaders[key] = value
@@ -779,7 +766,6 @@ export default function ModelManagementPage() {
     setSavingClaudeValidation(true)
     try {
       if (endpoint === 'anthropic' || endpoint === 'openai') {
-        // 系统端点：更新 config.endpointRouting
         const currentRouting = config!.endpointRouting ? { ...config!.endpointRouting } : {}
         const currentEndpointRouting = currentRouting[endpoint] ?? {
           defaults: config!.defaults,
@@ -821,7 +807,6 @@ export default function ModelManagementPage() {
         await apiClient.put('/api/config', nextConfig)
         setConfig(nextConfig)
       } else {
-        // 自定义端点：更新 customEndpoints[i].routing.validation
         const customEndpoints = config!.customEndpoints ?? []
         const endpointIndex = customEndpoints.findIndex((e) => e.id === endpoint)
         if (endpointIndex === -1) {
@@ -919,18 +904,15 @@ export default function ModelManagementPage() {
   const handleResetRoutes = (endpoint: string) => {
     if (!config) return
 
-    // Check if this is a custom endpoint
     const customEndpoint = customEndpoints.find((e) => e.id === endpoint)
 
     if (customEndpoint) {
-      // Reset to custom endpoint's routing config
       const routes = customEndpoint.routing?.modelRoutes ?? {}
       setRoutesByEndpoint((prev) => ({
         ...prev,
         [endpoint]: mapRoutesToEntries(routes)
       }))
     } else {
-      // System endpoint
       const routing = config.endpointRouting ?? {}
       const systemEndpoint = endpoint as 'anthropic' | 'openai'
       const fallback = systemEndpoint === 'anthropic' ? config.modelRoutes ?? {} : {}
@@ -973,11 +955,9 @@ export default function ModelManagementPage() {
     setSavingRouteFor(endpoint)
 
     try {
-      // Check if this is a custom endpoint
       const customEndpoint = customEndpoints.find((e) => e.id === endpoint)
 
       if (customEndpoint) {
-        // Save to custom endpoint's routing config
         const updatedRouting = {
           ...(customEndpoint.routing || {}),
           modelRoutes: sanitizedRoutes,
@@ -991,7 +971,6 @@ export default function ModelManagementPage() {
         queryClient.invalidateQueries({ queryKey: ['custom-endpoints'] })
         pushToast({ title: t('modelManagement.toast.routesSaved'), variant: 'success' })
       } else {
-        // System endpoint - save to config.endpointRouting
         const routing = config!.endpointRouting ? { ...config!.endpointRouting } : {}
         const systemEndpoint = endpoint as 'anthropic' | 'openai'
 
@@ -1040,242 +1019,167 @@ export default function ModelManagementPage() {
   }
 
   const renderProvidersSection = () => (
-    <section className={surfaceCardClass}>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">{t('providers.title')}</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">{t('providers.description')}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className={badgeClass.default}>
-            {t('providers.count', { count: providerCount })}
+    <Card>
+      <CardContent className="pt-6 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">{t('providers.title')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t('providers.description')}</p>
           </div>
-          <button
-            type="button"
-            className={subtleButtonClass}
-            onClick={() => configQuery.refetch()}
-            disabled={configQuery.isFetching}
-          >
-            {configQuery.isFetching ? t('common.actions.refreshing') : t('providers.actions.refresh')}
-          </button>
-          <button
-            type="button"
-            className={primaryButtonClass}
-            onClick={handleOpenCreate}
-          >
-            {t('providers.actions.add')}
-          </button>
-        </div>
-      </div>
-
-      {configQuery.isPending || (!config && configQuery.isFetching) ? (
-        <section className="flex min-h-[200px] items-center justify-center rounded-3xl border border-slate-200/50 bg-gradient-to-br from-white/80 to-white/70 text-sm text-slate-600 dark:border-slate-700/50 dark:from-slate-900/80 dark:to-slate-900/70 dark:text-slate-400 backdrop-blur-lg">
-          {t('common.loading')}
-        </section>
-      ) : providers.length === 0 ? (
-        <section className="rounded-3xl border border-dashed border-slate-300/60 bg-gradient-to-br from-slate-50/80 to-white/70 p-12 text-center text-sm text-slate-600 dark:border-slate-600/60 dark:from-slate-900/80 dark:to-slate-800/70 dark:text-slate-400 backdrop-blur-lg">
-          <div className="flex flex-col items-center gap-4">
-            <div className="rounded-2xl bg-slate-200/50 p-4 dark:bg-slate-700/50">
-              <svg className="h-8 w-8 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-medium text-slate-700 dark:text-slate-300">{t('providers.emptyState')}</p>
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                {t('providers.emptyStateSub', { default: '点击上方按钮添加您的第一个提供商' })}
-              </p>
-            </div>
-          </div>
-        </section>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {providers.map((provider) => (
-            <article
-              key={provider.id}
-              className="group flex h-full flex-col gap-5 rounded-3xl border border-slate-200/50 bg-gradient-to-br from-white/85 via-white/80 to-white/75 p-6 shadow-lg shadow-slate-200/30 backdrop-blur-md transition-all duration-300 hover:border-slate-200/70 hover:shadow-xl hover:shadow-slate-200/50 hover:-translate-y-1 dark:border-slate-700/50 dark:from-slate-900/85 dark:via-slate-900/80 dark:to-slate-900/75 dark:shadow-2xl dark:shadow-slate-900/40 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/90"
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge variant="secondary">{t('providers.count', { count: providerCount })}</Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => configQuery.refetch()}
+              disabled={configQuery.isFetching}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30">
-                      <span className="text-lg font-bold">
-                        {(provider.label || provider.id).charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">{provider.label || provider.id}</h3>
-                        {provider.type ? <TypeBadge type={provider.type} /> : null}
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">ID: {provider.id}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 space-y-1">
-                    <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-                      Base URL:
-                    </p>
-                    <p className="text-xs font-mono text-slate-700 dark:text-slate-300 bg-slate-100/50 dark:bg-slate-800/50 rounded-lg px-2 py-1 break-all">
-                      {provider.baseUrl}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {provider.defaultModel ? (
-                    <div className={statusBadgeClass.success}>
-                      {t('providers.card.defaultModel', {
-                        model: defaultLabels.get(provider.id) ?? provider.defaultModel
-                      })}
-                    </div>
-                  ) : (
-                    <div className={statusBadgeClass.info}>
-                      {t('providers.card.noDefault')}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <h4 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">{t('providers.card.modelsTitle')}</h4>
-                {provider.models && provider.models.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {provider.models.map((model) => (
-                      <div
-                        key={model.id}
-                        className="flex items-center gap-2 rounded-xl border border-slate-200/60 bg-gradient-to-r from-slate-50/80 to-slate-100/70 px-3 py-1.5 text-xs dark:border-slate-700/60 dark:from-slate-800/60 dark:to-slate-700/50 backdrop-blur-sm transition-all duration-200 hover:border-slate-300/70 hover:bg-slate-100/80 dark:hover:border-slate-600/70 dark:hover:bg-slate-700/60"
-                      >
-                        <div className="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
-                        <span className="font-medium text-slate-700 dark:text-slate-200">{resolveModelLabel(model)}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-slate-300/50 bg-slate-50/50 px-4 py-3 text-xs text-slate-500 dark:border-slate-600/50 dark:bg-slate-800/30 dark:text-slate-400">
-                    {t('providers.card.noModels')}
-                  </div>
-                )}
-              </div>
-
-              <footer className="mt-auto flex flex-wrap gap-3 pt-2 border-t border-slate-200/30 dark:border-slate-700/30">
-                <button
-                  type="button"
-                  className={subtleButtonClass}
-                  onClick={() => handleOpenEdit(provider)}
-                >
-                  {t('providers.actions.edit')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => initiateTestConnection(provider)}
-                  disabled={testingProviderId === provider.id}
-                  className={testingProviderId === provider.id ?
-                    `${subtleButtonClass} opacity-60 cursor-not-allowed` :
-                    subtleButtonClass
-                  }
-                >
-                  {testingProviderId === provider.id ? t('common.actions.testingConnection') : t('providers.actions.test')}
-                </button>
-                <button
-                  type="button"
-                  className={dangerButtonClass}
-                  onClick={() => handleDelete(provider)}
-                >
-                  {t('providers.actions.delete')}
-                </button>
-              </footer>
-            </article>
-          ))}
+              <RefreshCw className={cn('mr-2 h-4 w-4', configQuery.isFetching && 'animate-spin')} />
+              {configQuery.isFetching ? t('common.actions.refreshing') : t('providers.actions.refresh')}
+            </Button>
+            <Button size="sm" onClick={handleOpenCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              {t('providers.actions.add')}
+            </Button>
+          </div>
         </div>
-      )}
-    </section>
+
+        {configQuery.isPending || (!config && configQuery.isFetching) ? (
+          <div className="flex min-h-[200px] items-center justify-center rounded-lg border bg-muted/50 text-sm text-muted-foreground">
+            {t('common.loading')}
+          </div>
+        ) : providers.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
+            <p className="font-medium">{t('providers.emptyState')}</p>
+            <p className="mt-2 text-xs">
+              {t('providers.emptyStateSub', { default: '点击上方按钮添加您的第一个提供商' })}
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {providers.map((provider) => (
+              <Card key={provider.id} className="flex flex-col">
+                <CardContent className="flex flex-1 flex-col gap-4 pt-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{provider.label || provider.id}</h3>
+                        {provider.type && <TypeBadge type={provider.type} />}
+                      </div>
+                      <p className="text-xs text-muted-foreground">ID: {provider.id}</p>
+                      <p className="text-xs text-muted-foreground break-all">{provider.baseUrl}</p>
+                    </div>
+                    {provider.defaultModel ? (
+                      <Badge variant="default" className="text-xs">
+                        {defaultLabels.get(provider.id) ?? provider.defaultModel}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">
+                        {t('providers.card.noDefault')}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs">{t('providers.card.modelsTitle')}</Label>
+                    {provider.models && provider.models.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {provider.models.map((model) => (
+                          <Badge key={model.id} variant="outline" className="text-xs">
+                            {resolveModelLabel(model)}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">{t('providers.card.noModels')}</p>
+                    )}
+                  </div>
+
+                  <div className="mt-auto flex flex-wrap gap-2 pt-4 border-t">
+                    <Button variant="outline" size="sm" onClick={() => handleOpenEdit(provider)}>
+                      {t('providers.actions.edit')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => initiateTestConnection(provider)}
+                      disabled={testingProviderId === provider.id}
+                    >
+                      {testingProviderId === provider.id ? t('common.actions.testingConnection') : t('providers.actions.test')}
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => handleDelete(provider)}>
+                      {t('providers.actions.delete')}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 
   const renderPresetsSection = (endpoint: Endpoint) => {
-    const presets = presetsByEndpoint[endpoint]
-    const presetName = presetNameByEndpoint[endpoint]
+    const presets = presetsByEndpoint[endpoint] ?? []
+    const presetName = presetNameByEndpoint[endpoint] ?? ''
     const presetError = presetErrorByEndpoint[endpoint]
     const savingPreset = savingPresetFor === endpoint
 
     return (
-      <div className="rounded-2xl border border-dashed border-slate-300/60 bg-gradient-to-br from-slate-50/80 to-white/70 p-6 dark:border-slate-600/60 dark:from-slate-800/60 dark:to-slate-900/70 backdrop-blur-sm">
+      <div className="rounded-lg border border-dashed bg-muted/30 p-6 space-y-4">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-col gap-2">
-            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
-              {t('modelManagement.presets.title')}
-            </h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              {t('modelManagement.presets.description')}
-            </p>
+          <div>
+            <h3 className="font-medium">{t('modelManagement.presets.title')}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{t('modelManagement.presets.description')}</p>
           </div>
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <input
-              type="text"
+            <Input
               value={presetName}
-              onChange={(event) => handlePresetNameChange(endpoint, event.target.value)}
+              onChange={(e) => handlePresetNameChange(endpoint, e.target.value)}
               placeholder={t('modelManagement.presets.namePlaceholder')}
-              className={inputClass}
               disabled={savingPreset}
+              className="w-full md:w-48"
             />
-            <button
-              type="button"
-              onClick={() => handleSavePreset(endpoint)}
-              className={primaryButtonClass}
-              disabled={savingPreset}
-            >
+            <Button onClick={() => void handleSavePreset(endpoint)} disabled={savingPreset}>
               {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
-            </button>
+            </Button>
           </div>
         </div>
-        {presetError ? (
-          <div className="rounded-xl bg-red-50/80 border border-red-200/50 p-3 text-xs text-red-700 dark:bg-red-900/40 dark:border-red-800/50 dark:text-red-300 backdrop-blur-sm">
-            {presetError}
-          </div>
-        ) : null}
+        {presetError && (
+          <p className="text-sm text-destructive">{presetError}</p>
+        )}
         {presets.length === 0 ? (
-          <div className="rounded-xl border border-slate-200/40 bg-slate-50/60 p-6 text-center text-sm text-slate-600 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-400 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-3">
-              <div className="rounded-xl bg-slate-200/50 p-3 dark:bg-slate-700/50">
-                <svg className="h-6 w-6 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <p className="font-medium text-slate-700 dark:text-slate-300">{t('modelManagement.presets.empty')}</p>
-            </div>
-          </div>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            {t('modelManagement.presets.empty')}
+          </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {presets.map((preset) => {
               const isApplying = applyingPreset?.endpoint === endpoint && applyingPreset?.name === preset.name
               const isDeleting = deletingPreset?.endpoint === endpoint && deletingPreset?.name === preset.name
               return (
                 <div
                   key={preset.name}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/50 bg-gradient-to-r from-white/90 to-white/80 px-4 py-3 text-sm shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-slate-300/70 hover:bg-white/95 hover:shadow-md dark:border-slate-700/50 dark:from-slate-900/90 dark:to-slate-900/80 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/95"
+                  className="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3"
                 >
-                  <span className="truncate font-medium text-slate-700 dark:text-slate-200">{preset.name}</span>
+                  <span className="truncate text-sm font-medium">{preset.name}</span>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleApplyPreset(endpoint, preset)}
-                      className={isApplying || isDeleting ?
-                        `${subtleButtonClass} opacity-60 cursor-not-allowed text-xs px-2 py-1` :
-                        `${primaryButtonClass} text-xs px-2 py-1`
-                      }
+                    <Button
+                      size="sm"
+                      onClick={() => void handleApplyPreset(endpoint, preset)}
                       disabled={isApplying || isDeleting}
                     >
                       {isApplying ? t('modelManagement.presets.applying') : t('modelManagement.presets.apply')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePreset(endpoint, preset)}
-                      className={isDeleting || isApplying ?
-                        `${subtleButtonClass} opacity-60 cursor-not-allowed text-xs px-2 py-1` :
-                        `${dangerButtonClass} text-xs px-2 py-1`
-                      }
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => void handleDeletePreset(endpoint, preset)}
                       disabled={isDeleting || isApplying}
                     >
                       {isDeleting ? t('modelManagement.presets.deleting') : t('modelManagement.presets.delete')}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )
@@ -1290,193 +1194,137 @@ export default function ModelManagementPage() {
     const entries = routesByEndpoint[endpoint] || []
     const error = routeError[endpoint]
 
-    // 查找 tab 信息以获取正确的标签和描述
     const tabInfo = tabs.find((tab) => tab.key === endpoint)
-
-    // 根据协议确定模型建议
-    // 如果协议列表包含 'anthropic'，使用 Claude 模型；否则使用 OpenAI 模型
     const hasAnthropicProtocol = tabInfo?.protocols?.includes('anthropic') ?? (endpoint === 'anthropic')
     const suggestions = hasAnthropicProtocol ? CLAUDE_MODEL_SUGGESTIONS : OPENAI_MODEL_SUGGESTIONS
 
     const isSaving = savingRouteFor === endpoint
-
     const endpointLabel = tabInfo?.label ?? t(`modelManagement.tabs.${endpoint}`)
-
-    // 对于自定义端点，使用 tab 的 description；对于系统端点，使用 i18n key
     const endpointDescription = tabInfo?.isSystem === false
       ? tabInfo.description
       : t(`settings.routing.descriptionByEndpoint.${endpoint}`)
 
     const sourceListId = `route-source-${endpoint}`
-    const targetListId = `route-target-${endpoint}`
     const isAnthropicProtocol = isAnthropicEndpoint(endpoint, customEndpoints)
     const validation = getEndpointValidation(endpoint, config, customEndpoints)
     const claudeValidationEnabled = isAnthropicProtocol && validation?.mode === 'claude-code'
 
     return (
-      <section className={surfaceCardClass}>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-col gap-2">
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-              {t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}
-            </h2>
-            <p className="max-w-3xl text-sm text-slate-600 dark:text-slate-400">
-              {endpointDescription}
-            </p>
-            <p className="max-w-3xl text-xs text-slate-500 dark:text-slate-400">
-              {t('settings.routing.wildcardHint')}
-            </p>
+      <Card>
+        <CardContent className="pt-6 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold">
+                {t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}
+              </h2>
+              <p className="max-w-3xl text-sm text-muted-foreground">{endpointDescription}</p>
+              <p className="max-w-3xl text-xs text-muted-foreground">{t('settings.routing.wildcardHint')}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => handleAddRoute(endpoint)} disabled={isSaving}>
+                {t('settings.routing.add')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleResetRoutes(endpoint)} disabled={isSaving}>
+                {t('common.actions.reset')}
+              </Button>
+              <Button size="sm" onClick={() => void handleSaveRoutes(endpoint)} disabled={isSaving}>
+                {isSaving ? t('common.actions.saving') : t('modelManagement.actions.saveRoutes')}
+              </Button>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => handleAddRoute(endpoint)}
-              className={subtleButtonClass}
-              disabled={isSaving}
-            >
-              {t('settings.routing.add')}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleResetRoutes(endpoint)}
-              className={subtleButtonClass}
-              disabled={isSaving}
-            >
-              {t('common.actions.reset')}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSaveRoutes(endpoint)}
-              className={primaryButtonClass}
-              disabled={isSaving}
-            >
-              {isSaving ? t('common.actions.saving') : t('modelManagement.actions.saveRoutes')}
-            </button>
-          </div>
-        </div>
 
-        {isAnthropicProtocol && (
-          <div className="mt-6 rounded-xl border border-blue-200/60 bg-blue-50/60 p-4 dark:border-blue-500/40 dark:bg-blue-900/30 backdrop-blur-sm">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-200">
+          {isAnthropicProtocol && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
                     {t('modelManagement.claudeValidation.title')}
-                  </span>
-                  <p className="text-xs text-blue-600/80 dark:text-blue-200/80">
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
                     {t('modelManagement.claudeValidation.description')}
                   </p>
                 </div>
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
-                    checked={Boolean(claudeValidationEnabled)}
-                    onChange={(event) => handleToggleClaudeValidation(endpoint, event.target.checked)}
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={claudeValidationEnabled}
+                    onCheckedChange={(checked) => void handleToggleClaudeValidation(endpoint, checked)}
                     disabled={savingClaudeValidation}
                   />
-                  <span className="text-xs font-medium text-blue-700 dark:text-blue-200">
-                    {savingClaudeValidation
-                      ? t('common.actions.saving')
-                      : t('modelManagement.claudeValidation.toggleLabel')}
+                  <span className={cn('text-xs font-medium', claudeValidationEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
+                    {claudeValidationEnabled
+                      ? t('modelManagement.claudeValidation.statusEnabled')
+                      : t('modelManagement.claudeValidation.statusDisabled')}
                   </span>
-                </label>
-              </div>
-              <span
-                className={`text-xs font-semibold ${claudeValidationEnabled ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}
-              >
-                {claudeValidationEnabled
-                  ? t('modelManagement.claudeValidation.statusEnabled')
-                  : t('modelManagement.claudeValidation.statusDisabled')}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {renderPresetsSection(endpoint)}
-
-        {error ? (
-          <div className="rounded-xl bg-red-50/80 border border-red-200/50 p-4 text-sm text-red-700 dark:bg-red-900/40 dark:border-red-800/50 dark:text-red-300 backdrop-blur-sm">
-            {error}
-          </div>
-        ) : null}
-
-        {entries.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-300/60 bg-gradient-to-br from-slate-50/80 to-white/70 p-12 text-center text-sm text-slate-600 dark:border-slate-600/60 dark:from-slate-800/60 dark:to-slate-900/70 dark:text-slate-400 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-4">
-              <div className="rounded-2xl bg-slate-200/50 p-4 dark:bg-slate-700/50">
-                <svg className="h-8 w-8 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-slate-700 dark:text-slate-300">{t('settings.routing.empty')}</p>
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  {t('settings.routing.emptySub', { default: '点击上方按钮添加路由规则' })}
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {entries.map((entry, index) => (
-              <div key={entry.id} className="rounded-xl border border-slate-200/50 bg-gradient-to-r from-white/90 to-white/85 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-slate-300/70 hover:bg-white/95 hover:shadow-md dark:border-slate-700/50 dark:from-slate-900/90 dark:to-slate-900/85 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/95">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
-                    <span className="text-sm font-bold">{index + 1}</span>
-                  </div>
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">路由规则</span>
                 </div>
-                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                  <div className="space-y-2">
-                    <label className="flex flex-col gap-2">
-                      <span className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">{t('settings.routing.source')}</span>
-                      <input
-                        type="text"
+              </div>
+            </div>
+          )}
+
+          {renderPresetsSection(endpoint)}
+
+          {error && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
+
+          {entries.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
+              <p className="font-medium">{t('settings.routing.empty')}</p>
+              <p className="mt-2 text-xs">{t('settings.routing.emptySub', { default: '点击上方按钮添加路由规则' })}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {entries.map((entry, index) => (
+                <div key={entry.id} className="rounded-lg border bg-card p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Badge variant="secondary">{index + 1}</Badge>
+                    <span className="text-sm font-medium">路由规则</span>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <div className="space-y-2">
+                      <Label>{t('settings.routing.source')}</Label>
+                      <Input
                         value={entry.source}
-                        onChange={(event) => handleRouteChange(endpoint, entry.id, 'source', event.target.value)}
-                        className={inputClass}
+                        onChange={(e) => handleRouteChange(endpoint, entry.id, 'source', e.target.value)}
                         placeholder="claude-3.5-sonnet"
                         list={sourceListId}
                         disabled={isSaving}
                       />
-                    </label>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="flex flex-col gap-2">
-                      <span className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">{t('settings.routing.target')}</span>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t('settings.routing.target')}</Label>
                       {(() => {
                         const normalizedTarget = entry.target.trim()
                         const hasMatchingOption = providerModelOptions.some((option) => option.value === normalizedTarget)
                         const selectValue = hasMatchingOption ? normalizedTarget : '__custom'
                         return (
                           <>
-                            <select
+                            <Select
                               value={selectValue}
-                              onChange={(event) => {
-                                const value = event.target.value
+                              onValueChange={(value) => {
                                 if (value === '__custom') {
                                   handleRouteChange(endpoint, entry.id, 'target', normalizedTarget)
                                 } else {
                                   handleRouteChange(endpoint, entry.id, 'target', value)
                                 }
                               }}
-                              className={selectClass}
                               disabled={isSaving}
                             >
-                              <option value="__custom">{t('settings.routing.customTargetOption')}</option>
-                              {providerModelOptions.map((option) => (
-                                <option key={`${targetListId}-${option.value}`} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__custom">{t('settings.routing.customTargetOption')}</SelectItem>
+                                {providerModelOptions.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                             {selectValue === '__custom' && (
-                              <input
-                                type="text"
+                              <Input
                                 value={entry.target}
-                                onChange={(event) => handleRouteChange(endpoint, entry.id, 'target', event.target.value)}
-                                className={inputClass}
+                                onChange={(e) => handleRouteChange(endpoint, entry.id, 'target', e.target.value)}
                                 placeholder="providerId:modelId"
                                 disabled={isSaving}
                               />
@@ -1484,77 +1332,68 @@ export default function ModelManagementPage() {
                           </>
                         )
                       })()}
-                    </label>
-                  </div>
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      className={dangerButtonClass}
-                      onClick={() => handleRemoveRoute(endpoint, entry.id)}
-                      disabled={isSaving}
-                    >
-                      {t('settings.routing.remove')}
-                    </button>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleRemoveRoute(endpoint, entry.id)}
+                        disabled={isSaving}
+                      >
+                        {t('settings.routing.remove')}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
 
-        <div className="rounded-xl border border-slate-200/40 bg-gradient-to-r from-slate-50/80 to-white/70 p-4 dark:border-slate-700/40 dark:from-slate-800/60 dark:to-slate-900/70 backdrop-blur-sm">
-          <div className="flex flex-col gap-3">
-            <span className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300">
-              {t('settings.routing.suggested')}
-            </span>
+          <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+            <Label>{t('settings.routing.suggested')}</Label>
             <div className="flex flex-wrap gap-2">
               {suggestions.map((model) => (
-                <button
+                <Button
                   key={`${endpoint}-${model}`}
-                  type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => handleAddSuggestion(endpoint, model)}
-                  className={subtleButtonClass}
                   disabled={isSaving}
                 >
                   {model}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
-        </div>
 
-        <datalist id={sourceListId}>
-          {suggestions.map((model) => (
-            <option key={`${sourceListId}-${model}`} value={model} />
-          ))}
-        </datalist>
-      </section>
+          <datalist id={sourceListId}>
+            {suggestions.map((model) => (
+              <option key={`${sourceListId}-${model}`} value={model} />
+            ))}
+          </datalist>
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className={pageHeaderShellClass}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-3">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent dark:from-slate-100 dark:to-slate-300">
-              {t('modelManagement.title')}
-            </h1>
-            <p className="text-base text-slate-600 dark:text-slate-400">{t('modelManagement.description')}</p>
-          </div>
-          <button
-            onClick={() => {
-              setEditingEndpoint(undefined)
-              setEndpointDrawerOpen(true)
-            }}
-            className={primaryButtonClass}
-          >
-            + {t('modelManagement.addEndpoint')}
-          </button>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        icon={<Layers className="h-5 w-5" aria-hidden="true" />}
+        title={t('modelManagement.title')}
+        description={t('modelManagement.description')}
+        actions={
+          <Button onClick={() => {
+            setEditingEndpoint(undefined)
+            setEndpointDrawerOpen(true)
+          }}>
+            <Plus className="mr-2 h-4 w-4" />
+            {t('modelManagement.addEndpoint')}
+          </Button>
+        }
+      />
 
-      <div className="flex flex-wrap gap-4">
+      <div className="flex flex-wrap gap-3">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key
           return (
@@ -1562,25 +1401,26 @@ export default function ModelManagementPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex min-w-[240px] flex-col gap-2 rounded-2xl border px-6 py-4 text-left transition-all duration-300 hover-lift ${
+                className={cn(
+                  'flex min-w-[200px] flex-col gap-1 rounded-lg border px-4 py-3 text-left transition-all',
                   isActive
-                    ? 'border-blue-500/30 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-lg shadow-blue-200/40 ring-1 ring-blue-500/20 dark:border-blue-400/30 dark:from-blue-900/40 dark:to-indigo-900/30 dark:text-blue-100 dark:shadow-xl dark:shadow-blue-500/20 dark:ring-blue-400/20'
-                    : 'border-slate-200/50 bg-white/80 hover:bg-white/90 hover:shadow-md hover:shadow-slate-200/30 dark:border-slate-700/50 dark:bg-slate-900/80 dark:hover:bg-slate-900/90 dark:hover:shadow-lg dark:hover:shadow-slate-900/30'
-                }`}
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border bg-card hover:bg-accent'
+                )}
               >
-                <span className="text-base font-bold">{tab.label}</span>
-                <span className="text-sm text-slate-600 dark:text-slate-400">{tab.description}</span>
+                <span className="font-medium">{tab.label}</span>
+                <span className="text-xs text-muted-foreground">{tab.description}</span>
               </button>
               {tab.canDelete && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleDeleteEndpoint(tab.key)
+                    void handleDeleteEndpoint(tab.key)
                   }}
-                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white hover:bg-red-600 flex items-center justify-center text-xs shadow-md"
+                  className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs hover:bg-destructive/90"
                   title={t('common.delete')}
                 >
-                  ×
+                  <X className="h-3 w-3" />
                 </button>
               )}
             </div>
@@ -1652,101 +1492,64 @@ function TestConnectionDialog({
 }) {
   const { t } = useTranslation()
 
-  if (!open || !provider) return null
+  if (!provider) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="connection-test-dialog-title"
-        className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200/70 bg-white/95 p-6 shadow-2xl backdrop-blur-xl animate-fade-in dark:border-slate-800/60 dark:bg-slate-900/95"
-      >
-        <header className="mb-4 space-y-1">
-          <h2 id="connection-test-dialog-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-            {t('providers.testDialog.title')}
-          </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('providers.testDialog.title')}</DialogTitle>
+          <DialogDescription>
             {t('providers.testDialog.subtitle', { name: provider.label || provider.id })}
-          </p>
-        </header>
-        <p className="mb-5 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-          {t('providers.testDialog.description')}
-        </p>
-        <div className="space-y-3">
-          <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/70 dark:border-slate-700 dark:bg-slate-800/70 dark:hover:border-blue-500/60 dark:hover:bg-slate-800">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              checked={usePreset}
-              onChange={(event) => onPresetChange(event.target.checked)}
-            />
-            <div className="space-y-2">
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {t('providers.testDialog.presetLabel')}
-              </span>
-              <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                {t('providers.testDialog.presetDescription')}
-              </p>
-              <details className="rounded-lg bg-slate-50/60 px-3 py-2 text-xs text-slate-600 transition dark:bg-slate-800/50 dark:text-slate-300">
-                <summary className="cursor-pointer text-blue-600 hover:underline dark:text-blue-300">
-                  {t('providers.testDialog.presetPreviewSummary')}
-                </summary>
-                <div className="mt-2 grid gap-1">
-                  {options.map((option) => (
-                    <code
-                      key={option.key}
-                      className="rounded bg-white/80 px-2 py-1 text-[11px] text-slate-700 shadow-sm dark:bg-slate-900/60 dark:text-slate-200"
-                    >
-                      {option.key}: {option.value}
-                    </code>
-                  ))}
-                </div>
-              </details>
-            </div>
-          </label>
-        </div>
-        {Object.keys(preservedExtras).length > 0 ? (
-          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
-            <p className="mb-2 font-semibold text-slate-700 dark:text-slate-200">
-              {t('providers.testDialog.preservedInfo')}
-            </p>
-            <div className="grid gap-2">
-              {Object.entries(preservedExtras).map(([key, value]) => (
-                <code
-                  key={key}
-                  className="rounded bg-white/70 px-2 py-1 text-[11px] text-slate-700 shadow-sm dark:bg-slate-900/70 dark:text-slate-200"
-                >
-                  {key}: {value}
-                </code>
-              ))}
-            </div>
+          </DialogDescription>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">{t('providers.testDialog.description')}</p>
+        <div className="flex items-start gap-3 rounded-lg border p-4">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 rounded border"
+            checked={usePreset}
+            onChange={(e) => onPresetChange(e.target.checked)}
+          />
+          <div className="space-y-2">
+            <Label>{t('providers.testDialog.presetLabel')}</Label>
+            <p className="text-xs text-muted-foreground">{t('providers.testDialog.presetDescription')}</p>
+            <details className="rounded-md bg-muted p-2 text-xs">
+              <summary className="cursor-pointer text-primary hover:underline">
+                {t('providers.testDialog.presetPreviewSummary')}
+              </summary>
+              <div className="mt-2 space-y-1">
+                {options.map((option) => (
+                  <code key={option.key} className="block rounded bg-background px-2 py-1 text-xs">
+                    {option.key}: {option.value}
+                  </code>
+                ))}
+              </div>
+            </details>
           </div>
-        ) : null}
-        <footer className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className={subtleButtonClass}
-          >
+        </div>
+        {Object.keys(preservedExtras).length > 0 && (
+          <div className="rounded-lg border bg-muted p-4 text-xs space-y-2">
+            <p className="font-medium">{t('providers.testDialog.preservedInfo')}</p>
+            {Object.entries(preservedExtras).map(([key, value]) => (
+              <code key={key} className="block rounded bg-background px-2 py-1">
+                {key}: {value}
+              </code>
+            ))}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
             {t('providers.testDialog.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void onConfirm()
-            }}
-            className={primaryButtonClass}
-          >
+          </Button>
+          <Button onClick={() => void onConfirm()}>
             {t('providers.testDialog.primary')}
-          </button>
-        </footer>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
-
 
 function resolveModelLabel(model: ProviderModelConfig): string {
   if (model.label && model.label.trim().length > 0) {
@@ -1756,20 +1559,16 @@ function resolveModelLabel(model: ProviderModelConfig): string {
 }
 
 function TypeBadge({ type }: { type: NonNullable<ProviderConfig['type']> }) {
-  const config: Record<NonNullable<ProviderConfig['type']>, { label: string; color: string }> = {
-    openai: { label: 'OpenAI', color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
-    deepseek: { label: 'DeepSeek', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-    huawei: { label: '华为云', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' },
-    kimi: { label: 'Kimi', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
-    anthropic: { label: 'Anthropic', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' },
-    custom: { label: 'Custom', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' }
+  const config: Record<NonNullable<ProviderConfig['type']>, { label: string; variant: 'default' | 'secondary' | 'success' | 'warning' | 'info' | 'purple' | 'pink' | 'outline' }> = {
+    openai: { label: 'OpenAI', variant: 'success' },
+    deepseek: { label: 'DeepSeek', variant: 'info' },
+    huawei: { label: '华为云', variant: 'warning' },
+    kimi: { label: 'Kimi', variant: 'purple' },
+    anthropic: { label: 'Anthropic', variant: 'pink' },
+    custom: { label: 'Custom', variant: 'secondary' }
   }
-  const { label, color } = config[type] || config.custom
-  return (
-    <span className={`rounded-full ${color} px-2.5 py-1 text-xs font-semibold shadow-sm`}>
-      {label}
-    </span>
-  )
+  const { label, variant } = config[type] || config.custom
+  return <Badge variant={variant} className="text-xs">{label}</Badge>
 }
 
 function EndpointDrawer({
@@ -1795,7 +1594,6 @@ function EndpointDrawer({
 
   useEffect(() => {
     if (endpoint) {
-      // 支持新旧两种格式
       let paths: Array<{ path: string; protocol: EndpointProtocol }>
       if (endpoint.paths && endpoint.paths.length > 0) {
         paths = endpoint.paths
@@ -1841,7 +1639,7 @@ function EndpointDrawer({
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: { id: string; updates: any }) =>
+    mutationFn: (data: { id: string; updates: Parameters<typeof customEndpointsApi.update>[1] }) =>
       customEndpointsApi.update(data.id, data.updates),
     onSuccess: () => {
       pushToast({
@@ -1881,7 +1679,7 @@ function EndpointDrawer({
 
   const handlePathChange = (index: number, field: 'path' | 'protocol', value: string) => {
     const newPaths = [...formData.paths]
-    newPaths[index] = { ...newPaths[index], [field]: value }
+    newPaths[index] = { ...newPaths[index], [field]: value as EndpointProtocol }
     setFormData({ ...formData, paths: newPaths })
   }
 
@@ -1896,7 +1694,6 @@ function EndpointDrawer({
       return
     }
 
-    // 验证所有路径
     for (const pathItem of formData.paths) {
       if (!pathItem.path.trim()) {
         pushToast({
@@ -1938,129 +1735,92 @@ function EndpointDrawer({
   return (
     <>
       <div
-        className="fixed inset-0 bg-black/50 dark:bg-black/70 z-40 transition-opacity"
+        className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
         onClick={onClose}
       />
 
-      <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white dark:bg-gray-900 shadow-xl z-50 overflow-y-auto">
+      <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l shadow-xl z-50 overflow-y-auto">
         <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          <div className="flex items-center justify-between p-6 border-b">
+            <h2 className="text-lg font-semibold">
               {endpoint ? t('modelManagement.editEndpoint') : t('modelManagement.createEndpoint')}
             </h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
           </div>
 
           <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {t('modelManagement.endpointId')} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
+            <div className="space-y-2">
+              <Label>{t('modelManagement.endpointId')} <span className="text-destructive">*</span></Label>
+              <Input
                 value={formData.id}
                 onChange={(e) => setFormData({ ...formData, id: e.target.value })}
-                className={inputClass}
                 placeholder={t('modelManagement.endpointIdPlaceholder')}
                 disabled={!!endpoint}
                 required
               />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {t('modelManagement.endpointIdHint')}
-              </p>
+              <p className="text-xs text-muted-foreground">{t('modelManagement.endpointIdHint')}</p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {t('modelManagement.endpointLabel')} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
+            <div className="space-y-2">
+              <Label>{t('modelManagement.endpointLabel')} <span className="text-destructive">*</span></Label>
+              <Input
                 value={formData.label}
                 onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                className={inputClass}
                 placeholder={t('modelManagement.endpointLabelPlaceholder')}
                 required
               />
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {t('modelManagement.endpointPaths')} <span className="text-red-500">*</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={handleAddPath}
-                  className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  + {t('modelManagement.addPath')}
-                </button>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>{t('modelManagement.endpointPaths')} <span className="text-destructive">*</span></Label>
+                <Button type="button" variant="ghost" size="sm" onClick={handleAddPath}>
+                  <Plus className="mr-1 h-3 w-3" />
+                  {t('modelManagement.addPath')}
+                </Button>
               </div>
 
               <div className="space-y-3">
                 {formData.paths.map((pathItem, index) => (
-                  <div
-                    key={index}
-                    className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg space-y-2"
-                  >
+                  <div key={index} className="rounded-lg border p-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 space-y-2">
-                        <input
-                          type="text"
+                        <Input
                           value={pathItem.path}
                           onChange={(e) => handlePathChange(index, 'path', e.target.value)}
-                          className={inputClass}
                           placeholder={t('modelManagement.endpointPathPlaceholder')}
                           required
                         />
-                        <select
+                        <Select
                           value={pathItem.protocol}
-                          onChange={(e) =>
-                            handlePathChange(index, 'protocol', e.target.value)
-                          }
-                          className={selectClass}
-                          required
+                          onValueChange={(value) => handlePathChange(index, 'protocol', value)}
                         >
-                          <option value="anthropic">{t('modelManagement.protocolAnthropic')}</option>
-                          <option value="openai-auto">{t('modelManagement.protocolOpenAI')}</option>
-                        </select>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="anthropic">{t('modelManagement.protocolAnthropic')}</SelectItem>
+                            <SelectItem value="openai-auto">{t('modelManagement.protocolOpenAI')}</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
 
                       {formData.paths.length > 1 && (
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => handleRemovePath(index)}
-                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 mt-1"
-                          title={t('modelManagement.removePath')}
+                          className="text-destructive"
                         >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        </button>
+                          <X className="h-4 w-4" />
+                        </Button>
                       )}
                     </div>
                     {index === 0 && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {t('modelManagement.endpointPathHint')}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{t('modelManagement.endpointPathHint')}</p>
                     )}
                   </div>
                 ))}
@@ -2068,48 +1828,34 @@ function EndpointDrawer({
             </div>
 
             <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
+              <Switch
                 id="enabled"
                 checked={formData.enabled}
-                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800"
+                onCheckedChange={(checked) => setFormData({ ...formData, enabled: checked })}
               />
-              <label htmlFor="enabled" className="text-sm text-gray-700 dark:text-gray-300">
-                {t('modelManagement.endpointEnabled')}
-              </label>
+              <Label htmlFor="enabled">{t('modelManagement.endpointEnabled')}</Label>
             </div>
 
             {!endpoint && (
-              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
-                <p className="text-sm text-blue-800 dark:text-blue-300">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+                <p className="text-sm text-blue-800 dark:text-blue-200">
                   {t('modelManagement.endpointRoutingHint')}
                 </p>
               </div>
             )}
           </form>
 
-          <div className="flex gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`${subtleButtonClass} flex-1`}
-              disabled={isSubmitting}
-            >
+          <div className="flex gap-3 p-6 border-t">
+            <Button variant="outline" className="flex-1" onClick={onClose} disabled={isSubmitting}>
               {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              onClick={handleSubmit}
-              className={`${primaryButtonClass} flex-1`}
-              disabled={isSubmitting}
-            >
+            </Button>
+            <Button className="flex-1" onClick={handleSubmit} disabled={isSubmitting}>
               {isSubmitting
                 ? t('common.saving')
                 : endpoint
                 ? t('common.save')
                 : t('common.create')}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

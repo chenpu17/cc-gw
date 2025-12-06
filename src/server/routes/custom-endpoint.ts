@@ -108,6 +108,185 @@ function resolveCachedTokens(usage: any): { read: number; creation: number } {
   return result
 }
 
+interface StreamResponseSummary {
+  content: string
+  model?: string
+  finish_reason?: string | null
+  usage?: {
+    prompt_tokens?: number | null
+    completion_tokens?: number | null
+    cached_tokens?: number | null
+  }
+  tool_calls?: Array<{
+    id: string
+    type: string
+    function: {
+      name: string
+      arguments: string
+    }
+  }>
+}
+
+/**
+ * Parse SSE chunks and build a clean response summary.
+ * Supports both OpenAI Chat Completions and OpenAI Responses formats.
+ */
+function parseSSEToSummary(
+  chunks: string[],
+  format: 'chat' | 'responses',
+  modelId?: string
+): StreamResponseSummary {
+  const allChunks = chunks.join('')
+  const lines = allChunks.split('\n')
+
+  let accumulatedContent = ''
+  let finishReason: string | null = null
+  const toolCalls = new Map<number, { id: string; type: string; name: string; arguments: string }>()
+  let usagePrompt: number | null = null
+  let usageCompletion: number | null = null
+  let usageCached: number | null = null
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
+
+    const dataStr = trimmed.slice(5).trim()
+    if (dataStr === '[DONE]') continue
+
+    try {
+      const data = JSON.parse(dataStr)
+
+      if (format === 'chat') {
+        // OpenAI Chat Completions format
+        const choice = data?.choices?.[0]
+        if (choice) {
+          const delta = choice.delta
+          if (delta?.content) {
+            accumulatedContent += delta.content
+          }
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0
+              const existing = toolCalls.get(idx)
+              if (!existing && tc.id) {
+                toolCalls.set(idx, {
+                  id: tc.id,
+                  type: tc.type || 'function',
+                  name: tc.function?.name || '',
+                  arguments: tc.function?.arguments || ''
+                })
+              } else if (existing) {
+                if (tc.function?.arguments) {
+                  existing.arguments += tc.function.arguments
+                }
+              }
+            }
+          }
+          if (choice.finish_reason) {
+            finishReason = choice.finish_reason
+          }
+        }
+        // Usage info
+        if (data?.usage) {
+          usagePrompt = data.usage.prompt_tokens ?? usagePrompt
+          usageCompletion = data.usage.completion_tokens ?? usageCompletion
+          const cached = resolveCachedTokens(data.usage)
+          if (cached.read > 0 || cached.creation > 0) {
+            usageCached = cached.read + cached.creation
+          }
+        }
+      } else {
+        // OpenAI Responses format
+        const eventType = data?.type
+        if (eventType === 'response.output_text.delta') {
+          const delta = data?.delta
+          if (typeof delta === 'string') {
+            accumulatedContent += delta
+          }
+        } else if (eventType === 'response.content_part.delta') {
+          const delta = data?.delta?.text
+          if (typeof delta === 'string') {
+            accumulatedContent += delta
+          }
+        } else if (eventType === 'response.function_call_arguments.delta') {
+          const itemId = data?.item_id
+          const delta = data?.delta
+          if (itemId && typeof delta === 'string') {
+            let found = false
+            for (const tc of toolCalls.values()) {
+              if (tc.id === itemId) {
+                tc.arguments += delta
+                found = true
+                break
+              }
+            }
+            if (!found) {
+              toolCalls.set(toolCalls.size, {
+                id: itemId,
+                type: 'function',
+                name: '',
+                arguments: delta
+              })
+            }
+          }
+        } else if (eventType === 'response.output_item.added') {
+          const item = data?.item
+          if (item?.type === 'function_call' && item?.call_id) {
+            toolCalls.set(toolCalls.size, {
+              id: item.call_id,
+              type: 'function',
+              name: item.name || '',
+              arguments: ''
+            })
+          }
+        } else if (eventType === 'response.completed' || eventType === 'response.done') {
+          const response = data?.response
+          if (response?.status) {
+            finishReason = response.status
+          }
+          if (response?.usage) {
+            usagePrompt = response.usage.input_tokens ?? response.usage.prompt_tokens ?? usagePrompt
+            usageCompletion = response.usage.output_tokens ?? response.usage.completion_tokens ?? usageCompletion
+            const cached = resolveCachedTokens(response.usage)
+            if (cached.read > 0 || cached.creation > 0) {
+              usageCached = cached.read + cached.creation
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  const summary: StreamResponseSummary = {
+    content: accumulatedContent,
+    model: modelId,
+    finish_reason: finishReason
+  }
+
+  if (usagePrompt != null || usageCompletion != null || usageCached != null) {
+    summary.usage = {
+      prompt_tokens: usagePrompt,
+      completion_tokens: usageCompletion,
+      cached_tokens: usageCached
+    }
+  }
+
+  if (toolCalls.size > 0) {
+    summary.tool_calls = Array.from(toolCalls.values()).map(tc => ({
+      id: tc.id,
+      type: tc.type,
+      function: {
+        name: tc.name,
+        arguments: tc.arguments
+      }
+    }))
+  }
+
+  return summary
+}
+
 const roundTwoDecimals = (value: number): number => Math.round(value * 100) / 100
 
 function cloneOriginalPayload<T>(value: T): T {
@@ -2145,7 +2324,8 @@ async function registerOpenAIChatHandler(
 
       if (storeResponsePayloads && capturedChunks) {
         try {
-          await upsertLogPayload(logId, { response: capturedChunks.join('') })
+          const summary = parseSSEToSummary(capturedChunks, 'chat', target.modelId)
+          await upsertLogPayload(logId, { response: JSON.stringify(summary) })
         } catch (error) {
           request.log.warn({ error }, 'Failed to persist streamed response')
         }
@@ -2475,7 +2655,8 @@ async function registerOpenAIResponsesHandler(
 
       if (storeResponsePayloads && capturedChunks) {
         try {
-          await upsertLogPayload(logId, { response: capturedChunks.join('') })
+          const summary = parseSSEToSummary(capturedChunks, 'responses', target.modelId)
+          await upsertLogPayload(logId, { response: JSON.stringify(summary) })
         } catch (error) {
           request.log.warn({ error }, 'Failed to persist streamed response')
         }
