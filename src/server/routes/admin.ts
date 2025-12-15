@@ -136,7 +136,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const model = typeof raw.model === 'string' && raw.model.length > 0 ? raw.model : undefined
     const statusParam = typeof raw.status === 'string' ? raw.status : undefined
     const status = statusParam === 'success' || statusParam === 'error' ? statusParam : undefined
-    const endpoint = isEndpoint(raw.endpoint) ? (raw.endpoint as GatewayEndpoint) : undefined
+    const endpoint = typeof raw.endpoint === 'string' && raw.endpoint.length > 0 ? raw.endpoint : undefined
     const from = parseTimestamp(raw.from)
     const to = parseTimestamp(raw.to)
     const apiKeyIdsRaw = parseApiKeyIds(raw.apiKeys ?? raw.apiKeyIds ?? raw.apiKey)
@@ -961,7 +961,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/stats/overview', async (request) => {
     const query: any = request.query ?? {}
-    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    const endpoint = typeof query.endpoint === 'string' && query.endpoint.length > 0 ? query.endpoint : undefined
     return getMetricsOverview(endpoint)
   })
 
@@ -969,7 +969,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const query: any = request.query ?? {}
     const daysRaw = Number(query.days ?? 7)
     const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 30)) : 7
-    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    const endpoint = typeof query.endpoint === 'string' && query.endpoint.length > 0 ? query.endpoint : undefined
     return getDailyMetrics(days, endpoint)
   })
 
@@ -979,7 +979,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const limitRaw = Number(query.limit ?? 10)
     const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 90)) : 7
     const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 50)) : 10
-    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    const endpoint = typeof query.endpoint === 'string' && query.endpoint.length > 0 ? query.endpoint : undefined
     return getModelUsageMetrics(days, limit, endpoint)
   })
 
@@ -987,7 +987,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const query: any = request.query ?? {}
     const daysRaw = Number(query.days ?? 7)
     const rangeDays = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 90)) : 7
-    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    const endpoint = typeof query.endpoint === 'string' && query.endpoint.length > 0 ? query.endpoint : undefined
     return getApiKeyOverviewMetrics(rangeDays, endpoint)
   })
 
@@ -997,7 +997,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const limitRaw = Number(query.limit ?? 10)
     const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 90)) : 7
     const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 50)) : 10
-    const endpoint = isEndpoint(query.endpoint) ? (query.endpoint as GatewayEndpoint) : undefined
+    const endpoint = typeof query.endpoint === 'string' && query.endpoint.length > 0 ? query.endpoint : undefined
     return getApiKeyUsageMetrics(days, limit, endpoint)
   })
 
