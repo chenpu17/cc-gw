@@ -660,8 +660,8 @@ async function handleAnthropicProtocol(
 
   // 收集需要转发的 headers（排除模式：转发所有头，只排除不应转发的）
   const providerHeaders: Record<string, string> = {}
-  // Note: authorization and x-api-key are excluded because they are for cc-gw auth,
-  // the provider connector will set the correct auth header based on provider config
+  // Note: authorization/x-api-key are for cc-gw auth, provider connector sets its own
+  // Note: content-type/accept are set by provider connector, forwarding causes duplicates
   const excludedHeaders = new Set([
     'host',
     'connection',
@@ -676,7 +676,9 @@ async function handleAnthropicProtocol(
     'trailer',
     'upgrade-insecure-requests',
     'authorization',
-    'x-api-key'
+    'x-api-key',
+    'content-type',
+    'accept'
   ])
   for (const [key, rawValue] of Object.entries(request.headers)) {
     const lower = key.toLowerCase()
@@ -1234,8 +1236,8 @@ async function handleOpenAIChatProtocol(
 
   // 收集需要转发的 headers（排除模式：转发所有头，只排除不应转发的）
   const providerHeaders: Record<string, string> = {}
-  // Note: authorization and x-api-key are excluded because they are for cc-gw auth,
-  // the provider connector will set the correct auth header based on provider config
+  // Note: authorization/x-api-key are for cc-gw auth, provider connector sets its own
+  // Note: content-type/accept are set by provider connector, forwarding causes duplicates
   const excludedHeaders = new Set([
     'host',
     'connection',
@@ -1250,7 +1252,9 @@ async function handleOpenAIChatProtocol(
     'trailer',
     'upgrade-insecure-requests',
     'authorization',
-    'x-api-key'
+    'x-api-key',
+    'content-type',
+    'accept'
   ])
   for (const [key, rawValue] of Object.entries(request.headers)) {
     const lower = key.toLowerCase()
@@ -1646,8 +1650,8 @@ async function handleOpenAIResponsesProtocol(
 
   // 收集需要转发的 headers（排除模式：转发所有头，只排除不应转发的）
   const providerHeaders: Record<string, string> = {}
-  // Note: authorization and x-api-key are excluded because they are for cc-gw auth,
-  // the provider connector will set the correct auth header based on provider config
+  // Note: authorization/x-api-key are for cc-gw auth, provider connector sets its own
+  // Note: content-type/accept are set by provider connector, forwarding causes duplicates
   const excludedHeaders = new Set([
     'host',
     'connection',
@@ -1662,7 +1666,9 @@ async function handleOpenAIResponsesProtocol(
     'trailer',
     'upgrade-insecure-requests',
     'authorization',
-    'x-api-key'
+    'x-api-key',
+    'content-type',
+    'accept'
   ])
   for (const [key, rawValue] of Object.entries(request.headers)) {
     const lower = key.toLowerCase()
