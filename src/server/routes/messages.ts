@@ -344,6 +344,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
       const collected: Record<string, string> = {}
       // Note: authorization/x-api-key are for cc-gw auth, provider connector sets its own
       // Note: content-type/accept are set by provider connector, forwarding causes duplicates
+      // Note: accept-encoding excluded to avoid compressed responses that cc-gw can't handle
+      // Note: cookie/referer excluded to prevent leaking client sensitive info
       const excludedHeaders = new Set([
         'host',
         'connection',
@@ -360,7 +362,10 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         'authorization',
         'x-api-key',
         'content-type',
-        'accept'
+        'accept',
+        'accept-encoding',
+        'cookie',
+        'referer'
       ])
       const sourceHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
       for (const [headerKey, headerValue] of Object.entries(sourceHeaders)) {

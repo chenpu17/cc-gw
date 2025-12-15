@@ -662,6 +662,8 @@ async function handleAnthropicProtocol(
   const providerHeaders: Record<string, string> = {}
   // Note: authorization/x-api-key are for cc-gw auth, provider connector sets its own
   // Note: content-type/accept are set by provider connector, forwarding causes duplicates
+  // Note: accept-encoding excluded to avoid compressed responses that cc-gw can't handle
+  // Note: cookie/referer excluded to prevent leaking client sensitive info
   const excludedHeaders = new Set([
     'host',
     'connection',
@@ -678,7 +680,10 @@ async function handleAnthropicProtocol(
     'authorization',
     'x-api-key',
     'content-type',
-    'accept'
+    'accept',
+    'accept-encoding',
+    'cookie',
+    'referer'
   ])
   for (const [key, rawValue] of Object.entries(request.headers)) {
     const lower = key.toLowerCase()
@@ -1238,6 +1243,8 @@ async function handleOpenAIChatProtocol(
   const providerHeaders: Record<string, string> = {}
   // Note: authorization/x-api-key are for cc-gw auth, provider connector sets its own
   // Note: content-type/accept are set by provider connector, forwarding causes duplicates
+  // Note: accept-encoding excluded to avoid compressed responses that cc-gw can't handle
+  // Note: cookie/referer excluded to prevent leaking client sensitive info
   const excludedHeaders = new Set([
     'host',
     'connection',
@@ -1254,7 +1261,10 @@ async function handleOpenAIChatProtocol(
     'authorization',
     'x-api-key',
     'content-type',
-    'accept'
+    'accept',
+    'accept-encoding',
+    'cookie',
+    'referer'
   ])
   for (const [key, rawValue] of Object.entries(request.headers)) {
     const lower = key.toLowerCase()
@@ -1652,6 +1662,8 @@ async function handleOpenAIResponsesProtocol(
   const providerHeaders: Record<string, string> = {}
   // Note: authorization/x-api-key are for cc-gw auth, provider connector sets its own
   // Note: content-type/accept are set by provider connector, forwarding causes duplicates
+  // Note: accept-encoding excluded to avoid compressed responses that cc-gw can't handle
+  // Note: cookie/referer excluded to prevent leaking client sensitive info
   const excludedHeaders = new Set([
     'host',
     'connection',
@@ -1668,7 +1680,10 @@ async function handleOpenAIResponsesProtocol(
     'authorization',
     'x-api-key',
     'content-type',
-    'accept'
+    'accept',
+    'accept-encoding',
+    'cookie',
+    'referer'
   ])
   for (const [key, rawValue] of Object.entries(request.headers)) {
     const lower = key.toLowerCase()

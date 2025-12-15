@@ -323,6 +323,8 @@ function filterForwardedAnthropicHeaders(
   // Exclude headers that should not be forwarded
   // Note: authorization/x-api-key are for cc-gw auth, provider connector sets its own
   // Note: content-type/accept are set by provider connector, forwarding causes duplicates
+  // Note: accept-encoding excluded to avoid compressed responses that cc-gw can't handle
+  // Note: cookie/referer excluded to prevent leaking client sensitive info
   const excludedHeaders = new Set([
     'host',
     'connection',
@@ -339,7 +341,10 @@ function filterForwardedAnthropicHeaders(
     'authorization',
     'x-api-key',
     'content-type',
-    'accept'
+    'accept',
+    'accept-encoding',
+    'cookie',
+    'referer'
   ])
   for (const [key, value] of Object.entries(headers)) {
     if (!value) continue
