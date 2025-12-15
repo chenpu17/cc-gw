@@ -661,6 +661,7 @@ async function handleAnthropicProtocol(
   // 收集需要转发的 headers
   const providerHeaders: Record<string, string> = {}
   const headersToForward = [
+    'user-agent',
     'anthropic-version',
     'anthropic-beta',
     'x-stainless-arch',
@@ -1228,6 +1229,7 @@ async function handleOpenAIChatProtocol(
   // 收集需要转发的 headers
   const providerHeaders: Record<string, string> = {}
   const headersToForward = [
+    'user-agent',
     'anthropic-version',
     'anthropic-beta',
     'x-stainless-arch',
@@ -1633,6 +1635,7 @@ async function handleOpenAIResponsesProtocol(
   // 收集需要转发的 headers
   const providerHeaders: Record<string, string> = {}
   const headersToForward = [
+    'user-agent',
     'anthropic-version',
     'anthropic-beta',
     'x-stainless-arch',

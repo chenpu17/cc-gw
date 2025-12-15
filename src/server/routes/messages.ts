@@ -340,6 +340,40 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         providerHeaders = collected
       }
     } else {
+      // Non-Anthropic provider: still forward identity headers (x-stainless-*, user-agent)
+      const collected: Record<string, string> = {}
+      const skip = new Set(['content-length', 'host', 'connection', 'transfer-encoding'])
+      const allowedPrefixes = ['x-stainless-', 'anthropic-']
+      const allowedHeaders = new Set(['user-agent', 'content-type', 'accept'])
+      const sourceHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
+      for (const [headerKey, headerValue] of Object.entries(sourceHeaders)) {
+        const lower = headerKey.toLowerCase()
+        if (skip.has(lower)) continue
+
+        // Only forward identity headers and content headers for non-Anthropic providers
+        const shouldForward = allowedHeaders.has(lower) || allowedPrefixes.some(prefix => lower.startsWith(prefix))
+        if (!shouldForward) continue
+
+        let value: string | undefined
+        if (typeof headerValue === 'string') {
+          value = headerValue
+        } else if (Array.isArray(headerValue)) {
+          value = headerValue.find((item): item is string => typeof item === 'string' && item.length > 0)
+        }
+
+        if (value && value.length > 0) {
+          collected[lower] = value
+        }
+      }
+
+      if (!('content-type' in collected)) {
+        collected['content-type'] = 'application/json'
+      }
+
+      if (Object.keys(collected).length > 0) {
+        providerHeaders = collected
+      }
+
       providerBody = buildProviderBody(normalizedForProvider, {
         maxTokens: maxTokensOverride,
         temperature: payload.temperature,
