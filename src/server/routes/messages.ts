@@ -342,6 +342,8 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
     } else {
       // Non-Anthropic provider: forward all headers except excluded ones
       const collected: Record<string, string> = {}
+      // Note: authorization and x-api-key are excluded because they are for cc-gw auth,
+      // the provider connector will set the correct auth header based on provider config
       const excludedHeaders = new Set([
         'host',
         'connection',
@@ -354,7 +356,9 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         'proxy-authorization',
         'te',
         'trailer',
-        'upgrade-insecure-requests'
+        'upgrade-insecure-requests',
+        'authorization',
+        'x-api-key'
       ])
       const sourceHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
       for (const [headerKey, headerValue] of Object.entries(sourceHeaders)) {

@@ -321,6 +321,8 @@ function filterForwardedAnthropicHeaders(
   if (!headers) return {}
   const result: Record<string, string> = {}
   // Exclude headers that should not be forwarded
+  // Note: authorization and x-api-key are excluded because they are for cc-gw auth,
+  // the provider connector will set the correct auth header based on provider config
   const excludedHeaders = new Set([
     'host',
     'connection',
@@ -333,7 +335,9 @@ function filterForwardedAnthropicHeaders(
     'proxy-authorization',
     'te',
     'trailer',
-    'upgrade-insecure-requests'
+    'upgrade-insecure-requests',
+    'authorization',
+    'x-api-key'
   ])
   for (const [key, value] of Object.entries(headers)) {
     if (!value) continue
