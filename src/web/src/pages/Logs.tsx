@@ -7,6 +7,7 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { apiClient, type ApiError, toApiError } from '@/services/api'
 import type { LogDetail, LogListResponse, LogRecord } from '@/types/logs'
 import type { ApiKeySummary } from '@/types/apiKeys'
+import type { CustomEndpointsResponse } from '@/types/endpoints'
 import { Loader } from '@/components/Loader'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
@@ -78,7 +79,7 @@ export default function LogsPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
   const [providerFilter, setProviderFilter] = useState<string>('all')
-  const [endpointFilter, setEndpointFilter] = useState<'all' | 'anthropic' | 'openai'>('all')
+  const [endpointFilter, setEndpointFilter] = useState<string>('all')
   const [modelFilter, setModelFilter] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [fromDate, setFromDate] = useState<DateInput>('')
@@ -138,6 +139,11 @@ export default function LogsPage() {
   const apiKeysQuery = useApiQuery<ApiKeySummary[], ApiError>(
     ['api-keys'],
     { url: '/api/keys', method: 'GET' }
+  )
+
+  const customEndpointsQuery = useApiQuery<CustomEndpointsResponse, ApiError>(
+    ['custom-endpoints'],
+    { url: '/api/custom-endpoints', method: 'GET' }
   )
 
   useEffect(() => {
@@ -305,7 +311,7 @@ export default function LogsPage() {
 
             <div className="space-y-2">
               <Label>{t('logs.filters.endpoint')}</Label>
-              <Select value={endpointFilter} onValueChange={(v) => setEndpointFilter(v as typeof endpointFilter)}>
+              <Select value={endpointFilter} onValueChange={setEndpointFilter}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -313,6 +319,11 @@ export default function LogsPage() {
                   <SelectItem value="all">{t('logs.filters.endpointAll')}</SelectItem>
                   <SelectItem value="anthropic">{t('logs.filters.endpointAnthropic')}</SelectItem>
                   <SelectItem value="openai">{t('logs.filters.endpointOpenAI')}</SelectItem>
+                  {customEndpointsQuery.data?.endpoints?.map((ep) => (
+                    <SelectItem key={ep.id} value={ep.id}>
+                      {ep.label || ep.id}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

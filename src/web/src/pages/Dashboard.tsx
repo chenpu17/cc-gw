@@ -10,6 +10,7 @@ import { useToast } from '@/providers/ToastProvider'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { apiClient, type ApiError, toApiError } from '@/services/api'
 import type { LogListResponse, LogRecord } from '@/types/logs'
+import type { CustomEndpointsResponse } from '@/types/endpoints'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -124,9 +125,14 @@ function formatBytes(value: number | null | undefined): string {
 export default function DashboardPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
-  const [endpointFilter, setEndpointFilter] = useState<'all' | 'anthropic' | 'openai'>('all')
+  const [endpointFilter, setEndpointFilter] = useState<string>('all')
   const [compacting, setCompacting] = useState(false)
   const endpointParam = endpointFilter === 'all' ? undefined : endpointFilter
+
+  const customEndpointsQuery = useApiQuery<CustomEndpointsResponse, ApiError>(
+    ['custom-endpoints'],
+    { url: '/api/custom-endpoints', method: 'GET' }
+  )
 
   const overviewQuery = useApiQuery<OverviewStats, ApiError>(
     ['stats', 'overview', endpointFilter],
@@ -419,7 +425,7 @@ export default function DashboardPage() {
             </span>
             <Select
               value={endpointFilter}
-              onValueChange={(value) => setEndpointFilter(value as 'all' | 'anthropic' | 'openai')}
+              onValueChange={setEndpointFilter}
             >
               <SelectTrigger className="w-[140px]">
                 <SelectValue />
@@ -428,6 +434,11 @@ export default function DashboardPage() {
                 <SelectItem value="all">{t('dashboard.filters.endpointAll')}</SelectItem>
                 <SelectItem value="anthropic">{t('dashboard.filters.endpointAnthropic')}</SelectItem>
                 <SelectItem value="openai">{t('dashboard.filters.endpointOpenAI')}</SelectItem>
+                {customEndpointsQuery.data?.endpoints?.map((ep) => (
+                  <SelectItem key={ep.id} value={ep.id}>
+                    {ep.label || ep.id}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
