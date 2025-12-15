@@ -658,30 +658,28 @@ async function handleAnthropicProtocol(
   const validationConfig = endpoint.routing?.validation ?? configSnapshot.endpointRouting?.anthropic?.validation
   const validationMode = validationConfig?.mode ?? 'off'
 
-  // 收集需要转发的 headers
+  // 收集需要转发的 headers（排除模式：转发所有头，只排除不应转发的）
   const providerHeaders: Record<string, string> = {}
-  const headersToForward = [
-    'user-agent',
-    'anthropic-version',
-    'anthropic-beta',
-    'x-stainless-arch',
-    'x-stainless-async',
-    'x-stainless-lang',
-    'x-stainless-os',
-    'x-stainless-package-version',
-    'x-stainless-runtime',
-    'x-stainless-runtime-version',
-    'x-request-id',
-    'idempotency-key',
-    'openai-organization',
-    'openai-beta'
-  ]
-  for (const key of headersToForward) {
-    const value = request.headers[key]
-    if (typeof value === 'string' && value.length > 0) {
-      providerHeaders[key] = value
-    } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string') {
-      providerHeaders[key] = value[0]
+  const excludedHeaders = new Set([
+    'host',
+    'connection',
+    'content-length',
+    'transfer-encoding',
+    'keep-alive',
+    'upgrade',
+    'proxy-connection',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'te',
+    'trailer',
+    'upgrade-insecure-requests'
+  ])
+  for (const [key, rawValue] of Object.entries(request.headers)) {
+    const lower = key.toLowerCase()
+    if (excludedHeaders.has(lower)) continue
+    const value = typeof rawValue === 'string' ? rawValue : Array.isArray(rawValue) ? rawValue[0] : undefined
+    if (value && value.length > 0) {
+      providerHeaders[lower] = value
     }
   }
 
@@ -1230,30 +1228,28 @@ async function handleOpenAIChatProtocol(
     querySuffix = (request as any).querystring || null
   }
 
-  // 收集需要转发的 headers
+  // 收集需要转发的 headers（排除模式：转发所有头，只排除不应转发的）
   const providerHeaders: Record<string, string> = {}
-  const headersToForward = [
-    'user-agent',
-    'anthropic-version',
-    'anthropic-beta',
-    'x-stainless-arch',
-    'x-stainless-async',
-    'x-stainless-lang',
-    'x-stainless-os',
-    'x-stainless-package-version',
-    'x-stainless-runtime',
-    'x-stainless-runtime-version',
-    'x-request-id',
-    'idempotency-key',
-    'openai-organization',
-    'openai-beta'
-  ]
-  for (const key of headersToForward) {
-    const value = request.headers[key]
-    if (typeof value === 'string' && value.length > 0) {
-      providerHeaders[key] = value
-    } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string') {
-      providerHeaders[key] = value[0]
+  const excludedHeaders = new Set([
+    'host',
+    'connection',
+    'content-length',
+    'transfer-encoding',
+    'keep-alive',
+    'upgrade',
+    'proxy-connection',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'te',
+    'trailer',
+    'upgrade-insecure-requests'
+  ])
+  for (const [key, rawValue] of Object.entries(request.headers)) {
+    const lower = key.toLowerCase()
+    if (excludedHeaders.has(lower)) continue
+    const value = typeof rawValue === 'string' ? rawValue : Array.isArray(rawValue) ? rawValue[0] : undefined
+    if (value && value.length > 0) {
+      providerHeaders[lower] = value
     }
   }
 
@@ -1640,30 +1636,28 @@ async function handleOpenAIResponsesProtocol(
     querySuffix = (request as any).querystring || null
   }
 
-  // 收集需要转发的 headers
+  // 收集需要转发的 headers（排除模式：转发所有头，只排除不应转发的）
   const providerHeaders: Record<string, string> = {}
-  const headersToForward = [
-    'user-agent',
-    'anthropic-version',
-    'anthropic-beta',
-    'x-stainless-arch',
-    'x-stainless-async',
-    'x-stainless-lang',
-    'x-stainless-os',
-    'x-stainless-package-version',
-    'x-stainless-runtime',
-    'x-stainless-runtime-version',
-    'x-request-id',
-    'idempotency-key',
-    'openai-organization',
-    'openai-beta'
-  ]
-  for (const key of headersToForward) {
-    const value = request.headers[key]
-    if (typeof value === 'string' && value.length > 0) {
-      providerHeaders[key] = value
-    } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string') {
-      providerHeaders[key] = value[0]
+  const excludedHeaders = new Set([
+    'host',
+    'connection',
+    'content-length',
+    'transfer-encoding',
+    'keep-alive',
+    'upgrade',
+    'proxy-connection',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'te',
+    'trailer',
+    'upgrade-insecure-requests'
+  ])
+  for (const [key, rawValue] of Object.entries(request.headers)) {
+    const lower = key.toLowerCase()
+    if (excludedHeaders.has(lower)) continue
+    const value = typeof rawValue === 'string' ? rawValue : Array.isArray(rawValue) ? rawValue[0] : undefined
+    if (value && value.length > 0) {
+      providerHeaders[lower] = value
     }
   }
 

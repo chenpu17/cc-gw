@@ -320,24 +320,26 @@ function filterForwardedAnthropicHeaders(
 ): Record<string, string> {
   if (!headers) return {}
   const result: Record<string, string> = {}
-  const allowedHeaders = new Set([
-    'content-type',
-    'accept',
-    'user-agent',
-    'x-request-id',
-    'idempotency-key'
+  // Exclude headers that should not be forwarded
+  const excludedHeaders = new Set([
+    'host',
+    'connection',
+    'content-length',
+    'transfer-encoding',
+    'keep-alive',
+    'upgrade',
+    'proxy-connection',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'te',
+    'trailer',
+    'upgrade-insecure-requests'
   ])
-  const allowedPrefixes = [
-    'anthropic-',
-    'x-stainless-',
-    'openai-',
-    'x-client-'
-  ]
   for (const [key, value] of Object.entries(headers)) {
     if (!value) continue
     const lower = key.toLowerCase()
-    // Forward identity headers, OpenAI headers, and content headers
-    if (allowedHeaders.has(lower) || allowedPrefixes.some(prefix => lower.startsWith(prefix))) {
+    // Forward all headers except excluded ones
+    if (!excludedHeaders.has(lower)) {
       result[lower] = value
     }
   }

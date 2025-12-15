@@ -340,19 +340,26 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         providerHeaders = collected
       }
     } else {
-      // Non-Anthropic provider: still forward identity headers (x-stainless-*, user-agent, openai-*, etc.)
+      // Non-Anthropic provider: forward all headers except excluded ones
       const collected: Record<string, string> = {}
-      const skip = new Set(['content-length', 'host', 'connection', 'transfer-encoding'])
-      const allowedPrefixes = ['x-stainless-', 'anthropic-', 'openai-', 'x-client-']
-      const allowedHeaders = new Set(['user-agent', 'content-type', 'accept', 'x-request-id', 'idempotency-key'])
+      const excludedHeaders = new Set([
+        'host',
+        'connection',
+        'content-length',
+        'transfer-encoding',
+        'keep-alive',
+        'upgrade',
+        'proxy-connection',
+        'proxy-authenticate',
+        'proxy-authorization',
+        'te',
+        'trailer',
+        'upgrade-insecure-requests'
+      ])
       const sourceHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
       for (const [headerKey, headerValue] of Object.entries(sourceHeaders)) {
         const lower = headerKey.toLowerCase()
-        if (skip.has(lower)) continue
-
-        // Only forward identity headers and content headers for non-Anthropic providers
-        const shouldForward = allowedHeaders.has(lower) || allowedPrefixes.some(prefix => lower.startsWith(prefix))
-        if (!shouldForward) continue
+        if (excludedHeaders.has(lower)) continue
 
         let value: string | undefined
         if (typeof headerValue === 'string') {
