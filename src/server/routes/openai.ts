@@ -320,11 +320,12 @@ function filterForwardedAnthropicHeaders(
 ): Record<string, string> {
   if (!headers) return {}
   const result: Record<string, string> = {}
-  const allowContentHeaders = new Set(['content-type', 'accept'])
+  const allowContentHeaders = new Set(['content-type', 'accept', 'user-agent'])
   for (const [key, value] of Object.entries(headers)) {
     if (!value) continue
     const lower = key.toLowerCase()
-    if (lower.startsWith('anthropic-') || allowContentHeaders.has(lower)) {
+    // Forward anthropic-* headers, x-stainless-* headers (CLI identity), and allowed content headers
+    if (lower.startsWith('anthropic-') || lower.startsWith('x-stainless-') || allowContentHeaders.has(lower)) {
       result[lower] = value
     }
   }
@@ -784,6 +785,11 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           'forwarding anthropic headers (responses)'
         )
       } else {
+        // Non-Anthropic provider: still forward identity headers (x-stainless-*, user-agent)
+        const rawHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
+        const forwarded = collectAnthropicForwardHeaders(rawHeaders)
+        providerHeaders = filterForwardedAnthropicHeaders(forwarded)
+
         providerBody = { ...payload }
 
         providerBody.model = target.modelId
@@ -1486,6 +1492,11 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
           'forwarding anthropic headers (chat completions)'
         )
       } else {
+        // Non-Anthropic provider: still forward identity headers (x-stainless-*, user-agent)
+        const rawHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
+        const forwarded = collectAnthropicForwardHeaders(rawHeaders)
+        providerHeaders = filterForwardedAnthropicHeaders(forwarded)
+
         providerBody = buildProviderBody(normalized, {
           maxTokens: typeof payload.max_tokens === 'number' ? payload.max_tokens : undefined,
           temperature: typeof payload.temperature === 'number' ? payload.temperature : undefined,

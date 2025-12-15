@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { BookOpen, Info, Terminal, Code } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
+import { copyToClipboard } from '@/utils/clipboard'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -179,7 +180,7 @@ function StepContent({ content }: { content: string }) {
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-xs"
-                    onClick={() => navigator.clipboard.writeText(code)}
+                    onClick={() => copyToClipboard(code)}
                   >
                     {t('common.actions.copy')}
                   </Button>
@@ -296,7 +297,7 @@ function FaqAnswer({ content }: { content: string }) {
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-xs"
-                    onClick={() => navigator.clipboard.writeText(code)}
+                    onClick={() => copyToClipboard(code)}
                   >
                     {t('common.actions.copy')}
                   </Button>

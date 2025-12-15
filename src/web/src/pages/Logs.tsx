@@ -11,6 +11,7 @@ import { Loader } from '@/components/Loader'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
 import { cn } from '@/lib/utils'
+import { copyToClipboard } from '@/utils/clipboard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -613,7 +614,7 @@ function LogDetailsDrawer({
         return
       }
       try {
-        await navigator.clipboard.writeText(content)
+        await copyToClipboard(content)
         pushToast({ title: t(successKey), variant: 'success' })
       } catch (error) {
         pushToast({

@@ -8,6 +8,7 @@ import { useToast } from '@/providers/ToastProvider'
 import { Loader } from '@/components/Loader'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
+import { copyToClipboard } from '@/utils/clipboard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -169,7 +170,7 @@ export default function ApiKeysPage() {
 
   const handleCopyKey = async (key: string) => {
     try {
-      await navigator.clipboard.writeText(key)
+      await copyToClipboard(key)
       pushToast({ title: t('apiKeys.toast.keyCopied'), variant: 'success' })
     } catch (error) {
       pushToast({
