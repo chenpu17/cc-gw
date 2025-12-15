@@ -670,7 +670,11 @@ async function handleAnthropicProtocol(
     'x-stainless-os',
     'x-stainless-package-version',
     'x-stainless-runtime',
-    'x-stainless-runtime-version'
+    'x-stainless-runtime-version',
+    'x-request-id',
+    'idempotency-key',
+    'openai-organization',
+    'openai-beta'
   ]
   for (const key of headersToForward) {
     const value = request.headers[key]
@@ -1238,7 +1242,11 @@ async function handleOpenAIChatProtocol(
     'x-stainless-os',
     'x-stainless-package-version',
     'x-stainless-runtime',
-    'x-stainless-runtime-version'
+    'x-stainless-runtime-version',
+    'x-request-id',
+    'idempotency-key',
+    'openai-organization',
+    'openai-beta'
   ]
   for (const key of headersToForward) {
     const value = request.headers[key]
@@ -1644,7 +1652,11 @@ async function handleOpenAIResponsesProtocol(
     'x-stainless-os',
     'x-stainless-package-version',
     'x-stainless-runtime',
-    'x-stainless-runtime-version'
+    'x-stainless-runtime-version',
+    'x-request-id',
+    'idempotency-key',
+    'openai-organization',
+    'openai-beta'
   ]
   for (const key of headersToForward) {
     const value = request.headers[key]

@@ -320,12 +320,24 @@ function filterForwardedAnthropicHeaders(
 ): Record<string, string> {
   if (!headers) return {}
   const result: Record<string, string> = {}
-  const allowContentHeaders = new Set(['content-type', 'accept', 'user-agent'])
+  const allowedHeaders = new Set([
+    'content-type',
+    'accept',
+    'user-agent',
+    'x-request-id',
+    'idempotency-key'
+  ])
+  const allowedPrefixes = [
+    'anthropic-',
+    'x-stainless-',
+    'openai-',
+    'x-client-'
+  ]
   for (const [key, value] of Object.entries(headers)) {
     if (!value) continue
     const lower = key.toLowerCase()
-    // Forward anthropic-* headers, x-stainless-* headers (CLI identity), and allowed content headers
-    if (lower.startsWith('anthropic-') || lower.startsWith('x-stainless-') || allowContentHeaders.has(lower)) {
+    // Forward identity headers, OpenAI headers, and content headers
+    if (allowedHeaders.has(lower) || allowedPrefixes.some(prefix => lower.startsWith(prefix))) {
       result[lower] = value
     }
   }
@@ -789,6 +801,20 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         const rawHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
         const forwarded = collectAnthropicForwardHeaders(rawHeaders)
         providerHeaders = filterForwardedAnthropicHeaders(forwarded)
+
+        // Log forwarded headers for debugging
+        if (OPENAI_DEBUG) {
+          debugLog('responses non-anthropic forwarded headers', providerHeaders)
+        }
+        request.log.info(
+          {
+            event: 'responses.forward_headers',
+            provider: target.providerId,
+            model: target.modelId,
+            headers: providerHeaders
+          },
+          'forwarding headers (responses, non-anthropic provider)'
+        )
 
         providerBody = { ...payload }
 
@@ -1496,6 +1522,20 @@ export async function registerOpenAiRoutes(app: FastifyInstance): Promise<void> 
         const rawHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
         const forwarded = collectAnthropicForwardHeaders(rawHeaders)
         providerHeaders = filterForwardedAnthropicHeaders(forwarded)
+
+        // Log forwarded headers for debugging
+        if (OPENAI_DEBUG) {
+          debugLog('chat completions non-anthropic forwarded headers', providerHeaders)
+        }
+        request.log.info(
+          {
+            event: 'chat.completions.forward_headers',
+            provider: target.providerId,
+            model: target.modelId,
+            headers: providerHeaders
+          },
+          'forwarding headers (chat completions, non-anthropic provider)'
+        )
 
         providerBody = buildProviderBody(normalized, {
           maxTokens: typeof payload.max_tokens === 'number' ? payload.max_tokens : undefined,

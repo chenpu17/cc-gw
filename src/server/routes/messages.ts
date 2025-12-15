@@ -340,11 +340,11 @@ export async function registerMessagesRoute(app: FastifyInstance): Promise<void>
         providerHeaders = collected
       }
     } else {
-      // Non-Anthropic provider: still forward identity headers (x-stainless-*, user-agent)
+      // Non-Anthropic provider: still forward identity headers (x-stainless-*, user-agent, openai-*, etc.)
       const collected: Record<string, string> = {}
       const skip = new Set(['content-length', 'host', 'connection', 'transfer-encoding'])
-      const allowedPrefixes = ['x-stainless-', 'anthropic-']
-      const allowedHeaders = new Set(['user-agent', 'content-type', 'accept'])
+      const allowedPrefixes = ['x-stainless-', 'anthropic-', 'openai-', 'x-client-']
+      const allowedHeaders = new Set(['user-agent', 'content-type', 'accept', 'x-request-id', 'idempotency-key'])
       const sourceHeaders = (request.raw?.headers ?? request.headers) as Record<string, string | string[] | undefined>
       for (const [headerKey, headerValue] of Object.entries(sourceHeaders)) {
         const lower = headerKey.toLowerCase()
