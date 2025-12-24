@@ -1,7 +1,7 @@
 export type ClaudeRole = 'system' | 'user' | 'assistant' | 'developer' | 'tool'
 
 export interface ClaudeContentBlock {
-  type: 'text' | 'tool_use' | 'tool_result'
+  type: 'text' | 'input_text' | 'output_text' | 'tool_use' | 'tool_result'
   text?: string
   id?: string
   name?: string

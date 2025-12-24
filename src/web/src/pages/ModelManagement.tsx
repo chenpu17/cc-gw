@@ -188,7 +188,7 @@ export default function ModelManagementPage() {
         label: endpoint.label,
         description: pathsText,
         isSystem: false,
-        canDelete: true,
+        canDelete: endpoint.deletable !== false,
         protocols
       }
     })
@@ -544,6 +544,7 @@ export default function ModelManagementPage() {
   const handleDeleteEndpoint = async (endpointId: string) => {
     const endpoint = customEndpoints.find((e) => e.id === endpointId)
     if (!endpoint) return
+    if (endpoint.deletable === false) return
 
     if (!confirm(t('modelManagement.deleteEndpointConfirm', { label: endpoint.label }))) {
       return

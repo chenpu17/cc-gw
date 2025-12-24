@@ -34,6 +34,7 @@ export interface EndpointPathConfig {
 export interface CustomEndpoint {
   id: string
   label: string
+  deletable?: boolean
   // 新格式：支持多个路径
   paths?: EndpointPathConfig[]
   // 旧格式：向后兼容
@@ -51,6 +52,7 @@ export interface CustomEndpointsResponse {
 export interface CreateEndpointRequest {
   id: string
   label: string
+  deletable?: boolean
   // 支持新旧两种格式
   paths?: EndpointPathConfig[]
   path?: string
@@ -61,6 +63,7 @@ export interface CreateEndpointRequest {
 
 export interface UpdateEndpointRequest {
   label?: string
+  deletable?: boolean
   paths?: EndpointPathConfig[]
   path?: string
   protocol?: EndpointProtocol

@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, RouteOptions } from 'fastify'
+import type { ReadableStream } from 'node:stream/web'
 import type { CustomEndpointConfig, EndpointPathConfig, EndpointProtocol } from '../config/types.js'
 import { normalizeClaudePayload } from '../protocol/normalize.js'
 import { normalizeOpenAIChatPayload } from '../protocol/normalize-openai-chat.js'
@@ -7,6 +8,8 @@ import { resolveRoute } from '../router/index.js'
 import { buildProviderBody, buildAnthropicBody } from '../protocol/toProvider.js'
 import { convertOpenAIToAnthropic } from '../protocol/responseConverter.js'
 import { StreamTransformer, type StreamFormat } from '../protocol/streamTransformer.js'
+import { stripMetadata, stripTooling } from '../protocol/strip.js'
+import { convertAnthropicToolChoiceToOpenAI } from '../protocol/tool-choice.js'
 import { getConnector } from '../providers/registry.js'
 import { createOpenAIConnector } from '../providers/openai.js'
 import { finalizeLog, recordLog, updateLogTokens, updateMetrics, upsertLogPayload } from '../logging/logger.js'
@@ -20,6 +23,29 @@ import { validateAnthropicRequest } from './anthropic-validator.js'
 import { recordEvent } from '../events/service.js'
 import { buildModelsResponse } from './shared/models-handler.js'
 import type { ProviderConnector } from '../providers/types.js'
+
+async function readProviderBodyText(body: ReadableStream<Uint8Array> | null): Promise<string> {
+  if (!body) return ''
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let result = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    if (value) {
+      result += decoder.decode(value, { stream: true })
+    }
+  }
+
+  result += decoder.decode()
+  return result
+}
+
+async function readProviderBodyJson(body: ReadableStream<Uint8Array> | null): Promise<any> {
+  const text = await readProviderBodyText(body)
+  return text ? JSON.parse(text) : null
+}
 
 function resolveHeaderValue(value: string | string[] | undefined): string | undefined {
   if (!value) return undefined
@@ -51,7 +77,9 @@ function getPathsToRegister(basePath: string, protocol: EndpointProtocol): strin
       // Anthropic 协议：注册 /v1/messages 和 /v1/v1/messages（兼容性）
       return [
         `${basePath}/v1/messages`,
-        `${basePath}/v1/v1/messages`
+        `${basePath}/v1/v1/messages`,
+        `${basePath}/v1/messages/count_tokens`,
+        `${basePath}/v1/v1/messages/count_tokens`
       ]
     case 'openai-auto':
       // OpenAI Auto：同时注册 chat 和 responses 路径
@@ -350,7 +378,7 @@ function normalizeEndpointPaths(endpoint: CustomEndpointConfig): EndpointPathCon
  * 支持多个路径，每个路径可以使用不同的协议
  */
 export async function registerCustomEndpoint(
-  app: FastifyInstance,
+  app: FastifyInstance<any, any, any, any, any>,
   endpoint: CustomEndpointConfig
 ): Promise<void> {
   if (endpoint.enabled === false) {
@@ -459,7 +487,7 @@ export function clearRegisteredRoutes(): void {
 function getCurrentEndpointConfig(
   endpointId: string,
   requestPath: string,
-  app: FastifyInstance
+  app: FastifyInstance<any, any, any, any, any>
 ): CustomEndpointConfig | null {
   const config = getConfig()
   const endpoint = config.customEndpoints?.find((e) => e.id === endpointId)
@@ -511,7 +539,7 @@ function getCurrentEndpointConfig(
 /**
  * 为 OpenAI 协议的自定义端点注册 /v1/models
  */
-async function registerModelsHandler(app: FastifyInstance, path: string, endpointId: string): Promise<void> {
+async function registerModelsHandler(app: FastifyInstance<any, any, any, any, any>, path: string, endpointId: string): Promise<void> {
   const handler = async (request: any, reply: any) => {
     const endpoint = getCurrentEndpointConfig(endpointId, request.url, app)
     if (!endpoint) {
@@ -555,7 +583,7 @@ async function registerModelsHandler(app: FastifyInstance, path: string, endpoin
  * 根据实时读取的 endpoint.protocol 动态选择处理逻辑
  */
 async function registerUnifiedHandler(
-  app: FastifyInstance,
+  app: FastifyInstance<any, any, any, any, any>,
   path: string,
   endpointId: string
 ): Promise<void> {
@@ -607,6 +635,9 @@ async function registerUnifiedHandler(
     }
 
     if (protocol === 'anthropic') {
+      if (actualPath.endsWith('/count_tokens')) {
+        return await handleAnthropicCountTokensProtocol(request, reply, endpoint, endpointId, app)
+      }
       return await handleAnthropicProtocol(request, reply, endpoint, endpointId, app)
     } else if (protocol === 'openai-chat') {
       return await handleOpenAIChatProtocol(request, reply, endpoint, endpointId, app)
@@ -627,12 +658,12 @@ async function registerUnifiedHandler(
 /**
  * Anthropic 协议处理逻辑
  */
-async function handleAnthropicProtocol(
+export async function handleAnthropicProtocol(
   request: any,
   reply: any,
   endpoint: CustomEndpointConfig,
   endpointId: string,
-  app: FastifyInstance
+  app: FastifyInstance<any, any, any, any, any>
 ): Promise<any> {
   const payload = request.body
   if (!payload || typeof payload !== 'object') {
@@ -872,13 +903,29 @@ async function handleAnthropicProtocol(
         finalHeaders = collected
       }
     } else {
-      providerBody = buildProviderBody(normalized, {
+      const supportsTools = providerType !== 'custom'
+      const supportsMetadata = providerType !== 'custom'
+
+      let normalizedForProvider = supportsTools ? normalized : stripTooling(normalized)
+      if (!supportsMetadata) {
+        normalizedForProvider = stripMetadata(normalizedForProvider)
+      }
+
+      const toolChoice = supportsTools ? convertAnthropicToolChoiceToOpenAI(payload.tool_choice) : undefined
+      const overrideTools = supportsTools ? payload.tools : undefined
+
+      const effectivePayload = { ...normalizedForProvider, thinking: false }
+
+      providerBody = buildProviderBody(effectivePayload, {
         maxTokens: payload.max_tokens,
-        temperature: payload.temperature
+        temperature: payload.temperature,
+        toolChoice,
+        overrideTools,
+        providerType
       })
     }
 
-    const upstream = await connector.send({
+    let upstream = await connector.send({
       model: target.modelId,
       body: providerBody,
       stream: normalized.stream,
@@ -886,9 +933,69 @@ async function handleAnthropicProtocol(
       headers: finalHeaders
     })
 
+    if (upstream.status >= 400 && providerType !== 'anthropic') {
+      const supportsTools = providerType !== 'custom'
+      const supportsMetadata = providerType !== 'custom'
+
+      let normalizedForProvider = supportsTools ? normalized : stripTooling(normalized)
+      if (!supportsMetadata) {
+        normalizedForProvider = stripMetadata(normalizedForProvider)
+      }
+
+      const overrideTools = supportsTools ? payload.tools : undefined
+      const fallbackPayload = stripMetadata(normalizedForProvider)
+      const fallbackEffectivePayload = { ...fallbackPayload, thinking: false }
+      const fallbackBody = buildProviderBody(fallbackEffectivePayload, {
+        maxTokens: payload.max_tokens,
+        temperature: payload.temperature,
+        overrideTools,
+        providerType
+      })
+      app.log.warn(
+        {
+          endpoint: endpointId,
+          provider: target.providerId,
+          model: target.modelId,
+          upstreamStatus: upstream.status
+        },
+        'Upstream error; retrying with downgraded payload (stripped metadata/tool_choice)'
+      )
+      const retry = await connector.send({
+        model: target.modelId,
+        body: fallbackBody,
+        stream: normalized.stream,
+        query: querySuffix,
+        headers: finalHeaders
+      })
+      if (retry.status < 400) {
+        app.log.info(
+          {
+            endpoint: endpointId,
+            provider: target.providerId,
+            model: target.modelId,
+            upstreamStatus: upstream.status,
+            retryStatus: retry.status
+          },
+          'Retry succeeded with downgraded payload'
+        )
+        upstream = retry
+      } else {
+        app.log.warn(
+          {
+            endpoint: endpointId,
+            provider: target.providerId,
+            model: target.modelId,
+            upstreamStatus: upstream.status,
+            retryStatus: retry.status
+          },
+          'Retry failed; keeping original upstream error'
+        )
+      }
+    }
+
     if (upstream.status >= 400) {
       reply.code(upstream.status)
-      const bodyText = upstream.body ? await new Response(upstream.body).text() : ''
+      const bodyText = await readProviderBodyText(upstream.body)
       const errorText = bodyText || 'Upstream provider error'
       if (storeResponsePayloads) {
         await upsertLogPayload(logId, { response: bodyText || null })
@@ -899,7 +1006,7 @@ async function handleAnthropicProtocol(
     }
 
     if (!normalized.stream) {
-      const json = await new Response(upstream.body!).json()
+      const json = await readProviderBodyJson(upstream.body)
 
       // Check if we need to convert response format
       const providerType = target.provider.type
@@ -1208,15 +1315,59 @@ async function handleAnthropicProtocol(
   }
 }
 
-/**
- * OpenAI Chat Completions 协议处理逻辑
- */
-async function handleOpenAIChatProtocol(
+export async function handleAnthropicCountTokensProtocol(
   request: any,
   reply: any,
   endpoint: CustomEndpointConfig,
   endpointId: string,
-  app: FastifyInstance
+  app: FastifyInstance<any, any, any, any, any>
+): Promise<any> {
+  const payload = request.body
+  if (!payload || typeof payload !== 'object') {
+    reply.code(400)
+    return { error: 'Invalid request body' }
+  }
+
+  const providedApiKey = extractApiKeyFromRequest(request)
+
+  try {
+    await resolveApiKey(providedApiKey, { ipAddress: request.ip })
+  } catch (error) {
+    if (error instanceof ApiKeyError) {
+      reply.code(401)
+      return {
+        error: {
+          code: 'invalid_api_key',
+          message: error.message
+        }
+      }
+    }
+    throw error
+  }
+
+  const normalized = normalizeClaudePayload(payload)
+  const requestedModel = typeof payload.model === 'string' ? payload.model : undefined
+  const target = resolveRoute({
+    payload: normalized,
+    requestedModel,
+    endpoint: endpointId,
+    customRouting: endpoint.routing
+  })
+
+  const estimate = estimateTokens(normalized, target.modelId)
+  reply.header('content-type', 'application/json')
+  return { input_tokens: estimate }
+}
+
+/**
+ * OpenAI Chat Completions 协议处理逻辑
+ */
+export async function handleOpenAIChatProtocol(
+  request: any,
+  reply: any,
+  endpoint: CustomEndpointConfig,
+  endpointId: string,
+  app: FastifyInstance<any, any, any, any, any>
 ): Promise<any> {
   // 直接调用现有handler的逻辑
   // 为了快速实现，我们复用registerOpenAIChatHandler中的handler代码
@@ -1405,7 +1556,7 @@ async function handleOpenAIChatProtocol(
 
     if (upstream.status >= 400) {
       reply.code(upstream.status)
-      const bodyText = upstream.body ? await new Response(upstream.body).text() : ''
+      const bodyText = await readProviderBodyText(upstream.body)
       const errorText = bodyText || 'Upstream provider error'
       if (storeResponsePayloads) {
         await upsertLogPayload(logId, { response: bodyText || null })
@@ -1416,7 +1567,7 @@ async function handleOpenAIChatProtocol(
     }
 
     if (!normalized.stream) {
-      const json = await new Response(upstream.body!).json()
+      const json = await readProviderBodyJson(upstream.body)
       const usagePayload = json?.usage ?? null
       const inputTokens =
         usagePayload?.prompt_tokens ??
@@ -1631,12 +1782,12 @@ async function handleOpenAIChatProtocol(
 /**
  * OpenAI Responses 协议处理逻辑
  */
-async function handleOpenAIResponsesProtocol(
+export async function handleOpenAIResponsesProtocol(
   request: any,
   reply: any,
   endpoint: CustomEndpointConfig,
   endpointId: string,
-  app: FastifyInstance
+  app: FastifyInstance<any, any, any, any, any>
 ): Promise<any> {
   // 与 OpenAI Chat 类似，使用 normalizeOpenAIResponsesPayload
   const payload = request.body
@@ -1824,7 +1975,7 @@ async function handleOpenAIResponsesProtocol(
 
     if (upstream.status >= 400) {
       reply.code(upstream.status)
-      const bodyText = upstream.body ? await new Response(upstream.body).text() : ''
+      const bodyText = await readProviderBodyText(upstream.body)
       const errorText = bodyText || 'Upstream provider error'
       if (storeResponsePayloads) {
         await upsertLogPayload(logId, { response: bodyText || null })
@@ -1835,7 +1986,7 @@ async function handleOpenAIResponsesProtocol(
     }
 
     if (!normalized.stream) {
-      const json = await new Response(upstream.body!).json()
+      const json = await readProviderBodyJson(upstream.body)
       const usagePayload = json?.usage ?? null
       const inputTokens =
         usagePayload?.prompt_tokens ??
@@ -2051,7 +2202,7 @@ async function handleOpenAIResponsesProtocol(
  * @deprecated 使用统一handler和handleOpenAIChatProtocol替代
  */
 async function registerOpenAIChatHandler(
-  app: FastifyInstance,
+  app: FastifyInstance<any, any, any, any, any>,
   path: string,
   endpointId: string
 ): Promise<void> {
@@ -2190,7 +2341,7 @@ async function registerOpenAIChatHandler(
 
       if (upstream.status >= 400) {
         reply.code(upstream.status)
-        const bodyText = upstream.body ? await new Response(upstream.body).text() : ''
+        const bodyText = await readProviderBodyText(upstream.body)
         const errorText = bodyText || 'Upstream provider error'
         if (storeResponsePayloads) {
           await upsertLogPayload(logId, { response: bodyText || null })
@@ -2201,7 +2352,7 @@ async function registerOpenAIChatHandler(
       }
 
       if (!normalized.stream) {
-        const json = await new Response(upstream.body!).json()
+        const json = await readProviderBodyJson(upstream.body)
 
         // 提取和记录 token 使用情况
         const usagePayload = json?.usage ?? null
@@ -2272,8 +2423,6 @@ async function registerOpenAIChatHandler(
       let usagePrompt: number | null = null
       let usageCompletion: number | null = null
       let usageCached: number | null = null
-    let usageCacheRead = 0
-    let usageCacheCreation = 0
       let firstTokenAt: number | null = null
       const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
 
@@ -2340,6 +2489,7 @@ async function registerOpenAIChatHandler(
         target.tokenEstimate ??
         estimateTokens(normalized, target.modelId)
       const outputTokens = usageCompletion ?? 0
+      const cachedTokens = usageCached ?? 0
 
       await updateLogTokens(logId, {
         inputTokens,
@@ -2359,8 +2509,8 @@ async function registerOpenAIChatHandler(
         inputTokens,
         outputTokens,
         cachedTokens,
-        cacheReadTokens: cached.read,
-        cacheCreationTokens: cached.creation,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
         latencyMs
       })
 
@@ -2399,7 +2549,7 @@ async function registerOpenAIChatHandler(
  * 注册 OpenAI Responses API 协议处理器
  */
 async function registerOpenAIResponsesHandler(
-  app: FastifyInstance,
+  app: FastifyInstance<any, any, any, any, any>,
   path: string,
   endpointId: string
 ): Promise<void> {
@@ -2527,7 +2677,7 @@ async function registerOpenAIResponsesHandler(
 
       if (upstream.status >= 400) {
         reply.code(upstream.status)
-        const bodyText = upstream.body ? await new Response(upstream.body).text() : ''
+        const bodyText = await readProviderBodyText(upstream.body)
         const errorText = bodyText || 'Upstream provider error'
         if (storeResponsePayloads) {
           await upsertLogPayload(logId, { response: bodyText || null })
@@ -2538,7 +2688,7 @@ async function registerOpenAIResponsesHandler(
       }
 
       if (!normalized.stream) {
-        const json = await new Response(upstream.body!).json()
+        const json = await readProviderBodyJson(upstream.body)
 
         const usagePayload = json?.usage ?? null
         const inputTokens =
@@ -2551,7 +2701,7 @@ async function registerOpenAIResponsesHandler(
           usagePayload?.completion_tokens ??
           (typeof json?.content === 'string' ? estimateTextTokens(json.content, target.modelId) : 0)
         const cached = resolveCachedTokens(usagePayload)
-      const cachedTokens = cached.read + cached.creation
+        const cachedTokens = cached.read + cached.creation
         const latencyMs = Date.now() - requestStart
 
         await updateLogTokens(logId, {
@@ -2602,8 +2752,8 @@ async function registerOpenAIResponsesHandler(
       let usagePrompt: number | null = null
       let usageCompletion: number | null = null
       let usageCached: number | null = null
-    let usageCacheRead = 0
-    let usageCacheCreation = 0
+      let usageCacheRead = 0
+      let usageCacheCreation = 0
       let firstTokenAt: number | null = null
       const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
 
@@ -2671,6 +2821,7 @@ async function registerOpenAIResponsesHandler(
         target.tokenEstimate ??
         estimateTokens(normalized, target.modelId)
       const outputTokens = usageCompletion ?? 0
+      const cachedTokens = usageCached ?? usageCacheRead + usageCacheCreation
 
       await updateLogTokens(logId, {
         inputTokens,
@@ -2690,8 +2841,8 @@ async function registerOpenAIResponsesHandler(
         inputTokens,
         outputTokens,
         cachedTokens,
-        cacheReadTokens: cached.read,
-        cacheCreationTokens: cached.creation,
+        cacheReadTokens: usageCacheRead,
+        cacheCreationTokens: usageCacheCreation,
         latencyMs
       })
 

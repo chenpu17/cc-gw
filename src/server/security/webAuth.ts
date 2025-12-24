@@ -88,7 +88,7 @@ function getSessionByToken(token: string | null | undefined): SessionRecord | nu
   return session
 }
 
-export function readSession(request: FastifyRequest): SessionRecord | null {
+export function readSession(request: FastifyRequest<any, any>): SessionRecord | null {
   const cookieHeader = request.headers.cookie
   const cookies = parseCookie(typeof cookieHeader === 'string' ? cookieHeader : undefined)
   const token = cookies[SESSION_COOKIE_NAME] ?? null
@@ -124,7 +124,7 @@ export function revokeAllSessions(): void {
   sessions.clear()
 }
 
-export function getSessionToken(request: FastifyRequest): string | null {
+export function getSessionToken(request: FastifyRequest<any, any>): string | null {
   const cookieHeader = request.headers.cookie
   const cookies = parseCookie(typeof cookieHeader === 'string' ? cookieHeader : undefined)
   return cookies[SESSION_COOKIE_NAME] ?? null

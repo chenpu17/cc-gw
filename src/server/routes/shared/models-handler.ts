@@ -1,5 +1,9 @@
 import type { GatewayConfig } from '../../config/types.js'
 
+function isGatewayEndpoint(value: string): value is 'openai' | 'anthropic' {
+  return value === 'openai' || value === 'anthropic'
+}
+
 /**
  * 构建 OpenAI /v1/models 响应数据
  *
@@ -75,7 +79,9 @@ export function buildModelsResponse(configSnapshot: GatewayConfig, endpointId: s
     }
   } else {
     // 系统端点：从 endpointRouting 中查找
-    const routing = configSnapshot.endpointRouting?.[endpointId]
+    const routing = isGatewayEndpoint(endpointId)
+      ? configSnapshot.endpointRouting?.[endpointId]
+      : undefined
 
     if (routing?.modelRoutes) {
       for (const [sourceModel, target] of Object.entries(routing.modelRoutes)) {

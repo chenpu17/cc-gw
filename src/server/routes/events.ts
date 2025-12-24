@@ -8,7 +8,7 @@ interface EventsQuery {
   type?: string
 }
 
-export async function registerEventsRoutes(app: FastifyInstance): Promise<void> {
+export async function registerEventsRoutes(app: FastifyInstance<any, any, any, any, any>): Promise<void> {
   app.get('/api/events', async (request) => {
     const query = request.query as EventsQuery
     const limit = Number.parseInt(query.limit ?? '', 10)

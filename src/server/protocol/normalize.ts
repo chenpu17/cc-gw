@@ -8,7 +8,7 @@ function extractText(content: any): string {
       .map((item) => {
         if (typeof item === 'string') return item
         if (item && typeof item === 'object') {
-          if (item.type === 'text' && item.text) return item.text
+          if ((item.type === 'text' || item.type === 'input_text' || item.type === 'output_text') && item.text) return item.text
           if (item.content) return extractText(item.content)
         }
         return ''
@@ -64,7 +64,7 @@ export function normalizeClaudePayload(payload: any): NormalizedPayload {
         const textParts: string[] = []
         const toolResults: NormalizedPayload['messages'][number]['toolResults'] = []
         for (const block of msg.content) {
-          if (block.type === 'text' && block.text) {
+          if ((block.type === 'text' || block.type === 'input_text') && block.text) {
             textParts.push(block.text)
           } else if (block.type === 'tool_result') {
             toolResults.push({
@@ -93,12 +93,12 @@ export function normalizeClaudePayload(payload: any): NormalizedPayload {
       if (Array.isArray(msg.content)) {
         const textParts: string[] = []
         for (const block of msg.content) {
-          if (block.type === 'text' && block.text) {
+          if ((block.type === 'text' || block.type === 'output_text') && block.text) {
             textParts.push(block.text)
           } else if (block.type === 'tool_use') {
             toolCalls.push({
               id: block.id || `call_${Math.random().toString(36).slice(2)}`,
-              name: block.name,
+              name: block.name ?? 'tool',
               arguments: block.input,
               cacheControl: block.cache_control
             })

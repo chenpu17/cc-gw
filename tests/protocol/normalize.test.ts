@@ -60,6 +60,31 @@ describe('normalizeClaudePayload', () => {
     })
   })
 
+  it('supports input_text/output_text blocks used by Claude Code', () => {
+    const payload = {
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: 'hello' }
+          ]
+        },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'output_text', text: 'hi there' }
+          ]
+        }
+      ]
+    }
+
+    const normalized = normalizeClaudePayload(payload)
+    expect(normalized.messages).toEqual([
+      { role: 'user', text: 'hello', toolResults: [] },
+      { role: 'assistant', text: 'hi there', toolCalls: [] }
+    ])
+  })
+
   it('defaults unknown roles to user and handles scalar content', () => {
     const payload = {
       messages: [

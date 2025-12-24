@@ -18,6 +18,7 @@ import type { GatewayConfig, CustomEndpointConfig, EndpointProtocol } from './co
 
 const DEFAULT_PORT = 4100
 const DEFAULT_HOST = '127.0.0.1'
+type AnyFastifyInstance = FastifyInstance<any, any, any, any, any>
 
 /**
  * 根据协议类型生成需要注册的路径列表
@@ -27,19 +28,24 @@ function getPathsForProtocol(basePath: string, protocol: EndpointProtocol): stri
     case 'anthropic':
       return [
         `${basePath}/v1/messages`,
-        `${basePath}/v1/v1/messages`
+        `${basePath}/v1/v1/messages`,
+        `${basePath}/v1/messages/count_tokens`,
+        `${basePath}/v1/v1/messages/count_tokens`
       ]
     case 'openai-auto':
       return [
+        `${basePath}/v1/models`,
         `${basePath}/v1/chat/completions`,
         `${basePath}/v1/responses`
       ]
     case 'openai-chat':
       return [
+        `${basePath}/v1/models`,
         `${basePath}/v1/chat/completions`
       ]
     case 'openai-responses':
       return [
+        `${basePath}/v1/models`,
         `${basePath}/v1/responses`
       ]
     default:
@@ -82,7 +88,7 @@ function getEndpointPaths(endpoint: CustomEndpointConfig): string[] {
 }
 
 let cachedConfig = loadConfig()
-let appInstance: FastifyInstance | null = null
+let appInstance: AnyFastifyInstance | null = null
 
 onConfigChange((config) => {
   cachedConfig = config
@@ -126,7 +132,7 @@ function resolveWebDist(): string | null {
  * - 新增endpoint时立即注册
  * - 删除endpoint时旧路由继续存在但返回404，需重启清理
  */
-async function syncCustomEndpoints(app: FastifyInstance, config: GatewayConfig): Promise<void> {
+async function syncCustomEndpoints(app: AnyFastifyInstance, config: GatewayConfig): Promise<void> {
   const configuredEndpoints = config.customEndpoints ?? []
   const registeredIds = new Set(getRegisteredEndpointIds())
 
@@ -189,7 +195,7 @@ async function syncCustomEndpoints(app: FastifyInstance, config: GatewayConfig):
 }
 
 
-export async function createServer(protocol: 'http' | 'https' = 'http'): Promise<FastifyInstance> {
+export async function createServer(protocol: 'http' | 'https' = 'http'): Promise<AnyFastifyInstance> {
   const config = cachedConfig ?? loadConfig()
   const requestLogEnabled = config.requestLogging !== false
   const responseLogEnabled = config.responseLogging !== false
@@ -214,14 +220,20 @@ export async function createServer(protocol: 'http' | 'https' = 'http'): Promise
     }
   }
 
-  const app = Fastify({
+  const baseOptions = {
     logger: {
       level: config.logLevel ?? 'info'
     },
     disableRequestLogging: true,
-    bodyLimit,
-    https: httpsOptions
-  })
+    bodyLimit
+  }
+
+  const app: AnyFastifyInstance = protocol === 'https' && httpsOptions
+    ? Fastify({
+        ...baseOptions,
+        https: httpsOptions
+      })
+    : Fastify(baseOptions)
 
   app.addHook('onRequest', async (request, reply) => {
     const authConfig = (cachedConfig ?? getConfig()).webAuth
@@ -399,8 +411,8 @@ export interface StartOptions {
 }
 
 export interface StartedServers {
-  http?: FastifyInstance
-  https?: FastifyInstance
+  http?: AnyFastifyInstance
+  https?: AnyFastifyInstance
 }
 
 export async function startServer(options: StartOptions = {}): Promise<StartedServers> {

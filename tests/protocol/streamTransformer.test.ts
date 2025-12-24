@@ -234,11 +234,12 @@ describe('StreamTransformer', () => {
       })
     })
 
-    it('filters [DONE] chunks (Anthropic target should not receive them)', () => {
+    it('handles [DONE] chunks without leaking them to Anthropic clients', () => {
       const doneChunk = 'data: [DONE]\n\n'
       const result = transformer.transform(doneChunk)
 
-      expect(result.transformedChunk).toBe('')
+      expect(result.transformedChunk).not.toContain('[DONE]')
+      expect(result.transformedChunk).toContain('event: message_stop')
       expect(result.metadata).toEqual({})
     })
 

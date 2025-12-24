@@ -74,6 +74,10 @@ export function createOpenAIConnector(
         ...request.headers
       }
 
+      if (request.stream) {
+        headers.Accept = headers.Accept || headers.accept || 'text/event-stream'
+      }
+
       if (config.apiKey) {
         headers['Authorization'] = `Bearer ${config.apiKey}`
       }

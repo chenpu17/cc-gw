@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import type { ReadableStream } from 'node:stream/web'
 import JSZip from 'jszip'
 import { normalizeClaudePayload } from '../protocol/normalize.js'
 import { buildProviderBody, buildAnthropicBody } from '../protocol/toProvider.js'
@@ -36,7 +37,25 @@ import {
 } from '../api-keys/service.js'
 import { createPasswordRecord, revokeAllSessions, sanitizeUsername } from '../security/webAuth.js'
 
-export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
+async function readProviderBodyText(body: ReadableStream<Uint8Array> | null): Promise<string> {
+  if (!body) return ''
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let result = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    if (value) {
+      result += decoder.decode(value, { stream: true })
+    }
+  }
+
+  result += decoder.decode()
+  return result
+}
+
+export async function registerAdminRoutes(app: FastifyInstance<any, any, any, any, any>): Promise<void> {
   try {
     await ensureWildcardMetadata()
   } catch (error) {
@@ -751,7 +770,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       const duration = Date.now() - startedAt
 
       if (upstream.status >= 400) {
-        const errorText = upstream.body ? await new Response(upstream.body).text() : ''
+        const errorText = await readProviderBodyText(upstream.body)
         const credentialRestricted = errorText.includes('only authorized for use with Claude Code')
         let requestBodyPreview: string
         try {
@@ -783,7 +802,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
-      const raw = upstream.body ? await new Response(upstream.body).text() : ''
+      const raw = await readProviderBodyText(upstream.body)
       let parsed: any = null
       try {
         parsed = raw ? JSON.parse(raw) : null
@@ -1109,7 +1128,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       return { error: 'Invalid request body' }
     }
 
-    const { id, label, paths, path, protocol, enabled, routing } = body
+    const { id, label, paths, path, protocol, enabled, routing, deletable } = body
 
     if (!id || typeof id !== 'string' || id.trim().length === 0) {
       reply.code(400)
@@ -1195,6 +1214,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const newEndpoint: CustomEndpointConfig = {
       id: id.trim(),
       label: label.trim(),
+      deletable: deletable !== false,
       paths: normalizedPaths,
       enabled: enabled !== false,
       routing: routing || undefined
@@ -1293,6 +1313,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const updated: CustomEndpointConfig = {
       ...existing,
       label: body.label ?? existing.label,
+      deletable: body.deletable !== undefined ? Boolean(body.deletable) : existing.deletable,
       enabled: body.enabled !== undefined ? body.enabled : existing.enabled,
       routing: body.routing !== undefined ? body.routing : existing.routing,
       ...(newPaths ? { paths: newPaths, path: undefined, protocol: undefined } : {})
@@ -1349,6 +1370,11 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
 
     const config = getConfig()
     const customEndpoints = config.customEndpoints ?? []
+    const existing = customEndpoints.find((e) => e.id === params.id)
+    if (existing && existing.deletable === false) {
+      reply.code(403)
+      return { error: 'This endpoint cannot be deleted' }
+    }
     const filtered = customEndpoints.filter((e) => e.id !== params.id)
 
     if (filtered.length === customEndpoints.length) {

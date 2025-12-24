@@ -1,4 +1,4 @@
-import { NormalizedPayload, ProviderChatMessage, ProviderChatRequestBody } from './types'
+import type { NormalizedPayload, ProviderChatMessage, ProviderChatRequestBody } from './types.js'
 import { resolveProviderFeatures } from './conversionMap.js'
 
 function buildMessages(payload: NormalizedPayload): ProviderChatMessage[] {
@@ -65,7 +65,7 @@ export interface ProviderBuildOptions {
 }
 
 export function buildProviderBody(payload: NormalizedPayload, options: ProviderBuildOptions = {}): ProviderChatRequestBody {
-  const body: ProviderChatRequestBody = {
+  const body: ProviderChatRequestBody & Record<string, unknown> = {
     messages: buildMessages(payload)
   }
   if (options.maxTokens) {
@@ -117,7 +117,7 @@ export function buildProviderBody(payload: NormalizedPayload, options: ProviderB
     if (Object.prototype.hasOwnProperty.call(original, key)) {
       const value = (original as Record<string, unknown>)[key]
       if (value !== undefined) {
-        ;(body as Record<string, unknown>)[key] = value
+        body[key] = value
       }
     }
   }
@@ -126,7 +126,7 @@ export function buildProviderBody(payload: NormalizedPayload, options: ProviderB
   const features = resolveProviderFeatures(options.providerType)
   if (features.allowMetadata) {
     if (original.metadata && typeof original.metadata === 'object') {
-      ;(body as Record<string, unknown>).metadata = original.metadata
+      body.metadata = original.metadata
     }
   }
 

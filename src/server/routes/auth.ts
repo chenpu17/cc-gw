@@ -16,7 +16,7 @@ interface LoginRequestBody {
   password?: string
 }
 
-export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
+export async function registerAuthRoutes(app: FastifyInstance<any, any, any, any, any>): Promise<void> {
   app.get('/auth/session', async (request) => {
     const config = getConfig()
     const webAuth = config.webAuth

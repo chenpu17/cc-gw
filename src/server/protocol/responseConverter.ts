@@ -194,17 +194,41 @@ export function convertAnthropicContent(blocks: any): ConvertedAnthropicContent 
  */
 export function convertOpenAIToAnthropic(openAI: any, model: string): any {
   const choice = openAI.choices?.[0]
-  const message = choice?.message ?? {}
+  const message = choice?.message ?? choice?.delta ?? {}
   const contentBlocks: any[] = []
 
+  const extractTextContent = (value: unknown): string => {
+    if (typeof value === 'string') return value
+    if (!value) return ''
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => extractTextContent(item))
+        .filter((part) => part && part.trim().length > 0)
+        .join('\n')
+    }
+
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      if (typeof record.text === 'string') return record.text
+      if (typeof record.content === 'string') return record.content
+      if (typeof record.reasoning_content === 'string') return record.reasoning_content
+      if (record.content) return extractTextContent(record.content)
+    }
+
+    return ''
+  }
+
   // Convert text content
-  if (typeof message.content === 'string' && message.content.length > 0) {
-    contentBlocks.push({ type: 'text', text: message.content })
+  const text = extractTextContent((message as any).content || (message as any).reasoning_content)
+  if (text && text.length > 0) {
+    contentBlocks.push({ type: 'text', text })
   }
 
   // Convert tool_calls to tool_use blocks
-  if (Array.isArray(message.tool_calls)) {
-    for (const call of message.tool_calls) {
+  const toolCalls = Array.isArray((message as any).tool_calls) ? (message as any).tool_calls : []
+  if (toolCalls.length > 0) {
+    for (const call of toolCalls) {
       contentBlocks.push({
         type: 'tool_use',
         id: call.id || generateId('tool'),
@@ -220,14 +244,31 @@ export function convertOpenAIToAnthropic(openAI: any, model: string): any {
     }
   }
 
+  const legacyCall = (message as any).function_call
+  if (legacyCall && typeof legacyCall === 'object') {
+    contentBlocks.push({
+      type: 'tool_use',
+      id: generateId('tool'),
+      name: legacyCall.name ?? 'tool',
+      input: (() => {
+        try {
+          return legacyCall.arguments ? JSON.parse(legacyCall.arguments) : {}
+        } catch {
+          return {}
+        }
+      })()
+    })
+  }
+
+  const usageSource = openAI.usage ?? choice?.usage ?? null
   const usage: any = {
-    input_tokens: openAI.usage?.prompt_tokens ?? 0,
-    output_tokens: openAI.usage?.completion_tokens ?? 0
+    input_tokens: usageSource?.prompt_tokens ?? usageSource?.input_tokens ?? 0,
+    output_tokens: usageSource?.completion_tokens ?? usageSource?.output_tokens ?? 0
   }
 
   // Map cached_tokens to cache_read_input_tokens if available
-  if (openAI.usage?.cached_tokens !== undefined && openAI.usage.cached_tokens > 0) {
-    usage.cache_read_input_tokens = openAI.usage.cached_tokens
+  if (usageSource?.cached_tokens !== undefined && usageSource.cached_tokens > 0) {
+    usage.cache_read_input_tokens = usageSource.cached_tokens
   }
 
   return {

@@ -78,6 +78,8 @@ export class StreamTransformer {
   private usage: AccumulatedUsage
   private buffer: string
   private firstContentSeen: boolean
+  private finalized: boolean
+  private stopReason: string | null
   private currentToolCall: ToolCallState | null
   private messageStartSent: boolean
   private contentBlockStartSent: boolean
@@ -85,6 +87,7 @@ export class StreamTransformer {
   private responsesState: ResponsesState | null
   private openaiToolCalls: Map<number, OpenAIToolCallState>
   private latestUsage: StreamMetadata['usage'] | null
+  private responsesToolNames: Map<string, string>
 
   constructor(sourceFormat: StreamFormat, targetFormat: StreamFormat, model: string) {
     this.sourceFormat = sourceFormat
@@ -98,6 +101,8 @@ export class StreamTransformer {
     }
     this.buffer = ''
     this.firstContentSeen = false
+    this.finalized = false
+    this.stopReason = null
     this.currentToolCall = null
     this.messageStartSent = false
     this.contentBlockStartSent = false
@@ -105,6 +110,7 @@ export class StreamTransformer {
     this.responsesState = null
     this.openaiToolCalls = new Map()
     this.latestUsage = null
+    this.responsesToolNames = new Map()
   }
 
   /**
@@ -141,11 +147,19 @@ export class StreamTransformer {
       skipNextEmptyLines = false
 
       if (trimmed === 'data: [DONE]') {
-        if (this.targetFormat !== 'anthropic') {
-          transformedChunk += line + '\n'
-        } else {
-          // Set flag to skip trailing empty lines after [DONE]
+        if (this.targetFormat === 'anthropic') {
+          const synthesized = this.synthesizeAnthropicStopOnDone()
+          if (synthesized) {
+            for (const evt of synthesized) {
+              if (evt.type) {
+                transformedChunk += `event: ${evt.type}\n`
+              }
+              transformedChunk += `data: ${JSON.stringify(evt)}\n\n`
+            }
+          }
           skipNextEmptyLines = true
+        } else {
+          transformedChunk += line + '\n'
         }
         continue
       }
@@ -153,18 +167,29 @@ export class StreamTransformer {
       if (trimmed.startsWith('data:')) {
         const dataStr = trimmed.slice(5).trim()
         if (dataStr === '[DONE]') {
-          // Anthropic SSE 不使用 [DONE]，直接跳过，避免破坏客户端解析
-          if (this.targetFormat !== 'anthropic') {
-            transformedChunk += line + '\n'
-          } else {
-            // Set flag to skip trailing empty lines after [DONE]
+          if (this.targetFormat === 'anthropic') {
+            const synthesized = this.synthesizeAnthropicStopOnDone()
+            if (synthesized) {
+              for (const evt of synthesized) {
+                if (evt.type) {
+                  transformedChunk += `event: ${evt.type}\n`
+                }
+                transformedChunk += `data: ${JSON.stringify(evt)}\n\n`
+              }
+            }
             skipNextEmptyLines = true
+          } else {
+            transformedChunk += line + '\n'
           }
           continue
         }
 
         try {
           const event = JSON.parse(dataStr)
+
+          if (this.sourceFormat === 'openai-chat' && typeof event?.type === 'string' && event.type.startsWith('response.')) {
+            this.sourceFormat = 'openai-responses'
+          }
 
           // Extract metadata from ORIGINAL event
           this.extractMetadata(event, metadata)
@@ -231,7 +256,73 @@ export class StreamTransformer {
     const stopReason = this.extractStopReason(event)
     if (stopReason) {
       metadata.stopReason = stopReason
+      this.stopReason = stopReason
     }
+  }
+
+  private synthesizeAnthropicStopOnDone(): any[] | null {
+    if (this.finalized) return null
+    if (this.targetFormat !== 'anthropic') return null
+    if (this.sourceFormat !== 'openai-chat' && this.sourceFormat !== 'openai-responses') return null
+
+    const events: any[] = []
+
+    if (!this.messageStartSent) {
+      this.messageStartSent = true
+      events.push({
+        type: 'message_start',
+        message: {
+          id: `msg_${Math.random().toString(36).slice(2)}`,
+          type: 'message',
+          role: 'assistant',
+          model: this.model,
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 0, output_tokens: 0 }
+        }
+      })
+    }
+
+    if (this.contentBlockStartSent) {
+      events.push({
+        type: 'content_block_stop',
+        index: 0
+      })
+    }
+
+    for (const [_, state] of this.openaiToolCalls) {
+      events.push({
+        type: 'content_block_stop',
+        index: state.blockIndex
+      })
+    }
+
+    const deltaPayload: Record<string, unknown> = {
+      stop_reason: this.mapOpenAIStopReason(this.stopReason) || 'end_turn',
+      stop_sequence: null
+    }
+
+    if (this.latestUsage) {
+      deltaPayload.usage = {
+        cache_creation_input_tokens: this.latestUsage.cacheCreationTokens || 0,
+        cache_read_input_tokens: this.latestUsage.cacheReadTokens || 0,
+        input_tokens: this.latestUsage.inputTokens || 0,
+        output_tokens: this.latestUsage.outputTokens || 0
+      }
+    }
+
+    events.push({
+      type: 'message_delta',
+      delta: deltaPayload
+    })
+
+    events.push({
+      type: 'message_stop'
+    })
+
+    this.finalized = true
+    return events
   }
 
   /**
@@ -243,10 +334,14 @@ export class StreamTransformer {
       return event.type === 'content_block_delta' && event.delta?.type === 'text_delta'
     } else if (this.sourceFormat === 'openai-chat') {
       // OpenAI Chat: choices[0].delta.content
-      return event.choices?.[0]?.delta?.content !== undefined
+      const delta = event.choices?.[0]?.delta
+      return delta?.content !== undefined || delta?.reasoning_content !== undefined
     } else if (this.sourceFormat === 'openai-responses') {
-      // OpenAI Responses: response.output_item.content_part.delta
-      return event.type === 'response.output_item.content_part.delta'
+      const type = typeof event?.type === 'string' ? event.type : ''
+      if (type === 'response.output_text.delta') return true
+      if (type === 'response.content_part.delta') return true
+      if (type === 'response.output_item.content_part.delta') return true
+      return false
     }
     return false
   }
@@ -314,6 +409,8 @@ export class StreamTransformer {
       return this.openAIChatToAnthropic(event)
     } else if (this.sourceFormat === 'anthropic' && this.targetFormat === 'openai-responses') {
       return this.anthropicToOpenAIResponses(event)
+    } else if (this.sourceFormat === 'openai-responses' && this.targetFormat === 'anthropic') {
+      return this.openAIResponsesToAnthropic(event)
     }
     // Pass through if no conversion needed
     return event
@@ -441,7 +538,30 @@ export class StreamTransformer {
     const delta = choice.delta
 
     // Text content
-    if (delta.content) {
+    const resolveDeltaText = (value: unknown): string | null => {
+      if (typeof value === 'string') return value
+      if (!value) return null
+      if (Array.isArray(value)) {
+        const parts = value
+          .map((item) => resolveDeltaText(item))
+          .filter((part): part is string => typeof part === 'string' && part.length > 0)
+        return parts.length ? parts.join('') : null
+      }
+      if (typeof value === 'object') {
+        const record = value as Record<string, unknown>
+        if (typeof record.text === 'string') return record.text
+        if (record.content) return resolveDeltaText(record.content)
+      }
+      return null
+    }
+
+    const deltaText = resolveDeltaText(
+      delta?.content ??
+        delta?.reasoning_content ??
+        choice?.message?.content ??
+        choice?.message?.reasoning_content
+    )
+    if (deltaText) {
       if (!this.contentBlockStartSent) {
         // First content - send content_block_start
         this.contentBlockStartSent = true
@@ -454,7 +574,7 @@ export class StreamTransformer {
       events.push({
         type: 'content_block_delta',
         index: 0,
-        delta: { type: 'text_delta', text: delta.content }
+        delta: { type: 'text_delta', text: deltaText }
       })
       return events.length > 0 ? events : null
     }
@@ -503,8 +623,49 @@ export class StreamTransformer {
       if (events.length > 0) return events
     }
 
+    // Legacy function_call (older OpenAI-compatible providers)
+    const legacyCall = delta?.function_call ?? choice?.message?.function_call
+    if (legacyCall && typeof legacyCall === 'object') {
+      const callIndex = 0
+      let state = this.openaiToolCalls.get(callIndex)
+      if (!state) {
+        const blockIndex = this.contentBlockIndex++
+        state = {
+          index: callIndex,
+          id: `call_${blockIndex}`,
+          name: legacyCall.name || 'tool',
+          blockIndex
+        }
+        this.openaiToolCalls.set(callIndex, state)
+        events.push({
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: {
+            type: 'tool_use',
+            id: state.id,
+            name: state.name
+          }
+        })
+      }
+
+      const args = legacyCall.arguments
+      if (state && typeof args === 'string' && args.length > 0) {
+        events.push({
+          type: 'content_block_delta',
+          index: state.blockIndex,
+          delta: {
+            type: 'input_json_delta',
+            partial_json: args
+          }
+        })
+      }
+
+      if (events.length > 0) return events
+    }
+
     // Finish reason
     if (choice.finish_reason) {
+      this.finalized = true
       // Send content_block_stop for all active content blocks
       // 1. For text content blocks
       if (this.contentBlockStartSent) {
@@ -546,6 +707,167 @@ export class StreamTransformer {
     }
 
     return events.length > 0 ? events : null
+  }
+
+  private openAIResponsesToAnthropic(event: any): any[] | null {
+    const events: any[] = []
+    const type = typeof event?.type === 'string' ? event.type : ''
+
+    if (!this.messageStartSent) {
+      this.messageStartSent = true
+      const idHint =
+        typeof event?.response?.id === 'string'
+          ? event.response.id
+          : typeof event?.id === 'string'
+          ? event.id
+          : typeof event?.response_id === 'string'
+          ? event.response_id
+          : `resp_${Math.random().toString(36).slice(2)}`
+      events.push({
+        type: 'message_start',
+        message: {
+          id: idHint.replace(/^resp_/, 'msg_'),
+          type: 'message',
+          role: 'assistant',
+          model: this.model,
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 0, output_tokens: 0 }
+        }
+      })
+    }
+
+    const ensureTextBlock = () => {
+      if (!this.contentBlockStartSent) {
+        this.contentBlockStartSent = true
+        events.push({
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'text', text: '' }
+        })
+      }
+    }
+
+    const pushTextDelta = (text: string) => {
+      if (!text) return
+      ensureTextBlock()
+      events.push({
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text }
+      })
+    }
+
+    if (type === 'response.output_text.delta' && typeof event?.delta === 'string') {
+      pushTextDelta(event.delta)
+      return events.length ? events : null
+    }
+
+    if (type === 'response.content_part.delta') {
+      const text = typeof event?.delta?.text === 'string' ? event.delta.text : null
+      if (text) {
+        pushTextDelta(text)
+        return events.length ? events : null
+      }
+    }
+
+    if (type === 'response.output_item.content_part.delta') {
+      const text = typeof event?.delta?.text === 'string' ? event.delta.text : null
+      if (text) {
+        pushTextDelta(text)
+        return events.length ? events : null
+      }
+    }
+
+    if (type === 'response.output_item.added') {
+      const item = event?.item
+      const itemId = typeof item?.id === 'string' ? item.id : null
+      const name = typeof item?.name === 'string' ? item.name : null
+      if (itemId && name) {
+        this.responsesToolNames.set(itemId, name)
+      }
+      return events.length ? events : null
+    }
+
+    if (type === 'response.function_call_arguments.delta') {
+      const itemId = typeof event?.item_id === 'string' ? event.item_id : null
+      const delta = typeof event?.delta === 'string' ? event.delta : null
+      if (!itemId || !delta) return events.length ? events : null
+
+      let state = this.openaiToolCalls.get(0)
+      if (!state) {
+        const blockIndex = this.contentBlockIndex++
+        state = {
+          index: 0,
+          id: itemId,
+          name: this.responsesToolNames.get(itemId) ?? 'tool',
+          blockIndex
+        }
+        this.openaiToolCalls.set(0, state)
+        events.push({
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: {
+            type: 'tool_use',
+            id: state.id,
+            name: state.name
+          }
+        })
+      }
+
+      events.push({
+        type: 'content_block_delta',
+        index: state.blockIndex,
+        delta: {
+          type: 'input_json_delta',
+          partial_json: delta
+        }
+      })
+
+      return events.length ? events : null
+    }
+
+    if (type === 'response.completed' || type === 'response.done') {
+      this.finalized = true
+      if (this.contentBlockStartSent) {
+        events.push({
+          type: 'content_block_stop',
+          index: 0
+        })
+      }
+      for (const [_, state] of this.openaiToolCalls) {
+        events.push({
+          type: 'content_block_stop',
+          index: state.blockIndex
+        })
+      }
+
+      const deltaPayload: Record<string, unknown> = {
+        stop_reason: 'end_turn',
+        stop_sequence: null
+      }
+      if (this.latestUsage) {
+        deltaPayload.usage = {
+          cache_creation_input_tokens: this.latestUsage.cacheCreationTokens || 0,
+          cache_read_input_tokens: this.latestUsage.cacheReadTokens || 0,
+          input_tokens: this.latestUsage.inputTokens || 0,
+          output_tokens: this.latestUsage.outputTokens || 0
+        }
+      }
+
+      events.push({
+        type: 'message_delta',
+        delta: deltaPayload
+      })
+
+      events.push({
+        type: 'message_stop'
+      })
+      return events.length ? events : null
+    }
+
+    return events.length ? events : null
   }
 
   /**

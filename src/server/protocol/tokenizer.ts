@@ -1,9 +1,10 @@
 import { encoding_for_model } from 'tiktoken'
-import type { NormalizedPayload } from './types'
+import type { TiktokenModel } from 'tiktoken'
+import type { NormalizedPayload } from './types.js'
 
 function getEncoder(model: string) {
   try {
-    return encoding_for_model(model)
+    return encoding_for_model(model as TiktokenModel)
   } catch {
     return encoding_for_model('gpt-3.5-turbo')
   }

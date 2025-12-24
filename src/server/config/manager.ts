@@ -33,11 +33,13 @@ type ConfigEvents = {
   change: (config: GatewayConfig) => void
 }
 
-class TypedEmitter<T> extends EventEmitter {
-  override on<K extends keyof T>(event: K, listener: T[K]): this {
+type EventHandlerMap = Record<string, (...args: any[]) => void>
+
+class TypedEmitter<T extends EventHandlerMap> extends EventEmitter {
+  onTyped<K extends keyof T>(event: K, listener: T[K]): this {
     return super.on(event as string, listener as any)
   }
-  override off<K extends keyof T>(event: K, listener: T[K]): this {
+  offTyped<K extends keyof T>(event: K, listener: T[K]): this {
     return super.off(event as string, listener as any)
   }
   emitTyped<K extends keyof T>(event: K, ...args: Parameters<T[K]>): boolean {
@@ -235,9 +237,13 @@ function resolveEndpointRouting(
   const routesRaw = sourceObject?.modelRoutes
   const validationRaw = sourceObject?.validation
   const validation = sanitizeEndpointValidation(validationRaw, fallback.validation)
+  const routesSource: Record<string, unknown> =
+    (typeof routesRaw === 'object' && routesRaw !== null)
+      ? (routesRaw as Record<string, unknown>)
+      : (fallback.modelRoutes as unknown as Record<string, unknown>)
   return {
     defaults: sanitizeDefaults(defaultsRaw ?? fallback.defaults),
-    modelRoutes: sanitizeModelRoutes(routesRaw ?? fallback.modelRoutes),
+    modelRoutes: sanitizeModelRoutes(routesSource),
     ...(validation !== undefined ? { validation } : {})
   }
 }
@@ -415,7 +421,7 @@ export function watchConfig(): void {
 }
 
 export function onConfigChange(listener: (config: GatewayConfig) => void): () => void {
-  emitter.on('change', listener)
+  emitter.onTyped('change', listener)
   if (cachedConfig) listener(cachedConfig)
-  return () => emitter.off('change', listener)
+  return () => emitter.offTyped('change', listener)
 }

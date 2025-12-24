@@ -35,6 +35,8 @@ Claude Messages API 格式，与 `/anthropic/v1/messages` 端点使用相同的�
 **自动注册路径**：
 - `{基础路径}/v1/messages`
 - `{基础路径}/v1/v1/messages`（兼容某些客户端）
+- `{基础路径}/v1/messages/count_tokens`（Claude Code/SDK 可能会调用）
+- `{基础路径}/v1/v1/messages/count_tokens`（兼容性）
 
 **适用场景**：
 - 需要 Claude 原生功能（如 thinking blocks、cache control）

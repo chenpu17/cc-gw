@@ -49,6 +49,7 @@ export interface EndpointPathConfig {
 export interface CustomEndpointConfig {
   id: string
   label: string
+  deletable?: boolean
   // 新格式：支持多个路径
   paths?: EndpointPathConfig[]
   // 旧格式：向后兼容（已弃用）
