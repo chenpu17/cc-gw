@@ -266,9 +266,9 @@ function parseConfig(raw: string): GatewayConfig {
   }
   data.providers = data.providers.map((provider: any) => {
     if (!provider || typeof provider !== 'object') return provider
-    if (provider.type === 'anthropic') {
-      provider.authMode = provider.authMode === 'authToken' ? 'authToken' : 'apiKey'
-    } else if ('authMode' in provider) {
+    // 保留有效的 authMode 值，无效值回退到 undefined（使用默认行为）
+    const validAuthModes = ['apiKey', 'authToken', 'xAuthToken']
+    if (provider.authMode && !validAuthModes.includes(provider.authMode)) {
       delete provider.authMode
     }
     return provider
