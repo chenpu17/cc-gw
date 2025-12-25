@@ -79,7 +79,11 @@ export function createOpenAIConnector(
       }
 
       if (config.apiKey) {
-        headers['Authorization'] = `Bearer ${config.apiKey}`
+        if (config.authMode === 'xAuthToken') {
+          headers['X-Auth-Token'] = config.apiKey
+        } else {
+          headers['Authorization'] = `Bearer ${config.apiKey}`
+        }
       }
 
       const body: Record<string, unknown> = {

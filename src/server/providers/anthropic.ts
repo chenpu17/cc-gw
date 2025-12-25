@@ -25,9 +25,11 @@ export function createAnthropicConnector(config: ProviderConfig): ProviderConnec
       delete headers['x-api-key']
 
       if (config.apiKey) {
-        const mode = config.authMode === 'authToken' ? 'authToken' : 'apiKey'
+        const mode = config.authMode ?? 'apiKey'
         if (mode === 'authToken') {
           headers.authorization = `Bearer ${config.apiKey}`
+        } else if (mode === 'xAuthToken') {
+          headers['x-auth-token'] = config.apiKey
         } else {
           headers['x-api-key'] = config.apiKey
         }
