@@ -154,6 +154,7 @@ describe('custom openai /v1/chat/completions', () => {
       ],
       model: 'gpt-4o',
       stream: false,
+      max_tokens: 321,
       tools: [
         {
           type: 'function',
@@ -189,6 +190,8 @@ describe('custom openai /v1/chat/completions', () => {
 
       // 验证关键字段被正确转发
       expect(sendCalls[0].messages).toEqual(requestBody.messages)
+      expect(sendCalls[0].max_tokens).toBe(requestBody.max_tokens)
+      expect(sendCalls[0]).not.toHaveProperty('max_output_tokens')
       expect(sendCalls[0].tools).toEqual(requestBody.tools)
       expect(sendCalls[0].tool_choice).toBe('auto')
       expect(sendCalls[0].response_format).toEqual({ type: 'json_object' })

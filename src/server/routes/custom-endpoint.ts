@@ -1520,10 +1520,6 @@ export async function handleOpenAIChatProtocol(
       })
     } else {
       providerBody = { ...payload }
-      if (providerBody.max_output_tokens == null && typeof providerBody.max_tokens === 'number') {
-        providerBody.max_output_tokens = providerBody.max_tokens
-      }
-      delete providerBody.max_tokens
 
       if (typeof providerBody.thinking === 'boolean') {
         delete providerBody.thinking

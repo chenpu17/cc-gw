@@ -143,6 +143,7 @@ describe('custom openai /v1/responses', () => {
       ],
       model: 'gpt-5.1',
       stream: false,
+      max_tokens: 456,
       tools: [
         {
           type: 'function',
@@ -172,6 +173,8 @@ describe('custom openai /v1/responses', () => {
       expect(mockedCreateOpenAIConnector).toHaveBeenCalled()
       expect(sendCalls.length).toBe(1)
       expect(sendCalls[0].input).toEqual(requestBody.input)
+      expect(sendCalls[0].max_output_tokens).toBe(requestBody.max_tokens)
+      expect(sendCalls[0]).not.toHaveProperty('max_tokens')
     } finally {
       await app.close()
     }
