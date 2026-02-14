@@ -72,7 +72,14 @@ const resources = {
           token: 'Tokens',
           msPerToken: 'ms/Token'
         },
-        unknownError: '未知错误'
+        noMatches: '无匹配项',
+        unknownError: '未知错误',
+        filters: {
+          activeCount: '{{count}} 个筛选条件',
+          collapse: '收起筛选',
+          expand: '展开筛选',
+          allRequests: '全部请求'
+        }
       },
       login: {
         title: '登录 cc-gw 控制台',
@@ -608,7 +615,17 @@ const resources = {
           apply: '应用',
           applying: '应用中...',
           delete: '删除',
-          deleting: '删除中...'
+          deleting: '删除中...',
+          rulesCount: '{{count}} 条规则',
+          noRules: '空模板',
+          previewTooltip: '悬停查看路由规则',
+          diffTitle: '应用模板确认',
+          diffDescription: '以下路由将被替换为模板 "{{name}}" 的配置：',
+          diffAdded: '新增',
+          diffRemoved: '移除',
+          diffChanged: '变更',
+          diffConfirm: '确认应用',
+          diffEmpty: '模板与当前配置相同，无需变更。'
         },
         validation: {
           presetName: '请输入模板名称。',
@@ -653,6 +670,7 @@ const resources = {
           loadFailure: '配置加载失败：{{message}}',
           saveSuccess: '系统配置已更新。',
           saveFailure: '保存失败：{{message}}',
+          protocolRestartRequired: '配置已保存！请执行 cc-gw restart --daemon 重启服务使协议配置生效',
           copySuccess: '配置文件路径已复制到剪贴板。',
           copyFailure: '复制失败：{{message}}',
           cleanupSuccess: '已删除 {{count}} 条历史日志。',
@@ -669,7 +687,8 @@ const resources = {
           configFile: '配置文件',
           cleanup: '日志清理',
           security: '访问安全',
-          protocol: '协议配置'
+          protocol: '协议配置',
+          jump: '跳转到'
         },
         fields: {
           port: '监听端口',
@@ -1015,7 +1034,12 @@ const resources = {
           deleteFailure: '删除失败：{{message}}',
           revealFailure: '获取密钥失败',
           copyFailure: '复制失败'
-        }
+        },
+        allowedEndpoints: '允许的端点',
+        allEndpoints: '全部端点（不限制）',
+        editEndpoints: '编辑端点权限',
+        endpointRestricted: '已限制端点',
+        selectEndpoints: '选择此密钥可以访问的端点，不选择则允许访问全部端点。'
       },
       endpoints: {
         title: '自定义端点',
@@ -1148,7 +1172,14 @@ const resources = {
           token: 'tokens',
           msPerToken: 'ms/token'
         },
-        unknownError: 'Unknown error'
+        noMatches: 'No matches',
+        unknownError: 'Unknown error',
+        filters: {
+          activeCount: '{{count}} active filters',
+          collapse: 'Collapse filters',
+          expand: 'Expand filters',
+          allRequests: 'All requests'
+        }
       },
       login: {
         title: 'Sign in to cc-gw',
@@ -1684,7 +1715,17 @@ const resources = {
           apply: 'Apply',
           applying: 'Applying...',
           delete: 'Delete',
-          deleting: 'Deleting...'
+          deleting: 'Deleting...',
+          rulesCount: '{{count}} rules',
+          noRules: 'Empty preset',
+          previewTooltip: 'Hover to view routing rules',
+          diffTitle: 'Confirm preset application',
+          diffDescription: 'The following routes will be replaced with preset "{{name}}":',
+          diffAdded: 'Added',
+          diffRemoved: 'Removed',
+          diffChanged: 'Changed',
+          diffConfirm: 'Confirm',
+          diffEmpty: 'Preset matches current configuration. No changes needed.'
         },
         validation: {
           presetName: 'Enter a preset name.',
@@ -1729,6 +1770,7 @@ const resources = {
           loadFailure: 'Failed to load config: {{message}}',
           saveSuccess: 'Settings saved successfully.',
           saveFailure: 'Save failed: {{message}}',
+          protocolRestartRequired: 'Configuration saved. Run cc-gw restart --daemon to apply protocol changes.',
           copySuccess: 'Config path copied to clipboard.',
           copyFailure: 'Copy failed: {{message}}',
           cleanupSuccess: '{{count}} old logs removed.',
@@ -1745,7 +1787,8 @@ const resources = {
           configFile: 'Configuration file',
           cleanup: 'Log cleanup',
           security: 'Access security',
-          protocol: 'Protocol Configuration'
+          protocol: 'Protocol Configuration',
+          jump: 'Jump to'
         },
         fields: {
           port: 'Listen port',
@@ -2029,7 +2072,12 @@ const resources = {
           deleteFailure: 'Failed to delete: {{message}}',
           revealFailure: 'Failed to reveal key',
           copyFailure: 'Failed to copy'
-        }
+        },
+        allowedEndpoints: 'Allowed Endpoints',
+        allEndpoints: 'All endpoints (unrestricted)',
+        editEndpoints: 'Edit Endpoint Access',
+        endpointRestricted: 'Restricted',
+        selectEndpoints: 'Select which endpoints this key can access. Leave empty to allow all.'
       },
 
       about: {

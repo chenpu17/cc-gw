@@ -10,6 +10,7 @@ export interface ApiKeySummary {
   requestCount: number
   totalInputTokens: number
   totalOutputTokens: number
+  allowedEndpoints: string[] | null
 }
 
 export interface NewApiKeyResponse {

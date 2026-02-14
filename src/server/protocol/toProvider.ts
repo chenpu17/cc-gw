@@ -68,7 +68,7 @@ export function buildProviderBody(payload: NormalizedPayload, options: ProviderB
   const body: ProviderChatRequestBody & Record<string, unknown> = {
     messages: buildMessages(payload)
   }
-  if (options.maxTokens) {
+  if (options.maxTokens != null) {
     if (payload.thinking) {
       body.max_completion_tokens = options.maxTokens
     } else {
@@ -237,7 +237,7 @@ export function buildAnthropicBody(payload: NormalizedPayload, options: Provider
     stream: payload.stream
   }
 
-  if (options.maxTokens) {
+  if (options.maxTokens != null) {
     body.max_tokens = options.maxTokens
   }
   if (typeof options.temperature === 'number') {

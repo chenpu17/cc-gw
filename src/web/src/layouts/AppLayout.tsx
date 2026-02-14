@@ -6,6 +6,7 @@ import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/providers/AuthProvider'
 
 const navItems = [
@@ -62,37 +63,44 @@ function SidebarNavCompact({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation()
 
   return (
-    <nav className="flex h-full flex-col gap-1" aria-label={t('app.title')}>
-      {navItems.map((item) => {
-        const Icon = item.icon
-        return (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              cn(
-                'group relative flex items-center justify-center rounded-lg p-2.5 transition-all duration-200',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              )
-            }
-            end={item.to === '/'}
-            title={t(item.labelKey)}
-          >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-primary" />
-                )}
-                <Icon className={cn('h-5 w-5', isActive ? 'text-primary' : '')} aria-hidden="true" />
-              </>
-            )}
-          </NavLink>
-        )
-      })}
-    </nav>
+    <TooltipProvider delayDuration={0}>
+      <nav className="flex h-full flex-col gap-1" aria-label={t('app.title')}>
+        {navItems.map((item) => {
+          const Icon = item.icon
+          return (
+            <Tooltip key={item.to}>
+              <TooltipTrigger asChild>
+                <NavLink
+                  to={item.to}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    cn(
+                      'group relative flex items-center justify-center rounded-lg p-2.5 transition-all duration-200',
+                      isActive
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )
+                  }
+                  end={item.to === '/'}
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-primary" />
+                      )}
+                      <Icon className={cn('h-5 w-5', isActive ? 'text-primary' : '')} aria-hidden="true" />
+                    </>
+                  )}
+                </NavLink>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {t(item.labelKey)}
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
+      </nav>
+    </TooltipProvider>
   )
 }
 

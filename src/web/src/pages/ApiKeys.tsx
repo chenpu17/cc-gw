@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
-import { Key, Copy, Trash2, Plus, Check, Eye, EyeOff } from 'lucide-react'
+import { Key, Copy, Trash2, Plus, Check, Eye, EyeOff, Shield } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import { Loader } from '@/components/Loader'
@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { apiClient, type ApiError } from '@/services/api'
+import { apiClient, toApiError, type ApiError } from '@/services/api'
 import { cn } from '@/lib/utils'
 import type {
   ApiKeySummary,
@@ -31,6 +31,91 @@ import type {
   ApiKeyOverviewStats,
   ApiKeyUsageMetric
 } from '@/types/apiKeys'
+
+interface EndpointOption {
+  id: string
+  label: string
+}
+
+function useAvailableEndpoints(): EndpointOption[] {
+  const [endpoints, setEndpoints] = useState<EndpointOption[]>([])
+
+  useEffect(() => {
+    const builtIn: EndpointOption[] = [
+      { id: 'anthropic', label: 'Anthropic' },
+      { id: 'openai', label: 'OpenAI' }
+    ]
+    apiClient.get<{ endpoints: Array<{ id: string; label: string }> }>('/api/custom-endpoints')
+      .then((res) => {
+        const custom = (res.data.endpoints ?? []).map((ep) => ({ id: ep.id, label: ep.label }))
+        setEndpoints([...builtIn, ...custom])
+      })
+      .catch(() => {
+        setEndpoints(builtIn)
+      })
+  }, [])
+
+  return endpoints
+}
+
+function EndpointSelector({
+  available,
+  selected,
+  onChange,
+  hint
+}: {
+  available: EndpointOption[]
+  selected: string[]
+  onChange: (next: string[]) => void
+  hint: string
+}) {
+  const { t } = useTranslation()
+  const allSelected = selected.length === 0
+
+  const handleToggleAll = () => {
+    onChange([])
+  }
+
+  const handleToggle = (id: string) => {
+    if (selected.includes(id)) {
+      onChange(selected.filter((ep) => ep !== id))
+    } else {
+      onChange([...selected, id])
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">{hint}</p>
+      <label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition-colors hover:bg-muted/50">
+        <input
+          type="checkbox"
+          checked={allSelected}
+          onChange={handleToggleAll}
+          className="h-4 w-4 rounded border-input accent-primary"
+        />
+        <span className="text-sm font-medium">{t('apiKeys.allEndpoints')}</span>
+      </label>
+      <div className="grid gap-1">
+        {available.map((ep) => (
+          <label
+            key={ep.id}
+            className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition-colors hover:bg-muted/50"
+          >
+            <input
+              type="checkbox"
+              checked={!allSelected && selected.includes(ep.id)}
+              onChange={() => handleToggle(ep.id)}
+              className="h-4 w-4 rounded border-input accent-primary"
+            />
+            <span className="text-sm">{ep.label}</span>
+            <span className="text-xs text-muted-foreground">({ep.id})</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const RANGE_OPTIONS = [
   { value: 1, labelKey: 'apiKeys.analytics.range.today' },
@@ -44,11 +129,16 @@ export default function ApiKeysPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
   const [newKeyDescription, setNewKeyDescription] = useState('')
+  const [newKeyEndpoints, setNewKeyEndpoints] = useState<string[]>([])
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<NewApiKeyResponse | null>(null)
   const [isDeleting, setIsDeleting] = useState<number | null>(null)
   const [rangeDays, setRangeDays] = useState<number>(7)
   const [revealedKeys, setRevealedKeys] = useState<Map<number, string>>(new Map())
   const [isRevealing, setIsRevealing] = useState<number | null>(null)
+  const [editEndpointsKey, setEditEndpointsKey] = useState<ApiKeySummary | null>(null)
+  const [editEndpointsSelection, setEditEndpointsSelection] = useState<string[]>([])
+
+  const availableEndpoints = useAvailableEndpoints()
 
   const keysQuery = useApiQuery<ApiKeySummary[], ApiError>(
     ['api-keys'],
@@ -82,20 +172,23 @@ export default function ApiKeysPage() {
     try {
       const response = await apiClient.post<NewApiKeyResponse>('/api/keys', {
         name: newKeyName.trim(),
-        description: newKeyDescription.trim() || undefined
+        description: newKeyDescription.trim() || undefined,
+        allowedEndpoints: newKeyEndpoints.length > 0 ? newKeyEndpoints : undefined
       })
       setNewlyCreatedKey(response.data)
       setIsCreateDialogOpen(false)
       setNewKeyName('')
       setNewKeyDescription('')
+      setNewKeyEndpoints([])
       keysQuery.refetch()
       overviewQuery.refetch()
       usageQuery.refetch()
       pushToast({ title: t('apiKeys.toast.keyCreated'), variant: 'success' })
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = toApiError(error)
       pushToast({
         title: t('apiKeys.toast.createFailure', {
-          message: error.response?.data?.error || error.message
+          message: apiError.message
         }),
         variant: 'error'
       })
@@ -108,10 +201,11 @@ export default function ApiKeysPage() {
       keysQuery.refetch()
       overviewQuery.refetch()
       pushToast({ title: t('apiKeys.toast.keyUpdated'), variant: 'success' })
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = toApiError(error)
       pushToast({
         title: t('apiKeys.toast.updateFailure', {
-          message: error.response?.data?.error || error.message
+          message: apiError.message
         }),
         variant: 'error'
       })
@@ -128,10 +222,11 @@ export default function ApiKeysPage() {
       overviewQuery.refetch()
       usageQuery.refetch()
       pushToast({ title: t('apiKeys.toast.keyDeleted'), variant: 'success' })
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = toApiError(error)
       pushToast({
         title: t('apiKeys.toast.deleteFailure', {
-          message: error.response?.data?.error || error.message
+          message: apiError.message
         }),
         variant: 'error'
       })
@@ -149,10 +244,11 @@ export default function ApiKeysPage() {
     try {
       const response = await apiClient.get<{ key: string }>(`/api/keys/${id}/reveal`)
       setRevealedKeys((prev) => new Map(prev).set(id, response.data.key))
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = toApiError(error)
       pushToast({
         title: t('apiKeys.toast.revealFailure'),
-        description: error.response?.data?.error || error.message,
+        description: apiError.message,
         variant: 'error'
       })
     } finally {
@@ -176,6 +272,31 @@ export default function ApiKeysPage() {
       pushToast({
         title: t('apiKeys.toast.copyFailure'),
         description: error instanceof Error ? error.message : t('common.unknownError'),
+        variant: 'error'
+      })
+    }
+  }
+
+  const handleOpenEditEndpoints = useCallback((key: ApiKeySummary) => {
+    setEditEndpointsKey(key)
+    setEditEndpointsSelection(key.allowedEndpoints ?? [])
+  }, [])
+
+  const handleSaveEndpoints = async () => {
+    if (!editEndpointsKey) return
+    try {
+      await apiClient.patch(`/api/keys/${editEndpointsKey.id}`, {
+        allowedEndpoints: editEndpointsSelection.length > 0 ? editEndpointsSelection : null
+      })
+      setEditEndpointsKey(null)
+      keysQuery.refetch()
+      pushToast({ title: t('apiKeys.toast.keyUpdated'), variant: 'success' })
+    } catch (error: unknown) {
+      const apiError = toApiError(error)
+      pushToast({
+        title: t('apiKeys.toast.updateFailure', {
+          message: apiError.message
+        }),
         variant: 'error'
       })
     }
@@ -329,6 +450,13 @@ export default function ApiKeysPage() {
                           <Badge variant={key.enabled ? 'default' : 'outline'}>
                             {key.enabled ? t('apiKeys.status.enabled') : t('apiKeys.status.disabled')}
                           </Badge>
+                          {!key.isWildcard && key.allowedEndpoints && key.allowedEndpoints.length > 0 ? (
+                            key.allowedEndpoints.map((ep) => (
+                              <Badge key={ep} variant="outline" className="text-xs">{ep}</Badge>
+                            ))
+                          ) : !key.isWildcard ? (
+                            <Badge variant="secondary" className="text-xs opacity-60">{t('apiKeys.allEndpoints')}</Badge>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-2">
                           <code className="rounded-md bg-muted px-3 py-1.5 font-mono text-sm">
@@ -412,6 +540,16 @@ export default function ApiKeysPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        {!key.isWildcard && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenEditEndpoints(key)}
+                          >
+                            <Shield className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                            {t('apiKeys.editEndpoints')}
+                          </Button>
+                        )}
                         <Button
                           variant={key.enabled ? 'outline' : 'default'}
                           size="sm"
@@ -474,6 +612,15 @@ export default function ApiKeysPage() {
                 rows={3}
               />
             </div>
+            <div className="space-y-2">
+              <Label>{t('apiKeys.allowedEndpoints')}</Label>
+              <EndpointSelector
+                available={availableEndpoints}
+                selected={newKeyEndpoints}
+                onChange={setNewKeyEndpoints}
+                hint={t('apiKeys.selectEndpoints')}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -482,6 +629,7 @@ export default function ApiKeysPage() {
                 setIsCreateDialogOpen(false)
                 setNewKeyName('')
                 setNewKeyDescription('')
+                setNewKeyEndpoints([])
               }}
             >
               {t('common.actions.cancel')}
@@ -522,6 +670,32 @@ export default function ApiKeysPage() {
             </Button>
             <Button variant="outline" onClick={() => setNewlyCreatedKey(null)}>
               {t('common.actions.close')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Endpoints Dialog */}
+      <Dialog open={!!editEndpointsKey} onOpenChange={(open) => { if (!open) setEditEndpointsKey(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('apiKeys.editEndpoints')}</DialogTitle>
+            <DialogDescription>
+              {editEndpointsKey?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <EndpointSelector
+            available={availableEndpoints}
+            selected={editEndpointsSelection}
+            onChange={setEditEndpointsSelection}
+            hint={t('apiKeys.selectEndpoints')}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditEndpointsKey(null)}>
+              {t('common.actions.cancel')}
+            </Button>
+            <Button onClick={() => void handleSaveEndpoints()}>
+              {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

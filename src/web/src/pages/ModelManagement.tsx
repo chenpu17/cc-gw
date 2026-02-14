@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Layers, Plus, RefreshCw, X } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronRight, Layers, Plus, RefreshCw, X } from 'lucide-react'
 import { apiClient, customEndpointsApi, toApiError, type ApiError } from '@/services/api'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
@@ -28,6 +28,8 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { EndpointRoutingConfig, GatewayConfig, ProviderConfig, ProviderModelConfig, RoutingPreset } from '@/types/providers'
 import type { CustomEndpoint, EndpointProtocol } from '@/types/endpoints'
 import { ProviderDrawer } from './providers/ProviderDrawer'
@@ -109,6 +111,36 @@ function deriveRoutesFromConfig(
   }
 
   return result
+}
+
+function getSavedRoutesFromConfig(
+  config: GatewayConfig,
+  customEndpoints: CustomEndpoint[],
+  endpoint: string
+): Record<string, string> {
+  const customEndpoint = customEndpoints.find((e) => e.id === endpoint)
+  if (customEndpoint) return customEndpoint.routing?.modelRoutes ?? {}
+
+  const routing = config.endpointRouting ?? {}
+  if (endpoint === 'anthropic') return routing.anthropic?.modelRoutes ?? config.modelRoutes ?? {}
+  if (endpoint === 'openai') return routing.openai?.modelRoutes ?? {}
+  return {}
+}
+
+function mapEntriesToRoutes(entries: ModelRouteEntry[]): Record<string, string> {
+  const routes: Record<string, string> = {}
+  for (const entry of entries) {
+    const source = entry.source.trim()
+    const target = entry.target.trim()
+    if (source && target) {
+      routes[source] = target
+    }
+  }
+  return routes
+}
+
+function areRouteEntriesDirty(entries: ModelRouteEntry[], saved: Record<string, string>): boolean {
+  return JSON.stringify(mapEntriesToRoutes(entries)) !== JSON.stringify(saved)
 }
 
 function isAnthropicEndpoint(endpoint: string, customEndpoints: CustomEndpoint[]): boolean {
@@ -220,6 +252,8 @@ export default function ModelManagementPage() {
   const [testDialogUsePreset, setTestDialogUsePreset] = useState(true)
   const [testDialogPreservedExtras, setTestDialogPreservedExtras] = useState<Record<string, string>>({})
   const [savingClaudeValidation, setSavingClaudeValidation] = useState(false)
+  const [presetsExpanded, setPresetsExpanded] = useState<Record<string, boolean>>({})
+  const [presetDiffDialog, setPresetDiffDialog] = useState<{ endpoint: string; preset: RoutingPreset } | null>(null)
 
   const providers = config?.providers ?? []
   const providerCount = providers.length
@@ -237,8 +271,22 @@ export default function ModelManagementPage() {
     if (configQuery.data) {
       const incoming = configQuery.data
       setConfig(incoming)
+      setRoutesByEndpoint((previous) => {
+        const nextFromServer = deriveRoutesFromConfig(incoming, customEndpoints)
+        if (!previous || Object.keys(previous).length === 0) {
+          return nextFromServer
+        }
 
-      setRoutesByEndpoint(deriveRoutesFromConfig(incoming, customEndpoints))
+        const merged: Record<string, ModelRouteEntry[]> = { ...nextFromServer }
+        for (const [endpoint, previousEntries] of Object.entries(previous)) {
+          if (!(endpoint in nextFromServer)) continue
+          const savedRoutes = getSavedRoutesFromConfig(incoming, customEndpoints, endpoint)
+          if (areRouteEntriesDirty(previousEntries, savedRoutes)) {
+            merged[endpoint] = previousEntries
+          }
+        }
+        return merged
+      })
       setRouteError({})
 
       const presetsMap: Record<string, RoutingPreset[]> = {
@@ -280,7 +328,10 @@ export default function ModelManagementPage() {
     const seen = new Set<string>()
 
     for (const provider of providers) {
-      const providerLabel = provider.label || provider.id
+      const providerDisplay =
+        provider.label && provider.label !== provider.id
+          ? `${provider.label} (${provider.id})`
+          : provider.id
       const models = provider.models ?? []
 
       if (models.length > 0) {
@@ -290,14 +341,14 @@ export default function ModelManagementPage() {
           seen.add(value)
           options.push({
             value,
-            label: `${providerLabel} · ${model.label ?? model.id}`
+            label: `${providerDisplay} · ${model.label ?? model.id}`
           })
         }
       } else if (provider.defaultModel) {
         const value = `${provider.id}:${provider.defaultModel}`
         if (!seen.has(value)) {
           seen.add(value)
-          options.push({ value, label: `${providerLabel} · ${provider.defaultModel}` })
+          options.push({ value, label: `${providerDisplay} · ${provider.defaultModel}` })
         }
       }
 
@@ -306,15 +357,12 @@ export default function ModelManagementPage() {
         seen.add(passthroughValue)
         options.push({
           value: passthroughValue,
-          label: t('settings.routing.providerPassthroughOption', { provider: providerLabel })
+          label: t('settings.routing.providerPassthroughOption', { provider: providerDisplay })
         })
       }
     }
 
-    const combinedEntries = [
-      ...(routesByEndpoint.anthropic || []),
-      ...(routesByEndpoint.openai || [])
-    ]
+    const combinedEntries = Object.values(routesByEndpoint).flat()
 
     for (const entry of combinedEntries) {
       const trimmed = entry.target.trim()
@@ -326,6 +374,26 @@ export default function ModelManagementPage() {
 
     return options
   }, [providers, routesByEndpoint, t])
+
+  const getSavedRoutes = (endpoint: string): Record<string, string> => {
+    if (!config) return {}
+    return getSavedRoutesFromConfig(config, customEndpoints, endpoint)
+  }
+
+  const computeIsDirty = (entries: ModelRouteEntry[], saved: Record<string, string>): boolean => {
+    return areRouteEntriesDirty(entries, saved)
+  }
+
+  const isDirtyByEndpoint = useMemo(() => {
+    const result: Record<string, boolean> = {}
+    for (const tab of tabs) {
+      if (tab.key === 'providers') continue
+      const entries = routesByEndpoint[tab.key] || []
+      const saved = getSavedRoutes(tab.key)
+      result[tab.key] = computeIsDirty(entries, saved)
+    }
+    return result
+  }, [routesByEndpoint, config, customEndpoints, tabs])
 
   const syncPresets = (endpoint: Endpoint, presets: RoutingPreset[]) => {
     setPresetsByEndpoint((prev) => ({
@@ -1126,65 +1194,107 @@ export default function ModelManagementPage() {
     const presetName = presetNameByEndpoint[endpoint] ?? ''
     const presetError = presetErrorByEndpoint[endpoint]
     const savingPreset = savingPresetFor === endpoint
+    const expanded = presetsExpanded[endpoint] === true
 
     return (
-      <div className="rounded-lg border border-dashed bg-muted/30 p-6 space-y-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
+      <div className="rounded-lg border border-dashed bg-muted/30">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/50 transition-colors"
+          onClick={() => setPresetsExpanded((prev) => ({ ...prev, [endpoint]: !expanded }))}
+        >
+          <div className="flex items-center gap-2">
+            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             <h3 className="font-medium">{t('modelManagement.presets.title')}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{t('modelManagement.presets.description')}</p>
+            <Badge variant="secondary" className="text-xs">{presets.length}</Badge>
           </div>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <Input
-              value={presetName}
-              onChange={(e) => handlePresetNameChange(endpoint, e.target.value)}
-              placeholder={t('modelManagement.presets.namePlaceholder')}
-              disabled={savingPreset}
-              className="w-full md:w-48"
-            />
-            <Button onClick={() => void handleSavePreset(endpoint)} disabled={savingPreset}>
-              {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
-            </Button>
-          </div>
-        </div>
-        {presetError && (
-          <p className="text-sm text-destructive">{presetError}</p>
-        )}
-        {presets.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            {t('modelManagement.presets.empty')}
-          </p>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {presets.map((preset) => {
-              const isApplying = applyingPreset?.endpoint === endpoint && applyingPreset?.name === preset.name
-              const isDeleting = deletingPreset?.endpoint === endpoint && deletingPreset?.name === preset.name
-              return (
-                <div
-                  key={preset.name}
-                  className="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3"
-                >
-                  <span className="truncate text-sm font-medium">{preset.name}</span>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      size="sm"
-                      onClick={() => void handleApplyPreset(endpoint, preset)}
-                      disabled={isApplying || isDeleting}
-                    >
-                      {isApplying ? t('modelManagement.presets.applying') : t('modelManagement.presets.apply')}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => void handleDeletePreset(endpoint, preset)}
-                      disabled={isDeleting || isApplying}
-                    >
-                      {isDeleting ? t('modelManagement.presets.deleting') : t('modelManagement.presets.delete')}
-                    </Button>
-                  </div>
+        </button>
+        {expanded && (
+          <div className="border-t px-4 pb-4 pt-3 space-y-4">
+            <p className="text-sm text-muted-foreground">{t('modelManagement.presets.description')}</p>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <Input
+                value={presetName}
+                onChange={(e) => handlePresetNameChange(endpoint, e.target.value)}
+                placeholder={t('modelManagement.presets.namePlaceholder')}
+                disabled={savingPreset}
+                className="w-full md:w-48"
+              />
+              <Button onClick={() => void handleSavePreset(endpoint)} disabled={savingPreset}>
+                {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
+              </Button>
+            </div>
+            {presetError && (
+              <p className="text-sm text-destructive">{presetError}</p>
+            )}
+            {presets.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t('modelManagement.presets.empty')}
+              </p>
+            ) : (
+              <TooltipProvider>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {presets.map((preset) => {
+                    const isApplying = applyingPreset?.endpoint === endpoint && applyingPreset?.name === preset.name
+                    const isDeleting = deletingPreset?.endpoint === endpoint && deletingPreset?.name === preset.name
+                    const routeEntries = Object.entries(preset.modelRoutes ?? {})
+                    const rulesCount = routeEntries.length
+                    return (
+                      <div
+                        key={preset.name}
+                        className="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3"
+                      >
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="min-w-0 flex-1 cursor-default">
+                              <span className="block truncate text-sm font-medium">{preset.name}</span>
+                              <Badge variant="outline" className="mt-1 text-xs">
+                                {rulesCount > 0
+                                  ? t('modelManagement.presets.rulesCount', { count: rulesCount })
+                                  : t('modelManagement.presets.noRules')}
+                              </Badge>
+                            </div>
+                          </TooltipTrigger>
+                          {rulesCount > 0 && (
+                            <TooltipContent side="bottom" className="max-w-xs">
+                              <div className="space-y-1 text-xs">
+                                {routeEntries.slice(0, 5).map(([src, tgt]) => (
+                                  <div key={src} className="flex items-center gap-1">
+                                    <span className="truncate">{src}</span>
+                                    <ArrowRight className="h-3 w-3 flex-shrink-0" />
+                                    <span className="truncate">{tgt}</span>
+                                  </div>
+                                ))}
+                                {rulesCount > 5 && (
+                                  <div className="text-muted-foreground">…+{rulesCount - 5}</div>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Button
+                            size="sm"
+                            onClick={() => setPresetDiffDialog({ endpoint, preset })}
+                            disabled={isApplying || isDeleting}
+                          >
+                            {isApplying ? t('modelManagement.presets.applying') : t('modelManagement.presets.apply')}
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => void handleDeletePreset(endpoint, preset)}
+                            disabled={isDeleting || isApplying}
+                          >
+                            {isDeleting ? t('modelManagement.presets.deleting') : t('modelManagement.presets.delete')}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
+              </TooltipProvider>
+            )}
           </div>
         )}
       </div>
@@ -1200,6 +1310,7 @@ export default function ModelManagementPage() {
     const suggestions = hasAnthropicProtocol ? CLAUDE_MODEL_SUGGESTIONS : OPENAI_MODEL_SUGGESTIONS
 
     const isSaving = savingRouteFor === endpoint
+    const isDirty = isDirtyByEndpoint[endpoint] ?? false
     const endpointLabel = tabInfo?.label ?? t(`modelManagement.tabs.${endpoint}`)
     const endpointDescription = tabInfo?.isSystem === false
       ? tabInfo.description
@@ -1209,6 +1320,8 @@ export default function ModelManagementPage() {
     const isAnthropicProtocol = isAnthropicEndpoint(endpoint, customEndpoints)
     const validation = getEndpointValidation(endpoint, config, customEndpoints)
     const claudeValidationEnabled = isAnthropicProtocol && validation?.mode === 'claude-code'
+
+    const existingSources = new Set(entries.map(e => e.source.trim()).filter(Boolean))
 
     return (
       <Card>
@@ -1228,8 +1341,9 @@ export default function ModelManagementPage() {
               <Button variant="outline" size="sm" onClick={() => handleResetRoutes(endpoint)} disabled={isSaving}>
                 {t('common.actions.reset')}
               </Button>
-              <Button size="sm" onClick={() => void handleSaveRoutes(endpoint)} disabled={isSaving}>
+              <Button size="sm" onClick={() => void handleSaveRoutes(endpoint)} disabled={isSaving} className="relative">
                 {isSaving ? t('common.actions.saving') : t('modelManagement.actions.saveRoutes')}
+                {isDirty && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-500" />}
               </Button>
             </div>
           </div>
@@ -1273,78 +1387,39 @@ export default function ModelManagementPage() {
               <p className="mt-2 text-xs">{t('settings.routing.emptySub', { default: '点击上方按钮添加路由规则' })}</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {entries.map((entry, index) => (
-                <div key={entry.id} className="rounded-lg border bg-card p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Badge variant="secondary">{index + 1}</Badge>
-                    <span className="text-sm font-medium">路由规则</span>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                    <div className="space-y-2">
-                      <Label>{t('settings.routing.source')}</Label>
-                      <Input
-                        value={entry.source}
-                        onChange={(e) => handleRouteChange(endpoint, entry.id, 'source', e.target.value)}
-                        placeholder="claude-3.5-sonnet"
-                        list={sourceListId}
-                        disabled={isSaving}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{t('settings.routing.target')}</Label>
-                      {(() => {
-                        const normalizedTarget = entry.target.trim()
-                        const hasMatchingOption = providerModelOptions.some((option) => option.value === normalizedTarget)
-                        const selectValue = hasMatchingOption ? normalizedTarget : '__custom'
-                        return (
-                          <>
-                            <Select
-                              value={selectValue}
-                              onValueChange={(value) => {
-                                if (value === '__custom') {
-                                  handleRouteChange(endpoint, entry.id, 'target', normalizedTarget)
-                                } else {
-                                  handleRouteChange(endpoint, entry.id, 'target', value)
-                                }
-                              }}
-                              disabled={isSaving}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__custom">{t('settings.routing.customTargetOption')}</SelectItem>
-                                {providerModelOptions.map((option) => (
-                                  <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            {selectValue === '__custom' && (
-                              <Input
-                                value={entry.target}
-                                onChange={(e) => handleRouteChange(endpoint, entry.id, 'target', e.target.value)}
-                                placeholder="providerId:modelId"
-                                disabled={isSaving}
-                              />
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                    <div className="flex items-end">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleRemoveRoute(endpoint, entry.id)}
-                        disabled={isSaving}
-                      >
-                        {t('settings.routing.remove')}
-                      </Button>
-                    </div>
-                  </div>
+            <div className="space-y-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-3 px-1 text-xs font-medium text-muted-foreground">
+                <span>{t('settings.routing.source')}</span>
+                <span />
+                <span>{t('settings.routing.target')}</span>
+                <span />
+              </div>
+              {entries.map((entry) => (
+                <div key={entry.id} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-3">
+                  <Input
+                    value={entry.source}
+                    onChange={(e) => handleRouteChange(endpoint, entry.id, 'source', e.target.value)}
+                    placeholder={t('settings.routing.sourcePlaceholder')}
+                    list={sourceListId}
+                    disabled={isSaving}
+                  />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <TargetCombobox
+                    value={entry.target}
+                    onChange={(v) => handleRouteChange(endpoint, entry.id, 'target', v)}
+                    options={providerModelOptions}
+                    disabled={isSaving}
+                    placeholder={t('settings.routing.targetPlaceholder')}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleRemoveRoute(endpoint, entry.id)}
+                    disabled={isSaving}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
               ))}
             </div>
@@ -1353,17 +1428,21 @@ export default function ModelManagementPage() {
           <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
             <Label>{t('settings.routing.suggested')}</Label>
             <div className="flex flex-wrap gap-2">
-              {suggestions.map((model) => (
-                <Button
-                  key={`${endpoint}-${model}`}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddSuggestion(endpoint, model)}
-                  disabled={isSaving}
-                >
-                  {model}
-                </Button>
-              ))}
+              {suggestions.map((model) => {
+                const alreadyAdded = existingSources.has(model)
+                return (
+                  <Button
+                    key={`${endpoint}-${model}`}
+                    variant={alreadyAdded ? 'ghost' : 'outline'}
+                    size="sm"
+                    onClick={() => handleAddSuggestion(endpoint, model)}
+                    disabled={isSaving || alreadyAdded}
+                    className={alreadyAdded ? 'opacity-50' : ''}
+                  >
+                    {model}
+                  </Button>
+                )
+              })}
             </div>
           </div>
 
@@ -1397,6 +1476,7 @@ export default function ModelManagementPage() {
       <div className="flex flex-wrap gap-3">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key
+          const tabDirty = tab.key !== 'providers' && isDirtyByEndpoint[tab.key]
           return (
             <div key={tab.key} className="relative">
               <button
@@ -1409,7 +1489,10 @@ export default function ModelManagementPage() {
                     : 'border-border bg-card hover:bg-accent'
                 )}
               >
-                <span className="font-medium">{tab.label}</span>
+                <span className="font-medium flex items-center gap-2">
+                  {tab.label}
+                  {tabDirty && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                </span>
                 <span className="text-xs text-muted-foreground">{tab.description}</span>
               </button>
               {tab.canDelete && (
@@ -1467,6 +1550,16 @@ export default function ModelManagementPage() {
         onPresetChange={setTestDialogUsePreset}
         onConfirm={confirmTestDialog}
         onClose={closeTestDialog}
+      />
+
+      <PresetDiffDialog
+        dialog={presetDiffDialog}
+        currentRoutes={presetDiffDialog ? (routesByEndpoint[presetDiffDialog.endpoint] || []) : []}
+        onConfirm={(endpoint, preset) => {
+          setPresetDiffDialog(null)
+          void handleApplyPreset(endpoint, preset)
+        }}
+        onClose={() => setPresetDiffDialog(null)}
       />
     </div>
   )
@@ -1545,6 +1638,199 @@ function TestConnectionDialog({
           </Button>
           <Button onClick={() => void onConfirm()}>
             {t('providers.testDialog.primary')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function TargetCombobox({
+  value,
+  onChange,
+  options,
+  disabled,
+  placeholder
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: Array<{ value: string; label: string }>
+  disabled?: boolean
+  placeholder?: string
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return options
+    const lower = search.toLowerCase()
+    return options.filter(
+      (o) => o.label.toLowerCase().includes(lower) || o.value.toLowerCase().includes(lower)
+    )
+  }, [options, search])
+
+  const selectOption = (nextValue: string) => {
+    onChange(nextValue)
+    setSearch('')
+    setOpen(false)
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (nextOpen) {
+          setSearch('')
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value)
+            setSearch(e.target.value)
+            if (!open) setOpen(true)
+          }}
+          onFocus={() => {
+            setSearch('')
+            setOpen(true)
+          }}
+          onClick={() => {
+            if (!open) setOpen(true)
+          }}
+          placeholder={placeholder}
+          disabled={disabled}
+          autoComplete="off"
+        />
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] max-h-60 overflow-y-auto p-1"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        {filtered.length === 0 ? (
+          <div className="px-2 py-3 text-center text-xs text-muted-foreground">{t('common.noMatches')}</div>
+        ) : (
+          filtered.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={cn(
+                'flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
+                option.value === value.trim() && 'bg-accent'
+              )}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                selectOption(option.value)
+              }}
+            >
+              <span className="truncate">{option.label}</span>
+            </button>
+          ))
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function PresetDiffDialog({
+  dialog,
+  currentRoutes,
+  onConfirm,
+  onClose
+}: {
+  dialog: { endpoint: string; preset: RoutingPreset } | null
+  currentRoutes: ModelRouteEntry[]
+  onConfirm: (endpoint: string, preset: RoutingPreset) => void
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+
+  if (!dialog) return null
+
+  const { endpoint, preset } = dialog
+  const presetRoutes = preset.modelRoutes ?? {}
+
+  const currentMap: Record<string, string> = {}
+  for (const e of currentRoutes) {
+    const s = e.source.trim()
+    const tgt = e.target.trim()
+    if (s && tgt) currentMap[s] = tgt
+  }
+
+  const allKeys = new Set([...Object.keys(currentMap), ...Object.keys(presetRoutes)])
+  const added: Array<[string, string]> = []
+  const removed: Array<[string, string]> = []
+  const changed: Array<[string, string, string]> = []
+
+  for (const key of allKeys) {
+    const inCurrent = key in currentMap
+    const inPreset = key in presetRoutes
+    if (inPreset && !inCurrent) {
+      added.push([key, presetRoutes[key]])
+    } else if (inCurrent && !inPreset) {
+      removed.push([key, currentMap[key]])
+    } else if (inCurrent && inPreset && currentMap[key] !== presetRoutes[key]) {
+      changed.push([key, currentMap[key], presetRoutes[key]])
+    }
+  }
+
+  const hasChanges = added.length > 0 || removed.length > 0 || changed.length > 0
+
+  return (
+    <Dialog open onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t('modelManagement.presets.diffTitle')}</DialogTitle>
+          <DialogDescription>
+            {t('modelManagement.presets.diffDescription', { name: preset.name })}
+          </DialogDescription>
+        </DialogHeader>
+        {!hasChanges ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">
+            {t('modelManagement.presets.diffEmpty')}
+          </p>
+        ) : (
+          <div className="max-h-72 overflow-y-auto space-y-2 text-sm">
+            {added.map(([src, tgt]) => (
+              <div key={`add-${src}`} className="flex items-center gap-2 rounded px-2 py-1 bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200">
+                <Badge variant="outline" className="text-xs border-emerald-300 dark:border-emerald-700">{t('modelManagement.presets.diffAdded')}</Badge>
+                <span className="truncate">{src}</span>
+                <ArrowRight className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{tgt}</span>
+              </div>
+            ))}
+            {removed.map(([src, tgt]) => (
+              <div key={`rm-${src}`} className="flex items-center gap-2 rounded px-2 py-1 bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-200">
+                <Badge variant="outline" className="text-xs border-red-300 dark:border-red-700">{t('modelManagement.presets.diffRemoved')}</Badge>
+                <span className="truncate">{src}</span>
+                <ArrowRight className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{tgt}</span>
+              </div>
+            ))}
+            {changed.map(([src, oldTgt, newTgt]) => (
+              <div key={`chg-${src}`} className="flex items-center gap-2 rounded px-2 py-1 bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
+                <Badge variant="outline" className="text-xs border-amber-300 dark:border-amber-700">{t('modelManagement.presets.diffChanged')}</Badge>
+                <span className="truncate">{src}</span>
+                <ArrowRight className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate line-through opacity-60">{oldTgt}</span>
+                <ArrowRight className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{newTgt}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={() => onConfirm(endpoint, preset)} disabled={!hasChanges}>
+            {t('modelManagement.presets.diffConfirm')}
           </Button>
         </DialogFooter>
       </DialogContent>

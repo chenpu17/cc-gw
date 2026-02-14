@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Settings as SettingsIcon, Copy, Shield, AlertCircle } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
@@ -88,9 +88,34 @@ interface ClearResponse {
   metricsCleared: number
 }
 
+const SETTINGS_SECTIONS = [
+  { id: 'section-basics', labelKey: 'settings.sections.basics' },
+  { id: 'section-protocol', labelKey: 'settings.sections.protocol' },
+  { id: 'section-security', labelKey: 'settings.sections.security' },
+  { id: 'section-config-file', labelKey: 'settings.sections.configFile' },
+  { id: 'section-cleanup', labelKey: 'settings.sections.cleanup' }
+] as const
+
 export default function SettingsPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
+  const [activeSection, setActiveSection] = useState<string>(SETTINGS_SECTIONS[0].id)
+  const sectionRefs = useRef<Map<string, HTMLElement>>(new Map())
+
+  const handleSectionClick = useCallback((id: string) => {
+    const el = sectionRefs.current.get(id)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [])
+
+  const setSectionRef = useCallback((id: string) => (el: HTMLElement | null) => {
+    if (el) {
+      sectionRefs.current.set(id, el)
+    } else {
+      sectionRefs.current.delete(id)
+    }
+  }, [])
 
   const configQuery = useApiQuery<ConfigInfoResponse, ApiError>(
     ['config', 'info'],
@@ -339,21 +364,32 @@ export default function SettingsPage() {
         bodyLimit: Math.max(1, Math.floor(bodyLimitValue * 1024 * 1024)),
         enableRoutingFallback: form.enableRoutingFallback
       }
-      const { webAuth: _ignored, ...payload } = nextConfig as GatewayConfig & { webAuth?: never }
+      const payload = { ...nextConfig } as GatewayConfig & { webAuth?: never }
+      delete payload.webAuth
       await apiClient.put('/api/config', payload)
       setConfig({ ...nextConfig, webAuth: config.webAuth })
 
+      const normalizeOptionalPath = (value?: string) => value?.trim() || undefined
+      const previousRootPort = config.port ?? config.http?.port ?? 4100
+      const nextRootPort = nextConfig.port ?? nextConfig.http?.port ?? 4100
+      const previousRootHost = config.host?.trim() || config.http?.host?.trim() || '127.0.0.1'
+      const nextRootHost = nextConfig.host?.trim() || nextConfig.http?.host?.trim() || '127.0.0.1'
       const protocolChanged =
+        previousRootPort !== nextRootPort ||
+        previousRootHost !== nextRootHost ||
         config.http?.enabled !== nextConfig.http?.enabled ||
         config.http?.port !== nextConfig.http?.port ||
+        (config.http?.host ?? config.host ?? '127.0.0.1') !== (nextConfig.http?.host ?? nextConfig.host ?? '127.0.0.1') ||
         config.https?.enabled !== nextConfig.https?.enabled ||
         config.https?.port !== nextConfig.https?.port ||
+        (config.https?.host ?? config.host ?? '127.0.0.1') !== (nextConfig.https?.host ?? nextConfig.host ?? '127.0.0.1') ||
         config.https?.keyPath !== nextConfig.https?.keyPath ||
-        config.https?.certPath !== nextConfig.https?.certPath
+        config.https?.certPath !== nextConfig.https?.certPath ||
+        normalizeOptionalPath(config.https?.caPath) !== normalizeOptionalPath(nextConfig.https?.caPath)
 
       if (protocolChanged) {
         pushToast({
-          title: '配置已保存！请执行 cc-gw restart --daemon 重启服务使协议配置生效',
+          title: t('settings.toast.protocolRestartRequired'),
           variant: 'success'
         })
       } else {
@@ -523,6 +559,30 @@ export default function SettingsPage() {
 
   const isLoading = configQuery.isPending || (!config && configQuery.isFetching)
 
+  useEffect(() => {
+    if (isLoading) return
+
+    const elements = Array.from(sectionRefs.current.values())
+    if (elements.length === 0) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id)
+            break
+          }
+        }
+      },
+      { rootMargin: '-80px 0px -60% 0px', threshold: 0 }
+    )
+
+    for (const el of elements) {
+      observer.observe(el)
+    }
+    return () => observer.disconnect()
+  }, [isLoading])
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -556,9 +616,34 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       ) : (
-        <>
+        <div className="grid grid-cols-1 xl:grid-cols-[200px_1fr] gap-6">
+          {/* Sticky sidebar nav - hidden on mobile */}
+          <nav className="hidden xl:block">
+            <div className="sticky top-20 space-y-1">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t('settings.sections.jump')}
+              </p>
+              {SETTINGS_SECTIONS.map((section) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => handleSectionClick(section.id)}
+                  className={cn(
+                    'block w-full rounded-md px-3 py-2 text-left text-sm transition-colors',
+                    activeSection === section.id
+                      ? 'bg-primary/10 font-medium text-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  {t(section.labelKey)}
+                </button>
+              ))}
+            </div>
+          </nav>
+
+          <div className="flex flex-col gap-6">
           {/* Basic Settings */}
-          <Card>
+          <Card id="section-basics" ref={setSectionRef('section-basics')}>
             <CardContent className="pt-6">
               <h3 className="mb-4 text-sm font-semibold">{t('settings.sections.basics')}</h3>
               <div className="grid gap-5 md:grid-cols-2">
@@ -708,7 +793,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* Protocol Settings */}
-          <Card>
+          <Card id="section-protocol" ref={setSectionRef('section-protocol')}>
             <CardContent className="pt-6 space-y-6">
               <div>
                 <h3 className="text-sm font-semibold">{t('settings.sections.protocol')}</h3>
@@ -896,7 +981,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* Security Settings */}
-          <Card>
+          <Card id="section-security" ref={setSectionRef('section-security')}>
             <CardContent className="pt-6 space-y-5">
               <div>
                 <h3 className="text-sm font-semibold">{t('settings.sections.security')}</h3>
@@ -1009,7 +1094,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* Config File */}
-          <Card>
+          <Card id="section-config-file" ref={setSectionRef('section-config-file')}>
             <CardContent className="pt-6 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -1028,7 +1113,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* Cleanup */}
-          <Card>
+          <Card id="section-cleanup" ref={setSectionRef('section-cleanup')}>
             <CardContent className="pt-6 space-y-4">
               <div>
                 <h3 className="text-sm font-semibold">{t('settings.sections.cleanup')}</h3>
@@ -1056,7 +1141,8 @@ export default function SettingsPage() {
               </p>
             </CardContent>
           </Card>
-        </>
+          </div>
+        </div>
       )}
     </div>
   )

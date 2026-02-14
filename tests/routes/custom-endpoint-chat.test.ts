@@ -200,6 +200,56 @@ describe('custom openai /v1/chat/completions', () => {
     }
   })
 
+  it('deletes thinking: true from provider body', async () => {
+    const app = Fastify()
+    try {
+      await registerCustomEndpoint(app, customEndpoint)
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/custom/openai/v1/chat/completions',
+        headers: { authorization: 'Bearer test-key' },
+        payload: {
+          messages: [{ role: 'user', content: 'hi' }],
+          model: 'gpt-4o',
+          stream: false,
+          thinking: true
+        }
+      })
+
+      expect(response.statusCode).toBe(200)
+      const lastCall = sendCalls[sendCalls.length - 1]
+      expect(lastCall).not.toHaveProperty('thinking')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('deletes reasoning: true from provider body', async () => {
+    const app = Fastify()
+    try {
+      await registerCustomEndpoint(app, customEndpoint)
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/custom/openai/v1/chat/completions',
+        headers: { authorization: 'Bearer test-key' },
+        payload: {
+          messages: [{ role: 'user', content: 'hi' }],
+          model: 'gpt-4o',
+          stream: false,
+          reasoning: true
+        }
+      })
+
+      expect(response.statusCode).toBe(200)
+      const lastCall = sendCalls[sendCalls.length - 1]
+      expect(lastCall).not.toHaveProperty('reasoning')
+    } finally {
+      await app.close()
+    }
+  })
+
   it('removes undefined optional fields', async () => {
     const app = Fastify()
 

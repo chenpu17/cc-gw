@@ -29,7 +29,7 @@ import { getActiveRequestCount } from '../metrics/activity.js'
 import {
   listApiKeys,
   createApiKey,
-  setApiKeyEnabled,
+  updateApiKeySettings,
   deleteApiKey,
   ensureWildcardMetadata,
   decryptApiKeyValue,
@@ -1020,20 +1020,58 @@ export async function registerAdminRoutes(app: FastifyInstance<any, any, any, an
     return getApiKeyUsageMetrics(days, limit, endpoint)
   })
 
+  const normalizeAllowedEndpoints = (
+    value: unknown
+  ): { ok: true; value: string[] | null } | { ok: false; error: string } => {
+    if (value == null) {
+      return { ok: true, value: null }
+    }
+    if (!Array.isArray(value)) {
+      return { ok: false, error: 'allowedEndpoints must be an array of strings or null' }
+    }
+    const normalized: string[] = []
+    for (const raw of value) {
+      if (typeof raw !== 'string') {
+        return { ok: false, error: 'allowedEndpoints must be an array of strings or null' }
+      }
+      const endpointId = raw.trim()
+      if (!endpointId) {
+        return { ok: false, error: 'allowedEndpoints must not contain empty endpoint IDs' }
+      }
+      normalized.push(endpointId)
+    }
+    const deduped = [...new Set(normalized)]
+    return { ok: true, value: deduped.length > 0 ? deduped : null }
+  }
+
   // API Keys Management
   app.get('/api/keys', async () => {
     return listApiKeys()
   })
 
   app.post('/api/keys', async (request, reply) => {
-    const body = request.body as { name?: string; description?: string }
+    const body = request.body as { name?: string; description?: string; allowedEndpoints?: unknown }
     if (!body?.name || typeof body.name !== 'string') {
       reply.code(400)
       return { error: 'Name is required' }
     }
 
+    const hasAllowedEndpoints = Object.prototype.hasOwnProperty.call(body, 'allowedEndpoints')
+    const normalizedAllowedEndpoints = hasAllowedEndpoints
+      ? normalizeAllowedEndpoints((body as any).allowedEndpoints)
+      : { ok: true as const, value: null }
+    if (!normalizedAllowedEndpoints.ok) {
+      reply.code(400)
+      return { error: normalizedAllowedEndpoints.error }
+    }
+
     try {
-      return await createApiKey(body.name, body.description, { ipAddress: request.ip })
+      return await createApiKey(
+        body.name,
+        body.description,
+        { ipAddress: request.ip },
+        normalizedAllowedEndpoints.value
+      )
     } catch (error) {
       reply.code(400)
       return { error: error instanceof Error ? error.message : 'Failed to create API key' }
@@ -1047,14 +1085,39 @@ export async function registerAdminRoutes(app: FastifyInstance<any, any, any, an
       return { error: 'Invalid id' }
     }
 
-    const body = request.body as { enabled?: boolean }
-    if (typeof body?.enabled !== 'boolean') {
+    const rawBody = request.body
+    if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
       reply.code(400)
-      return { error: 'enabled field is required' }
+      return { error: 'Invalid request body' }
+    }
+
+    const body = rawBody as { enabled?: boolean; allowedEndpoints?: string[] | null }
+    const hasEnabled = typeof body?.enabled === 'boolean'
+    const hasAllowedEndpoints = Object.prototype.hasOwnProperty.call(body, 'allowedEndpoints')
+
+    if (!hasEnabled && !hasAllowedEndpoints) {
+      reply.code(400)
+      return { error: 'At least one of enabled or allowedEndpoints is required' }
+    }
+
+    const normalizedAllowedEndpoints = hasAllowedEndpoints
+      ? normalizeAllowedEndpoints((body as any).allowedEndpoints)
+      : { ok: true as const, value: null }
+    if (!normalizedAllowedEndpoints.ok) {
+      reply.code(400)
+      return { error: normalizedAllowedEndpoints.error }
     }
 
     try {
-      await setApiKeyEnabled(id, body.enabled, { ipAddress: request.ip })
+      await updateApiKeySettings(
+        id,
+        {
+          enabled: hasEnabled ? body.enabled : undefined,
+          allowedEndpoints: normalizedAllowedEndpoints.value,
+          allowedEndpointsProvided: hasAllowedEndpoints
+        },
+        { ipAddress: request.ip }
+      )
       return { success: true }
     } catch (error) {
       if (error instanceof Error && error.message === 'API key not found') {

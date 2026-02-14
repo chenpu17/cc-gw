@@ -107,33 +107,56 @@ function getPathsToRegister(basePath: string, protocol: EndpointProtocol): strin
 }
 
 
-function resolveCachedTokens(usage: any): { read: number; creation: number } {
+export function resolveCachedTokens(usage: any): { read: number; creation: number } {
   const result = { read: 0, creation: 0 }
 
   if (!usage || typeof usage !== 'object') {
     return result
   }
 
-  // Anthropic 格式 - 分别统计
-  if (typeof usage.cache_read_input_tokens === 'number') {
+  const hasAnthropicRead = Number.isFinite(usage.cache_read_input_tokens)
+  const hasAnthropicCreation = Number.isFinite(usage.cache_creation_input_tokens)
+
+  // Anthropic 格式 - 分别统计（优先级最高）
+  if (hasAnthropicRead) {
     result.read = usage.cache_read_input_tokens
   }
-  if (typeof usage.cache_creation_input_tokens === 'number') {
+  if (hasAnthropicCreation) {
     result.creation = usage.cache_creation_input_tokens
   }
 
-  // OpenAI 格式的 cached_tokens (视为读取)
-  if (typeof usage.cached_tokens === 'number') {
-    result.read = usage.cached_tokens
-  }
-
-  // OpenAI 详细格式
-  const promptDetails = usage.prompt_tokens_details
-  if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
-    result.read = promptDetails.cached_tokens
+  // OpenAI 格式 - 仅在 Anthropic 格式未提供时作为 fallback
+  if (!hasAnthropicRead) {
+    // OpenAI 详细格式优先
+    const promptDetails = usage.prompt_tokens_details
+    const inputDetails = usage.input_tokens_details
+    if (promptDetails && Number.isFinite(promptDetails.cached_tokens)) {
+      result.read = promptDetails.cached_tokens
+    } else if (inputDetails && Number.isFinite(inputDetails.cached_tokens)) {
+      result.read = inputDetails.cached_tokens
+    } else if (typeof usage.cached_tokens === 'number') {
+      result.read = usage.cached_tokens
+    }
   }
 
   return result
+}
+
+function extractTextForTokenEstimate(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) {
+    return value.map((item) => extractTextForTokenEstimate(item)).filter(Boolean).join('\n')
+  }
+  if (typeof value === 'object') {
+    const payload = value as Record<string, unknown>
+    if (typeof payload.text === 'string') return payload.text
+    if (typeof payload.content === 'string') return payload.content
+    if (Array.isArray(payload.content)) return extractTextForTokenEstimate(payload.content)
+    if (typeof payload.output_text === 'string') return payload.output_text
+    if (typeof payload.value === 'string') return payload.value
+  }
+  return ''
 }
 
 interface StreamResponseSummary {
@@ -550,13 +573,13 @@ async function registerModelsHandler(app: FastifyInstance<any, any, any, any, an
     const providedApiKey = extractApiKeyFromRequest(request)
 
     try {
-      await resolveApiKey(providedApiKey, { ipAddress: request.ip })
+      await resolveApiKey(providedApiKey, { ipAddress: request.ip, endpointId })
     } catch (error) {
       if (error instanceof ApiKeyError) {
-        reply.code(401)
+        reply.code(error.code === 'forbidden' ? 403 : 401)
         return {
           error: {
-            code: 'invalid_api_key',
+            code: error.code === 'forbidden' ? 'endpoint_forbidden' : 'invalid_api_key',
             message: error.message
           }
         }
@@ -729,13 +752,13 @@ export async function handleAnthropicProtocol(
 
   let apiKeyContext: Awaited<ReturnType<typeof resolveApiKey>>
   try {
-    apiKeyContext = await resolveApiKey(providedApiKey, { ipAddress: request.ip })
+    apiKeyContext = await resolveApiKey(providedApiKey, { ipAddress: request.ip, endpointId })
   } catch (error) {
     if (error instanceof ApiKeyError) {
-      reply.code(401)
+      reply.code(error.code === 'forbidden' ? 403 : 401)
       return {
         error: {
-          code: 'invalid_api_key',
+          code: error.code === 'forbidden' ? 'endpoint_forbidden' : 'invalid_api_key',
           message: error.message
         }
       }
@@ -1331,13 +1354,13 @@ export async function handleAnthropicCountTokensProtocol(
   const providedApiKey = extractApiKeyFromRequest(request)
 
   try {
-    await resolveApiKey(providedApiKey, { ipAddress: request.ip })
+    await resolveApiKey(providedApiKey, { ipAddress: request.ip, endpointId })
   } catch (error) {
     if (error instanceof ApiKeyError) {
-      reply.code(401)
+      reply.code(error.code === 'forbidden' ? 403 : 401)
       return {
         error: {
-          code: 'invalid_api_key',
+          code: error.code === 'forbidden' ? 'endpoint_forbidden' : 'invalid_api_key',
           message: error.message
         }
       }
@@ -1429,13 +1452,13 @@ export async function handleOpenAIChatProtocol(
   const providedApiKey = extractApiKeyFromRequest(request)
   let apiKeyContext: Awaited<ReturnType<typeof resolveApiKey>>
   try {
-    apiKeyContext = await resolveApiKey(providedApiKey, { ipAddress: request.ip })
+    apiKeyContext = await resolveApiKey(providedApiKey, { ipAddress: request.ip, endpointId })
   } catch (error) {
     if (error instanceof ApiKeyError) {
-      reply.code(401)
+      reply.code(error.code === 'forbidden' ? 403 : 401)
       return {
         error: {
-          code: 'invalid_api_key',
+          code: error.code === 'forbidden' ? 'endpoint_forbidden' : 'invalid_api_key',
           message: error.message
         }
       }
@@ -1573,7 +1596,7 @@ export async function handleOpenAIChatProtocol(
       const outputTokens =
         usagePayload?.completion_tokens ??
         usagePayload?.output_tokens ??
-        estimateTextTokens(json?.choices?.[0]?.message?.content ?? '', target.modelId)
+        estimateTextTokens(extractTextForTokenEstimate(json?.choices?.[0]?.message?.content), target.modelId)
       const cached = resolveCachedTokens(usagePayload)
       const cachedTokens = cached.read + cached.creation
       const latencyMs = Date.now() - requestStart
@@ -1695,64 +1718,15 @@ export async function handleOpenAIChatProtocol(
       requests: 1,
       inputTokens,
       outputTokens,
+      cachedTokens: usageCached ?? 0,
+      cacheReadTokens: usageCacheRead,
+      cacheCreationTokens: usageCacheCreation,
       latencyMs
     })
 
     if (storeResponsePayloads && capturedChunks) {
       try {
-        // Parse captured chunks to extract content and metadata
-        const allChunks = capturedChunks.join('')
-        let accumulatedText = ''
-        let finishReason: string | null = null
-
-        // Parse SSE stream to extract structured response
-        const lines = allChunks.split('\n')
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (trimmed.startsWith('data:')) {
-            const dataStr = trimmed.slice(5).trim()
-            if (dataStr !== '[DONE]') {
-              try {
-                const parsed = JSON.parse(dataStr)
-                const choice = parsed?.choices?.[0]
-                if (choice) {
-                  // Extract text content
-                  if (choice.delta?.content) {
-                    accumulatedText += choice.delta.content
-                  }
-                  // Extract finish_reason
-                  if (choice.finish_reason) {
-                    finishReason = choice.finish_reason
-                  }
-                }
-              } catch {
-                // Ignore parse errors
-              }
-            }
-          }
-        }
-
-        // Construct structured response summary (OpenAI Chat Completion style)
-        const responseSummary = {
-          id: `chatcmpl_${Date.now()}`,
-          object: 'chat.completion',
-          model: target.modelId,
-          choices: [{
-            index: 0,
-            message: {
-              role: 'assistant',
-              content: accumulatedText
-            },
-            finish_reason: finishReason ?? 'stop'
-          }],
-          usage: {
-            prompt_tokens: inputTokens,
-            completion_tokens: outputTokens,
-            total_tokens: inputTokens + outputTokens,
-            cached_tokens: usageCached ?? 0
-          }
-        }
-
+        const responseSummary = parseSSEToSummary(capturedChunks, 'chat', target.modelId)
         await upsertLogPayload(logId, { response: JSON.stringify(responseSummary) })
       } catch {}
     }
@@ -1844,13 +1818,13 @@ export async function handleOpenAIResponsesProtocol(
   const providedApiKey = extractApiKeyFromRequest(request)
   let apiKeyContext: Awaited<ReturnType<typeof resolveApiKey>>
   try {
-    apiKeyContext = await resolveApiKey(providedApiKey, { ipAddress: request.ip })
+    apiKeyContext = await resolveApiKey(providedApiKey, { ipAddress: request.ip, endpointId })
   } catch (error) {
     if (error instanceof ApiKeyError) {
-      reply.code(401)
+      reply.code(error.code === 'forbidden' ? 403 : 401)
       return {
         error: {
-          code: 'invalid_api_key',
+          code: error.code === 'forbidden' ? 'endpoint_forbidden' : 'invalid_api_key',
           message: error.message
         }
       }
@@ -1989,9 +1963,13 @@ export async function handleOpenAIResponsesProtocol(
         usagePayload?.input_tokens ??
         target.tokenEstimate ??
         estimateTokens(normalized, target.modelId)
-      const content = json?.response?.body?.content ?? json?.choices?.[0]?.message?.content ?? ''
       const outputTokens =
-        usagePayload?.completion_tokens ?? usagePayload?.output_tokens ?? estimateTextTokens(content, target.modelId)
+        usagePayload?.completion_tokens ??
+        usagePayload?.output_tokens ??
+        estimateTextTokens(
+          extractTextForTokenEstimate(json?.response?.body?.content ?? json?.choices?.[0]?.message?.content),
+          target.modelId
+        )
       const cached = resolveCachedTokens(usagePayload)
       const cachedTokens = cached.read + cached.creation
       const latencyMs = Date.now() - requestStart
@@ -2071,7 +2049,7 @@ export async function handleOpenAIResponsesProtocol(
               if (dataStr !== '[DONE]') {
                 try {
                   const parsed = JSON.parse(dataStr)
-                  const usage = parsed?.usage || null
+                  const usage = parsed?.usage || parsed?.response?.usage || null
                   if (usage) {
                     usagePrompt = usage.prompt_tokens ?? usage.input_tokens ?? usagePrompt
                     usageCompletion = usage.completion_tokens ?? usage.output_tokens ?? usageCompletion
@@ -2113,64 +2091,15 @@ export async function handleOpenAIResponsesProtocol(
       requests: 1,
       inputTokens,
       outputTokens,
+      cachedTokens: usageCached ?? 0,
+      cacheReadTokens: usageCacheRead,
+      cacheCreationTokens: usageCacheCreation,
       latencyMs
     })
 
     if (storeResponsePayloads && capturedChunks) {
       try {
-        // Parse captured chunks to extract content and metadata
-        const allChunks = capturedChunks.join('')
-        let accumulatedText = ''
-        let finishReason: string | null = null
-
-        // Parse SSE stream to extract structured response
-        const lines = allChunks.split('\n')
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (trimmed.startsWith('data:')) {
-            const dataStr = trimmed.slice(5).trim()
-            if (dataStr !== '[DONE]') {
-              try {
-                const parsed = JSON.parse(dataStr)
-                const choice = parsed?.choices?.[0]
-                if (choice) {
-                  // Extract text content
-                  if (choice.delta?.content) {
-                    accumulatedText += choice.delta.content
-                  }
-                  // Extract finish_reason
-                  if (choice.finish_reason) {
-                    finishReason = choice.finish_reason
-                  }
-                }
-              } catch {
-                // Ignore parse errors
-              }
-            }
-          }
-        }
-
-        // Construct structured response summary (OpenAI Chat Completion style)
-        const responseSummary = {
-          id: `chatcmpl_${Date.now()}`,
-          object: 'chat.completion',
-          model: target.modelId,
-          choices: [{
-            index: 0,
-            message: {
-              role: 'assistant',
-              content: accumulatedText
-            },
-            finish_reason: finishReason ?? 'stop'
-          }],
-          usage: {
-            prompt_tokens: inputTokens,
-            completion_tokens: outputTokens,
-            total_tokens: inputTokens + outputTokens,
-            cached_tokens: usageCached ?? 0
-          }
-        }
-
+        const responseSummary = parseSSEToSummary(capturedChunks, 'responses', target.modelId)
         await upsertLogPayload(logId, { response: JSON.stringify(responseSummary) })
       } catch {}
     }
@@ -2191,684 +2120,4 @@ export async function handleOpenAIResponsesProtocol(
       await finalize(reply.statusCode ?? 200, null)
     }
   }
-}
-
-/**
- * 旧的 OpenAI Chat handler (保留作为备用，但不再使用)
- * @deprecated 使用统一handler和handleOpenAIChatProtocol替代
- */
-async function registerOpenAIChatHandler(
-  app: FastifyInstance<any, any, any, any, any>,
-  path: string,
-  endpointId: string
-): Promise<void> {
-  const handler = async (request: any, reply: any) => {
-    // 实时读取endpoint配置
-    const endpoint = getCurrentEndpointConfig(endpointId, request.url, app)
-    if (!endpoint) {
-      reply.code(404)
-      return { error: 'Endpoint not found, disabled, or path changed' }
-    }
-
-    const payload = request.body
-    if (!payload || typeof payload !== 'object') {
-      reply.code(400)
-      return { error: 'Invalid request body' }
-    }
-
-    const providedApiKey = extractApiKeyFromRequest(request)
-
-    let apiKeyContext: Awaited<ReturnType<typeof resolveApiKey>>
-    try {
-      apiKeyContext = await resolveApiKey(providedApiKey, { ipAddress: request.ip })
-    } catch (error) {
-      if (error instanceof ApiKeyError) {
-        reply.code(401)
-        return {
-          error: {
-            code: 'invalid_api_key',
-            message: error.message
-          }
-        }
-      }
-      throw error
-    }
-
-    const encryptedApiKeyValue = apiKeyContext.providedKey ? encryptSecret(apiKeyContext.providedKey) : null
-    let usageRecorded = false
-    const commitUsage = async (inputTokens: number, outputTokens: number) => {
-      if (usageRecorded) return
-      usageRecorded = true
-      if (apiKeyContext.id) {
-        const safeInput = Number.isFinite(inputTokens) ? inputTokens : 0
-        const safeOutput = Number.isFinite(outputTokens) ? outputTokens : 0
-        await recordApiKeyUsage(apiKeyContext.id, {
-          inputTokens: safeInput,
-          outputTokens: safeOutput
-        })
-      }
-    }
-
-    const normalized = normalizeOpenAIChatPayload(payload)
-    const requestedModel = typeof payload.model === 'string' ? payload.model : undefined
-
-    const target = resolveRoute({
-      payload: normalized,
-      requestedModel,
-      endpoint: endpointId,
-      customRouting: endpoint.routing  // 实时读取
-    })
-
-    const requestStart = Date.now()
-    const configSnapshot = getConfig()
-    const storeRequestPayloads = configSnapshot.storeRequestPayloads !== false
-    const storeResponsePayloads = configSnapshot.storeResponsePayloads !== false
-
-    const logId = await recordLog({
-      timestamp: requestStart,
-      endpoint: endpointId,
-      provider: target.providerId,
-      model: target.modelId,
-      clientModel: requestedModel,
-      stream: normalized.stream,
-      apiKeyId: apiKeyContext.id,
-      apiKeyName: apiKeyContext.name,
-      apiKeyValue: encryptedApiKeyValue
-    })
-
-    if (storeRequestPayloads) {
-      await upsertLogPayload(logId, {
-        prompt: (() => {
-          try {
-            return JSON.stringify(payload)
-          } catch {
-            return null
-          }
-        })()
-      })
-    }
-
-    incrementActiveRequests()
-
-    let finalized = false
-    const finalize = async (statusCode: number | null, error: string | null) => {
-      if (finalized) return
-      await finalizeLog(logId, {
-        latencyMs: Date.now() - requestStart,
-        statusCode,
-        error,
-        clientModel: requestedModel ?? null
-      })
-      finalized = true
-    }
-
-    try {
-      const providerType = target.provider.type ?? 'openai'
-      let connector: ProviderConnector
-
-      if (providerType === 'openai') {
-        connector = createOpenAIConnector(target.provider, { defaultPath: 'v1/chat/completions' })
-      } else {
-        connector = getConnector(target.providerId)
-      }
-
-      let providerBody: any
-      if (providerType === 'anthropic') {
-        providerBody = buildAnthropicBody(normalized, {
-          maxTokens: payload.max_tokens,
-          temperature: payload.temperature
-        })
-      } else {
-        providerBody = buildProviderBody(normalized, {
-          maxTokens: payload.max_tokens,
-          temperature: payload.temperature
-        })
-      }
-      providerBody.model = target.modelId
-      if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
-        providerBody.stream = Boolean(payload.stream)
-      }
-
-      const upstream = await connector.send({
-        model: target.modelId,
-        body: providerBody,
-        stream: normalized.stream
-      })
-
-      if (upstream.status >= 400) {
-        reply.code(upstream.status)
-        const bodyText = await readProviderBodyText(upstream.body)
-        const errorText = bodyText || 'Upstream provider error'
-        if (storeResponsePayloads) {
-          await upsertLogPayload(logId, { response: bodyText || null })
-        }
-        await commitUsage(0, 0)
-        await finalize(upstream.status, errorText)
-        return { error: errorText }
-      }
-
-      if (!normalized.stream) {
-        const json = await readProviderBodyJson(upstream.body)
-
-        // 提取和记录 token 使用情况
-        const usagePayload = json?.usage ?? null
-        const inputTokens =
-          usagePayload?.prompt_tokens ??
-          usagePayload?.input_tokens ??
-          target.tokenEstimate ??
-          estimateTokens(normalized, target.modelId)
-        const outputTokens =
-          usagePayload?.completion_tokens ??
-          usagePayload?.output_tokens ??
-          estimateTextTokens(
-            (() => {
-              const choice = json?.choices?.[0]?.message?.content
-              return typeof choice === 'string' ? choice : ''
-            })(),
-            target.modelId
-          )
-        const cached = resolveCachedTokens(usagePayload)
-      const cachedTokens = cached.read + cached.creation
-        const latencyMs = Date.now() - requestStart
-
-        await updateLogTokens(logId, {
-          inputTokens,
-          outputTokens,
-          cachedTokens,
-          cacheReadTokens: cached.read,
-          cacheCreationTokens: cached.creation,
-          ttftMs: latencyMs,
-          tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
-        })
-        await commitUsage(inputTokens, outputTokens)
-        await updateMetrics(new Date().toISOString().slice(0, 10), endpointId, {
-          requests: 1,
-          inputTokens,
-          outputTokens,
-          latencyMs
-        })
-
-        if (storeResponsePayloads) {
-          await upsertLogPayload(logId, {
-            response: (() => {
-              try {
-                return JSON.stringify(json)
-              } catch {
-                return null
-              }
-            })()
-          })
-        }
-
-        await finalize(200, null)
-        reply.header('content-type', 'application/json')
-        return json
-      }
-
-      // Streaming - 添加完整的 tracking
-      reply.raw.setHeader('content-type', 'text/event-stream; charset=utf-8')
-      reply.raw.setHeader('cache-control', 'no-cache, no-transform')
-      reply.raw.setHeader('connection', 'keep-alive')
-      if (typeof reply.raw.writeHead === 'function') {
-        reply.raw.writeHead(200)
-      }
-
-      const reader = upstream.body!.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let usagePrompt: number | null = null
-      let usageCompletion: number | null = null
-      let usageCached: number | null = null
-      let firstTokenAt: number | null = null
-      const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
-
-      try {
-        while (true) {
-          const { value, done } = await reader.read()
-          if (value && !firstTokenAt) {
-            firstTokenAt = Date.now()
-          }
-          if (value) {
-            const chunk = decoder.decode(value, { stream: !done })
-            buffer += chunk
-            reply.raw.write(chunk)
-
-            if (capturedChunks) {
-              capturedChunks.push(chunk)
-            }
-
-            // 解析 usage
-            let newlineIndex = buffer.indexOf('\n')
-            while (newlineIndex !== -1) {
-              const line = buffer.slice(0, newlineIndex)
-              buffer = buffer.slice(newlineIndex + 1)
-
-              const trimmed = line.trim()
-              if (!trimmed.startsWith('data:')) {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-
-              const dataStr = trimmed.slice(5).trim()
-              if (dataStr === '[DONE]') {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-
-              try {
-                const parsed = JSON.parse(dataStr)
-                const usage = parsed?.usage || parsed?.choices?.[0]?.delta?.usage || null
-                if (usage) {
-                  usagePrompt = usage.prompt_tokens ?? usage.input_tokens ?? usagePrompt
-                  usageCompletion = usage.completion_tokens ?? usage.output_tokens ?? usageCompletion
-                  if (typeof usage.cached_tokens === 'number') {
-                    usageCached = usage.cached_tokens
-                  }
-                }
-              } catch {
-                // ignore parse errors
-              }
-
-              newlineIndex = buffer.indexOf('\n')
-            }
-          }
-          if (done) break
-        }
-      } finally {
-        reply.raw.end()
-      }
-
-      const latencyMs = Date.now() - requestStart
-      const inputTokens =
-        usagePrompt ??
-        usageCompletion ??
-        target.tokenEstimate ??
-        estimateTokens(normalized, target.modelId)
-      const outputTokens = usageCompletion ?? 0
-      const cachedTokens = usageCached ?? 0
-
-      await updateLogTokens(logId, {
-        inputTokens,
-        outputTokens,
-        cachedTokens: usageCached,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
-        tpotMs: computeTpot(latencyMs, outputTokens, {
-          streaming: true,
-          ttftMs: firstTokenAt ? firstTokenAt - requestStart : null
-        })
-      })
-      await commitUsage(inputTokens, outputTokens)
-      await updateMetrics(new Date().toISOString().slice(0, 10), endpointId, {
-        requests: 1,
-        inputTokens,
-        outputTokens,
-        cachedTokens,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        latencyMs
-      })
-
-      if (storeResponsePayloads && capturedChunks) {
-        try {
-          const summary = parseSSEToSummary(capturedChunks, 'chat', target.modelId)
-          await upsertLogPayload(logId, { response: JSON.stringify(summary) })
-        } catch (error) {
-          request.log.warn({ error }, 'Failed to persist streamed response')
-        }
-      }
-
-      await finalize(200, null)
-      return reply
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unexpected error'
-      if (!reply.sent) {
-        reply.code(500)
-      }
-      await commitUsage(0, 0)
-      await finalize(reply.statusCode >= 400 ? reply.statusCode : 500, message)
-      return { error: message }
-    } finally {
-      decrementActiveRequests()
-      if (!finalized && reply.sent) {
-        await finalize(reply.statusCode ?? 200, null)
-      }
-    }
-  }
-
-  app.post(path, handler)
-  app.log.info(`Registered OpenAI Chat Completions handler at ${path}`)
-}
-
-/**
- * 注册 OpenAI Responses API 协议处理器
- */
-async function registerOpenAIResponsesHandler(
-  app: FastifyInstance<any, any, any, any, any>,
-  path: string,
-  endpointId: string
-): Promise<void> {
-  const handler = async (request: any, reply: any) => {
-    // 实时读取endpoint配置
-    const endpoint = getCurrentEndpointConfig(endpointId, request.url, app)
-    if (!endpoint) {
-      reply.code(404)
-      return { error: 'Endpoint not found, disabled, or path changed' }
-    }
-
-    const payload = request.body
-    if (!payload || typeof payload !== 'object') {
-      reply.code(400)
-      return { error: 'Invalid request body' }
-    }
-
-    const providedApiKey = extractApiKeyFromRequest(request)
-
-    let apiKeyContext: Awaited<ReturnType<typeof resolveApiKey>>
-    try {
-      apiKeyContext = await resolveApiKey(providedApiKey, { ipAddress: request.ip })
-    } catch (error) {
-      if (error instanceof ApiKeyError) {
-        reply.code(401)
-        return {
-          error: {
-            code: 'invalid_api_key',
-            message: error.message
-          }
-        }
-      }
-      throw error
-    }
-
-    const encryptedApiKeyValue = apiKeyContext.providedKey ? encryptSecret(apiKeyContext.providedKey) : null
-    let usageRecorded = false
-    const commitUsage = async (inputTokens: number, outputTokens: number) => {
-      if (usageRecorded) return
-      usageRecorded = true
-      if (apiKeyContext.id) {
-        const safeInput = Number.isFinite(inputTokens) ? inputTokens : 0
-        const safeOutput = Number.isFinite(outputTokens) ? outputTokens : 0
-        await recordApiKeyUsage(apiKeyContext.id, {
-          inputTokens: safeInput,
-          outputTokens: safeOutput
-        })
-      }
-    }
-
-    const normalized = normalizeOpenAIResponsesPayload(payload)
-    const requestedModel = typeof payload.model === 'string' ? payload.model : undefined
-
-    const target = resolveRoute({
-      payload: normalized,
-      requestedModel,
-      endpoint: endpointId,
-      customRouting: endpoint.routing  // 实时读取
-    })
-
-    const requestStart = Date.now()
-    const configSnapshot = getConfig()
-    const storeRequestPayloads = configSnapshot.storeRequestPayloads !== false
-    const storeResponsePayloads = configSnapshot.storeResponsePayloads !== false
-
-    const logId = await recordLog({
-      timestamp: requestStart,
-      endpoint: endpointId,
-      provider: target.providerId,
-      model: target.modelId,
-      clientModel: requestedModel,
-      stream: normalized.stream,
-      apiKeyId: apiKeyContext.id,
-      apiKeyName: apiKeyContext.name,
-      apiKeyValue: encryptedApiKeyValue
-    })
-
-    if (storeRequestPayloads) {
-      await upsertLogPayload(logId, {
-        prompt: (() => {
-          try {
-            return JSON.stringify(payload)
-          } catch {
-            return null
-          }
-        })()
-      })
-    }
-
-    incrementActiveRequests()
-
-    let finalized = false
-    const finalize = async (statusCode: number | null, error: string | null) => {
-      if (finalized) return
-      await finalizeLog(logId, {
-        latencyMs: Date.now() - requestStart,
-        statusCode,
-        error,
-        clientModel: requestedModel ?? null
-      })
-      finalized = true
-    }
-
-    try {
-      const providerType = target.provider.type ?? 'openai'
-      let connector: ProviderConnector
-
-      if (providerType === 'openai') {
-        connector = createOpenAIConnector(target.provider, { defaultPath: 'v1/responses' })
-      } else {
-        connector = getConnector(target.providerId)
-      }
-
-      const providerBody = { ...payload }
-      providerBody.model = target.modelId
-      if (Object.prototype.hasOwnProperty.call(payload, 'stream')) {
-        providerBody.stream = Boolean(payload.stream)
-      }
-
-      const upstream = await connector.send({
-        model: target.modelId,
-        body: providerBody,
-        stream: normalized.stream
-      })
-
-      if (upstream.status >= 400) {
-        reply.code(upstream.status)
-        const bodyText = await readProviderBodyText(upstream.body)
-        const errorText = bodyText || 'Upstream provider error'
-        if (storeResponsePayloads) {
-          await upsertLogPayload(logId, { response: bodyText || null })
-        }
-        await commitUsage(0, 0)
-        await finalize(upstream.status, errorText)
-        return { error: errorText }
-      }
-
-      if (!normalized.stream) {
-        const json = await readProviderBodyJson(upstream.body)
-
-        const usagePayload = json?.usage ?? null
-        const inputTokens =
-          usagePayload?.input_tokens ??
-          usagePayload?.prompt_tokens ??
-          target.tokenEstimate ??
-          estimateTokens(normalized, target.modelId)
-        const outputTokens =
-          usagePayload?.output_tokens ??
-          usagePayload?.completion_tokens ??
-          (typeof json?.content === 'string' ? estimateTextTokens(json.content, target.modelId) : 0)
-        const cached = resolveCachedTokens(usagePayload)
-        const cachedTokens = cached.read + cached.creation
-        const latencyMs = Date.now() - requestStart
-
-        await updateLogTokens(logId, {
-          inputTokens,
-          outputTokens,
-          cachedTokens,
-          cacheReadTokens: cached.read,
-          cacheCreationTokens: cached.creation,
-          ttftMs: latencyMs,
-          tpotMs: computeTpot(latencyMs, outputTokens, { streaming: false })
-        })
-        await commitUsage(inputTokens, outputTokens)
-        await updateMetrics(new Date().toISOString().slice(0, 10), endpointId, {
-          requests: 1,
-          inputTokens,
-          outputTokens,
-          latencyMs
-        })
-
-        if (storeResponsePayloads) {
-          await upsertLogPayload(logId, {
-            response: (() => {
-              try {
-                return JSON.stringify(json)
-              } catch {
-                return null
-              }
-            })()
-          })
-        }
-
-        await finalize(200, null)
-        reply.header('content-type', 'application/json')
-        return json
-      }
-
-      // Streaming - 添加完整的 tracking
-      reply.raw.setHeader('content-type', 'text/event-stream; charset=utf-8')
-      reply.raw.setHeader('cache-control', 'no-cache, no-transform')
-      reply.raw.setHeader('connection', 'keep-alive')
-      if (typeof reply.raw.writeHead === 'function') {
-        reply.raw.writeHead(200)
-      }
-
-      const reader = upstream.body!.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let usagePrompt: number | null = null
-      let usageCompletion: number | null = null
-      let usageCached: number | null = null
-      let usageCacheRead = 0
-      let usageCacheCreation = 0
-      let firstTokenAt: number | null = null
-      const capturedChunks: string[] | null = storeResponsePayloads ? [] : null
-
-      try {
-        while (true) {
-          const { value, done } = await reader.read()
-          if (value && !firstTokenAt) {
-            firstTokenAt = Date.now()
-          }
-          if (value) {
-            const chunk = decoder.decode(value, { stream: !done })
-            buffer += chunk
-            reply.raw.write(chunk)
-
-            if (capturedChunks) {
-              capturedChunks.push(chunk)
-            }
-
-            // 解析 usage
-            let newlineIndex = buffer.indexOf('\n')
-            while (newlineIndex !== -1) {
-              const line = buffer.slice(0, newlineIndex)
-              buffer = buffer.slice(newlineIndex + 1)
-
-              const trimmed = line.trim()
-              if (!trimmed.startsWith('data:')) {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-
-              const dataStr = trimmed.slice(5).trim()
-              if (dataStr === '[DONE]') {
-                newlineIndex = buffer.indexOf('\n')
-                continue
-              }
-
-              try {
-                const parsed = JSON.parse(dataStr)
-                const usage = parsed?.usage || parsed?.response?.usage || null
-                if (usage) {
-                  usagePrompt = usage.input_tokens ?? usage.prompt_tokens ?? usagePrompt
-                  usageCompletion = usage.output_tokens ?? usage.completion_tokens ?? usageCompletion
-                  const cached = resolveCachedTokens(usage)
-                  usageCacheRead = cached.read
-                  usageCacheCreation = cached.creation
-                  usageCached = cached.read + cached.creation
-                }
-              } catch {
-                // ignore parse errors
-              }
-
-              newlineIndex = buffer.indexOf('\n')
-            }
-          }
-          if (done) break
-        }
-      } finally {
-        reply.raw.end()
-      }
-
-      const latencyMs = Date.now() - requestStart
-      const inputTokens =
-        usagePrompt ??
-        usageCompletion ??
-        target.tokenEstimate ??
-        estimateTokens(normalized, target.modelId)
-      const outputTokens = usageCompletion ?? 0
-      const cachedTokens = usageCached ?? usageCacheRead + usageCacheCreation
-
-      await updateLogTokens(logId, {
-        inputTokens,
-        outputTokens,
-        cachedTokens: usageCached,
-        cacheReadTokens: usageCacheRead,
-        cacheCreationTokens: usageCacheCreation,
-        ttftMs: firstTokenAt ? firstTokenAt - requestStart : null,
-        tpotMs: computeTpot(latencyMs, outputTokens, {
-          streaming: true,
-          ttftMs: firstTokenAt ? firstTokenAt - requestStart : null
-        })
-      })
-      await commitUsage(inputTokens, outputTokens)
-      await updateMetrics(new Date().toISOString().slice(0, 10), endpointId, {
-        requests: 1,
-        inputTokens,
-        outputTokens,
-        cachedTokens,
-        cacheReadTokens: usageCacheRead,
-        cacheCreationTokens: usageCacheCreation,
-        latencyMs
-      })
-
-      if (storeResponsePayloads && capturedChunks) {
-        try {
-          const summary = parseSSEToSummary(capturedChunks, 'responses', target.modelId)
-          await upsertLogPayload(logId, { response: JSON.stringify(summary) })
-        } catch (error) {
-          request.log.warn({ error }, 'Failed to persist streamed response')
-        }
-      }
-
-      await finalize(200, null)
-      return reply
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unexpected error'
-      if (!reply.sent) {
-        reply.code(500)
-      }
-      await commitUsage(0, 0)
-      await finalize(reply.statusCode >= 400 ? reply.statusCode : 500, message)
-      return { error: message }
-    } finally {
-      decrementActiveRequests()
-      if (!finalized && reply.sent) {
-        await finalize(reply.statusCode ?? 200, null)
-      }
-    }
-  }
-
-  app.post(path, handler)
-  app.log.info(`Registered OpenAI Responses handler at ${path}`)
 }

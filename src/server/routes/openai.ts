@@ -36,13 +36,13 @@ export async function registerOpenAiRoutes(app: FastifyInstance<any, any, any, a
     const providedApiKey = extractApiKeyFromRequest(request)
 
     try {
-      await resolveApiKey(providedApiKey, { ipAddress: request.ip })
+      await resolveApiKey(providedApiKey, { ipAddress: request.ip, endpointId: 'openai' })
     } catch (error) {
       if (error instanceof ApiKeyError) {
-        reply.code(401)
+        reply.code(error.code === 'forbidden' ? 403 : 401)
         return {
           error: {
-            code: 'invalid_api_key',
+            code: error.code === 'forbidden' ? 'endpoint_forbidden' : 'invalid_api_key',
             message: error.message
           }
         }

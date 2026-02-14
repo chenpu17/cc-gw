@@ -204,4 +204,85 @@ describe('admin routes', () => {
       await app.close()
     }
   })
+
+  it('rejects invalid allowedEndpoints type on key creation', async () => {
+    const app = await createApp()
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/keys',
+        payload: {
+          name: 'test-key',
+          allowedEndpoints: 'openai'
+        }
+      })
+
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toEqual({
+        error: 'allowedEndpoints must be an array of strings or null'
+      })
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects invalid allowedEndpoints type on key update', async () => {
+    const app = await createApp()
+    try {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/keys/1',
+        payload: {
+          allowedEndpoints: 'openai'
+        }
+      })
+
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toEqual({
+        error: 'allowedEndpoints must be an array of strings or null'
+      })
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects non-object body on key update', async () => {
+    const app = await createApp()
+    try {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/keys/1',
+        headers: { 'content-type': 'application/json' },
+        payload: '"invalid"'
+      })
+
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toEqual({
+        error: 'Invalid request body'
+      })
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('rejects allowedEndpoints with non-string members', async () => {
+    const app = await createApp()
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/keys',
+        payload: {
+          name: 'test-key',
+          allowedEndpoints: ['openai', 123]
+        }
+      })
+
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toEqual({
+        error: 'allowedEndpoints must be an array of strings or null'
+      })
+    } finally {
+      await app.close()
+    }
+  })
 })

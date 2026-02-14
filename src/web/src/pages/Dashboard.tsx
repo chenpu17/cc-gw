@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { BarChart3, TrendingUp, Activity, Timer } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
-import { Loader } from '@/components/Loader'
+import { StatCardSkeleton, ChartSkeleton, TableRowSkeleton } from '@/components/Skeleton'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
 import { useToast } from '@/providers/ToastProvider'
@@ -121,6 +121,15 @@ function formatBytes(value: number | null | undefined): string {
   }
   return `${bytes.toFixed(bytes >= 100 ? 0 : bytes >= 10 ? 1 : 2)} ${units[unitIndex]}`
 }
+
+const METRIC_COLORS = {
+  requests: '#3b82f6',
+  input: '#10b981',
+  output: '#f59e0b',
+  cacheRead: '#8b5cf6',
+  cacheCreation: '#f43f5e',
+  latency: '#06b6d4'
+} as const
 
 export default function DashboardPage() {
   const { t } = useTranslation()
@@ -284,14 +293,14 @@ export default function DashboardPage() {
           name: requestLabel,
           type: 'bar',
           data: daily.map((item) => item.requestCount),
-          itemStyle: { color: 'hsl(var(--primary))', borderRadius: [4, 4, 0, 0] }
+          itemStyle: { color: METRIC_COLORS.requests, borderRadius: [4, 4, 0, 0] }
         },
         {
           name: inputLabel,
           type: 'line',
           data: daily.map((item) => item.inputTokens),
           smooth: true,
-          itemStyle: { color: '#10b981' },
+          itemStyle: { color: METRIC_COLORS.input },
           lineStyle: { width: 2 }
         },
         {
@@ -299,7 +308,7 @@ export default function DashboardPage() {
           type: 'line',
           data: daily.map((item) => item.outputTokens),
           smooth: true,
-          itemStyle: { color: '#f59e0b' },
+          itemStyle: { color: METRIC_COLORS.output },
           lineStyle: { width: 2 }
         },
         {
@@ -307,7 +316,7 @@ export default function DashboardPage() {
           type: 'line',
           data: daily.map((item) => item.cacheReadTokens),
           smooth: true,
-          itemStyle: { color: '#8b5cf6' },
+          itemStyle: { color: METRIC_COLORS.cacheRead },
           lineStyle: { width: 2 }
         },
         {
@@ -315,7 +324,7 @@ export default function DashboardPage() {
           type: 'line',
           data: daily.map((item) => item.cacheCreationTokens),
           smooth: true,
-          itemStyle: { color: '#ec4899' },
+          itemStyle: { color: METRIC_COLORS.cacheCreation },
           lineStyle: { width: 2 }
         }
       ]
@@ -346,7 +355,7 @@ export default function DashboardPage() {
           name: requestLabel,
           type: 'bar',
           data: models.map((item) => item.requests),
-          itemStyle: { color: '#6366f1', borderRadius: [4, 4, 0, 0] }
+          itemStyle: { color: METRIC_COLORS.requests, borderRadius: [4, 4, 0, 0] }
         },
         {
           name: inputLabel,
@@ -354,7 +363,7 @@ export default function DashboardPage() {
           yAxisIndex: 1,
           smooth: true,
           data: models.map((item) => item.inputTokens ?? 0),
-          itemStyle: { color: '#10b981' }
+          itemStyle: { color: METRIC_COLORS.input }
         },
         {
           name: outputLabel,
@@ -362,7 +371,7 @@ export default function DashboardPage() {
           yAxisIndex: 1,
           smooth: true,
           data: models.map((item) => item.outputTokens ?? 0),
-          itemStyle: { color: '#f59e0b' }
+          itemStyle: { color: METRIC_COLORS.output }
         }
       ]
     }
@@ -382,7 +391,7 @@ export default function DashboardPage() {
           name: ttftLabel,
           type: 'bar',
           data: models.map((item) => item.avgTtftMs ?? 0),
-          itemStyle: { color: 'hsl(var(--primary))', borderRadius: [4, 4, 0, 0] }
+          itemStyle: { color: METRIC_COLORS.requests, borderRadius: [4, 4, 0, 0] }
         }
       ]
     }
@@ -402,14 +411,41 @@ export default function DashboardPage() {
           name: tpotLabel,
           type: 'bar',
           data: models.map((item) => item.avgTpotMs ?? 0),
-          itemStyle: { color: '#f59e0b', borderRadius: [4, 4, 0, 0] }
+          itemStyle: { color: METRIC_COLORS.output, borderRadius: [4, 4, 0, 0] }
         }
       ]
     }
   }, [models, t])
 
   if (overviewQuery.isPending || statusQuery.isPending || dbInfoQuery.isPending) {
-    return <Loader />
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
+          title={t('nav.dashboard')}
+          description={t('dashboard.description')}
+        />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <StatCardSkeleton key={i} />
+          ))}
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <ChartSkeleton key={i} />
+          ))}
+        </div>
+        <div className="rounded-md border">
+          <table className="w-full">
+            <tbody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <TableRowSkeleton key={i} columns={6} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -671,16 +707,16 @@ function ChartCard({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         {loading ? (
-          <div className="flex h-[320px] items-center justify-center">
+          <div className="flex min-h-[280px] h-[40vh] max-h-[420px] items-center justify-center">
             <span className="text-sm text-muted-foreground">{t('common.loadingShort')}</span>
           </div>
         ) : empty ? (
-          <div className="flex h-[320px] flex-col items-center justify-center rounded-lg border border-dashed">
+          <div className="flex min-h-[280px] h-[40vh] max-h-[420px] flex-col items-center justify-center rounded-lg border border-dashed">
             <BarChart3 className="mb-2 h-10 w-10 text-muted-foreground/50" />
             <span className="text-sm text-muted-foreground">{emptyText ?? t('dashboard.charts.empty')}</span>
           </div>
         ) : (
-          <ReactECharts option={option} style={{ height: 320 }} notMerge lazyUpdate />
+          <ReactECharts option={option} className="min-h-[280px] h-[40vh] max-h-[420px]" notMerge lazyUpdate />
         )}
       </CardContent>
     </Card>

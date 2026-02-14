@@ -244,6 +244,7 @@ async function ensureSchema(db: BetterSqliteDatabase): Promise<void> {
   await maybeAddColumn(db, 'api_keys', 'request_count', 'INTEGER DEFAULT 0')
   await maybeAddColumn(db, 'api_keys', 'total_input_tokens', 'INTEGER DEFAULT 0')
   await maybeAddColumn(db, 'api_keys', 'total_output_tokens', 'INTEGER DEFAULT 0')
+  await maybeAddColumn(db, 'api_keys', 'allowed_endpoints', 'TEXT DEFAULT NULL')
 
   await migrateDailyMetricsTable(db)
   await maybeAddColumn(db, 'daily_metrics', 'total_cached_tokens', 'INTEGER DEFAULT 0')

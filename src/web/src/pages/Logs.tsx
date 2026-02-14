@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
-import { FileText, RefreshCw, Download, X } from 'lucide-react'
+import { FileText, RefreshCw, Download, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { useToast } from '@/providers/ToastProvider'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { apiClient, type ApiError, toApiError } from '@/services/api'
 import type { LogDetail, LogListResponse, LogRecord } from '@/types/logs'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import type { CustomEndpointsResponse } from '@/types/endpoints'
-import { Loader } from '@/components/Loader'
+import { TableRowSkeleton, Skeleton } from '@/components/Skeleton'
 import { PageHeader } from '@/components/PageHeader'
-import { PageSection } from '@/components/PageSection'
 import { cn } from '@/lib/utils'
 import { copyToClipboard } from '@/utils/clipboard'
 import { Button } from '@/components/ui/button'
@@ -90,6 +89,9 @@ export default function LogsPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [selectedApiKeys, setSelectedApiKeys] = useState<number[]>([])
   const [exporting, setExporting] = useState(false)
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
+  const [showScrollHint, setShowScrollHint] = useState(false)
+  const tableScrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setPage(1)
@@ -187,6 +189,75 @@ export default function LogsPage() {
     return map
   }, [providerOptions])
 
+  const endpointLabelMap = useMemo(() => {
+    const map = new Map<string, string>()
+    map.set('anthropic', t('logs.filters.endpointAnthropic'))
+    map.set('openai', t('logs.filters.endpointOpenAI'))
+    for (const endpoint of customEndpointsQuery.data?.endpoints ?? []) {
+      map.set(endpoint.id, endpoint.label || endpoint.id)
+    }
+    return map
+  }, [customEndpointsQuery.data?.endpoints, t])
+
+  const activeFilters = useMemo(() => {
+    const filters: Array<{ key: string; label: string; onRemove: () => void }> = []
+    if (providerFilter !== 'all') {
+      const providerLabel = providerLabelMap.get(providerFilter) ?? providerFilter
+      filters.push({
+        key: 'provider',
+        label: `${t('logs.filters.provider')}: ${providerLabel}`,
+        onRemove: () => setProviderFilter('all')
+      })
+    }
+    if (endpointFilter !== 'all') {
+      const endpointLabel = endpointLabelMap.get(endpointFilter) ?? endpointFilter
+      filters.push({
+        key: 'endpoint',
+        label: `${t('logs.filters.endpoint')}: ${endpointLabel}`,
+        onRemove: () => setEndpointFilter('all')
+      })
+    }
+    if (modelFilter.trim()) {
+      filters.push({
+        key: 'model',
+        label: `${t('logs.filters.modelId')}: ${modelFilter.trim()}`,
+        onRemove: () => setModelFilter('')
+      })
+    }
+    if (statusFilter !== 'all') {
+      const statusLabel = statusFilter === 'success'
+        ? t('logs.filters.statusSuccess')
+        : t('logs.filters.statusError')
+      filters.push({
+        key: 'status',
+        label: `${t('logs.filters.status')}: ${statusLabel}`,
+        onRemove: () => setStatusFilter('all')
+      })
+    }
+    if (fromDate) {
+      filters.push({
+        key: 'from',
+        label: `${t('logs.filters.startDate')}: ${fromDate}`,
+        onRemove: () => setFromDate('')
+      })
+    }
+    if (toDate) {
+      filters.push({
+        key: 'to',
+        label: `${t('logs.filters.endDate')}: ${toDate}`,
+        onRemove: () => setToDate('')
+      })
+    }
+    if (selectedApiKeys.length > 0) {
+      filters.push({
+        key: 'apiKeys',
+        label: t('logs.filters.apiKeySelected', { count: selectedApiKeys.length }),
+        onRemove: () => setSelectedApiKeys([])
+      })
+    }
+    return filters
+  }, [providerFilter, providerLabelMap, endpointFilter, endpointLabelMap, modelFilter, statusFilter, fromDate, toDate, selectedApiKeys, t])
+
   const apiKeys = apiKeysQuery.data ?? []
   const apiKeyMap = useMemo(() => {
     const map = new Map<number, ApiKeySummary>()
@@ -252,6 +323,26 @@ export default function LogsPage() {
     setSelectedLogId(null)
   }, [])
 
+  const updateScrollHint = useCallback(() => {
+    const el = tableScrollRef.current
+    if (!el) return
+    const canScrollMore = el.scrollWidth - el.scrollLeft - el.clientWidth > 1
+    setShowScrollHint(canScrollMore)
+  }, [])
+
+  useEffect(() => {
+    const el = tableScrollRef.current
+    if (!el) return
+    updateScrollHint()
+    el.addEventListener('scroll', updateScrollHint, { passive: true })
+    const ro = new ResizeObserver(updateScrollHint)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', updateScrollHint)
+      ro.disconnect()
+    }
+  }, [updateScrollHint])
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -282,136 +373,176 @@ export default function LogsPage() {
 
       <Card>
         <CardContent className="pt-4">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium">{t('logs.filtersTitle')}</h3>
-              <p className="text-xs text-muted-foreground">{t('logs.filtersDescription')}</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={handleResetFilters}>
-              {t('common.actions.reset')}
-            </Button>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-2">
-              <Label>{t('logs.filters.provider')}</Label>
-              <Select value={providerFilter} onValueChange={setProviderFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('logs.filters.providerAll')}</SelectItem>
-                  {providerOptions.map((provider) => (
-                    <SelectItem key={provider.id} value={provider.id}>
-                      {provider.label ?? provider.id}
-                    </SelectItem>
+          <div className="flex items-center justify-between">
+            <div className="flex flex-1 items-center gap-3 overflow-hidden">
+              {activeFilters.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {activeFilters.map((f) => (
+                    <Badge
+                      key={f.key}
+                      variant="secondary"
+                      role="button"
+                      tabIndex={0}
+                      className="cursor-pointer gap-1 hover:bg-destructive/10 hover:text-destructive"
+                      onClick={f.onRemove}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f.onRemove() } }}
+                    >
+                      {f.label}
+                      <X className="h-3 w-3" aria-hidden="true" />
+                    </Badge>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">{t('common.filters.allRequests')}</span>
+              )}
             </div>
-
-            <div className="space-y-2">
-              <Label>{t('logs.filters.endpoint')}</Label>
-              <Select value={endpointFilter} onValueChange={setEndpointFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('logs.filters.endpointAll')}</SelectItem>
-                  <SelectItem value="anthropic">{t('logs.filters.endpointAnthropic')}</SelectItem>
-                  <SelectItem value="openai">{t('logs.filters.endpointOpenAI')}</SelectItem>
-                  {customEndpointsQuery.data?.endpoints?.map((ep) => (
-                    <SelectItem key={ep.id} value={ep.id}>
-                      {ep.label || ep.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <ApiKeyFilter
-              className="md:col-span-2"
-              apiKeys={apiKeys}
-              selected={selectedApiKeys}
-              disabled={apiKeysQuery.isLoading}
-              onChange={setSelectedApiKeys}
-            />
-
-            <div className="space-y-2">
-              <Label>{t('logs.filters.modelId')}</Label>
-              <Input
-                value={modelFilter}
-                onChange={(e) => setModelFilter(e.target.value)}
-                placeholder={t('logs.filters.modelPlaceholder')}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t('logs.filters.status')}</Label>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('logs.filters.statusAll')}</SelectItem>
-                  <SelectItem value="success">{t('logs.filters.statusSuccess')}</SelectItem>
-                  <SelectItem value="error">{t('logs.filters.statusError')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t('logs.filters.startDate')}</Label>
-              <Input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t('logs.filters.endDate')}</Label>
-              <Input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-              />
+            <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+              {activeFilters.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                  {t('common.actions.reset')}
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setFiltersExpanded((prev) => !prev)}
+              >
+                {filtersExpanded ? (
+                  <>
+                    {t('common.filters.collapse')}
+                    <ChevronUp className="ml-1 h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    {t('common.filters.expand')}
+                    <ChevronDown className="ml-1 h-4 w-4" />
+                  </>
+                )}
+              </Button>
             </div>
           </div>
+          {filtersExpanded && (
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="space-y-2">
+                <Label>{t('logs.filters.provider')}</Label>
+                <Select value={providerFilter} onValueChange={setProviderFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('logs.filters.providerAll')}</SelectItem>
+                    {providerOptions.map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id}>
+                        {provider.label ?? provider.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t('logs.filters.endpoint')}</Label>
+                <Select value={endpointFilter} onValueChange={setEndpointFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('logs.filters.endpointAll')}</SelectItem>
+                    <SelectItem value="anthropic">{t('logs.filters.endpointAnthropic')}</SelectItem>
+                    <SelectItem value="openai">{t('logs.filters.endpointOpenAI')}</SelectItem>
+                    {customEndpointsQuery.data?.endpoints?.map((ep) => (
+                      <SelectItem key={ep.id} value={ep.id}>
+                        {ep.label || ep.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <ApiKeyFilter
+                className="md:col-span-2"
+                apiKeys={apiKeys}
+                selected={selectedApiKeys}
+                disabled={apiKeysQuery.isLoading}
+                onChange={setSelectedApiKeys}
+              />
+
+              <div className="space-y-2">
+                <Label>{t('logs.filters.modelId')}</Label>
+                <Input
+                  value={modelFilter}
+                  onChange={(e) => setModelFilter(e.target.value)}
+                  placeholder={t('logs.filters.modelPlaceholder')}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t('logs.filters.status')}</Label>
+                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('logs.filters.statusAll')}</SelectItem>
+                    <SelectItem value="success">{t('logs.filters.statusSuccess')}</SelectItem>
+                    <SelectItem value="error">{t('logs.filters.statusError')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t('logs.filters.startDate')}</Label>
+                <Input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t('logs.filters.endDate')}</Label>
+                <Input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1200px] text-sm">
-              <thead className="border-b bg-muted/50">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.time')}</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.endpoint')}</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.provider')}</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.requestedModel')}</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.routedModel')}</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.apiKey')}</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.inputTokens')}</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.cacheReadTokens')}</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.cacheCreationTokens')}</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.outputTokens')}</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.latency')}</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.ttft')}</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.tpot')}</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium">{t('logs.table.columns.status')}</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.error')}</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium">{t('logs.table.columns.actions')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {logsQuery.isPending ? (
+          <div className="relative">
+            <div ref={tableScrollRef} className="overflow-x-auto">
+              <table className="w-full min-w-[1200px] text-sm">
+                <thead className="border-b bg-muted/50">
                   <tr>
-                    <td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                      {t('logs.table.loading')}
-                    </td>
+                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.time')}</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.endpoint')}</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.provider')}</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.requestedModel')}</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.routedModel')}</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.apiKey')}</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.inputTokens')}</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.cacheReadTokens')}</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.cacheCreationTokens')}</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.outputTokens')}</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.latency')}</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.ttft')}</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.tpot')}</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium">{t('logs.table.columns.status')}</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.error')}</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium">{t('logs.table.columns.actions')}</th>
                   </tr>
-                ) : items.length === 0 ? (
+                </thead>
+                <tbody className="divide-y">
+                  {logsQuery.isPending ? (
+                    Array.from({ length: 8 }).map((_, i) => (
+                      <TableRowSkeleton key={i} columns={16} />
+                    ))
+                  ) : items.length === 0 ? (
                   <tr>
                     <td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">
                       {t('logs.table.empty')}
@@ -431,6 +562,8 @@ export default function LogsPage() {
                 )}
               </tbody>
             </table>
+            </div>
+            {showScrollHint && <div className="table-scroll-hint" />}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-4 border-t p-4">
             <div className="flex items-center gap-2">
@@ -652,11 +785,11 @@ function LogDetailsDrawer({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-background/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="flex-1 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose} />
       <aside
         role="dialog"
         aria-modal="true"
-        className="flex h-full w-full max-w-xl flex-col border-l bg-card shadow-xl"
+        className="flex h-full w-full max-w-xl flex-col border-l bg-card shadow-xl animate-in slide-in-from-right duration-300"
       >
         <header className="flex items-center justify-between border-b px-6 py-4">
           <div>
@@ -672,7 +805,13 @@ function LogDetailsDrawer({
         </header>
         <div className="flex-1 overflow-y-auto">
           {logDetailQuery.isPending ? (
-            <Loader />
+            <div className="flex flex-col gap-4 p-6">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-4 w-1/2" />
+            </div>
           ) : !record ? (
             <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
               {t('logs.detail.loadError')}
