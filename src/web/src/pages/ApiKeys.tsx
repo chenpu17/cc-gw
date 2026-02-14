@@ -96,7 +96,7 @@ function EndpointSelector({
         />
         <span className="text-sm font-medium">{t('apiKeys.allEndpoints')}</span>
       </label>
-      <div className="grid gap-1">
+      <div className="grid max-h-40 gap-1 overflow-y-auto">
         {available.map((ep) => (
           <label
             key={ep.id}
