@@ -1597,41 +1597,43 @@ function TestConnectionDialog({
             {t('providers.testDialog.subtitle', { name: provider.label || provider.id })}
           </DialogDescription>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">{t('providers.testDialog.description')}</p>
-        <div className="flex items-start gap-3 rounded-lg border p-4">
-          <input
-            type="checkbox"
-            className="mt-1 h-4 w-4 rounded border"
-            checked={usePreset}
-            onChange={(e) => onPresetChange(e.target.checked)}
-          />
-          <div className="space-y-2">
-            <Label>{t('providers.testDialog.presetLabel')}</Label>
-            <p className="text-xs text-muted-foreground">{t('providers.testDialog.presetDescription')}</p>
-            <details className="rounded-md bg-muted p-2 text-xs">
-              <summary className="cursor-pointer text-primary hover:underline">
-                {t('providers.testDialog.presetPreviewSummary')}
-              </summary>
-              <div className="mt-2 space-y-1">
-                {options.map((option) => (
-                  <code key={option.key} className="block rounded bg-background px-2 py-1 text-xs">
-                    {option.key}: {option.value}
-                  </code>
-                ))}
-              </div>
-            </details>
+        <div className="min-h-0 space-y-4 overflow-y-auto">
+          <p className="text-sm text-muted-foreground">{t('providers.testDialog.description')}</p>
+          <div className="flex items-start gap-3 rounded-lg border p-4">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 rounded border"
+              checked={usePreset}
+              onChange={(e) => onPresetChange(e.target.checked)}
+            />
+            <div className="space-y-2">
+              <Label>{t('providers.testDialog.presetLabel')}</Label>
+              <p className="text-xs text-muted-foreground">{t('providers.testDialog.presetDescription')}</p>
+              <details className="rounded-md bg-muted p-2 text-xs">
+                <summary className="cursor-pointer text-primary hover:underline">
+                  {t('providers.testDialog.presetPreviewSummary')}
+                </summary>
+                <div className="mt-2 space-y-1">
+                  {options.map((option) => (
+                    <code key={option.key} className="block rounded bg-background px-2 py-1 text-xs">
+                      {option.key}: {option.value}
+                    </code>
+                  ))}
+                </div>
+              </details>
+            </div>
           </div>
+          {Object.keys(preservedExtras).length > 0 && (
+            <div className="rounded-lg border bg-muted p-4 text-xs space-y-2">
+              <p className="font-medium">{t('providers.testDialog.preservedInfo')}</p>
+              {Object.entries(preservedExtras).map(([key, value]) => (
+                <code key={key} className="block rounded bg-background px-2 py-1">
+                  {key}: {value}
+                </code>
+              ))}
+            </div>
+          )}
         </div>
-        {Object.keys(preservedExtras).length > 0 && (
-          <div className="rounded-lg border bg-muted p-4 text-xs space-y-2">
-            <p className="font-medium">{t('providers.testDialog.preservedInfo')}</p>
-            {Object.entries(preservedExtras).map(([key, value]) => (
-              <code key={key} className="block rounded bg-background px-2 py-1">
-                {key}: {value}
-              </code>
-            ))}
-          </div>
-        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             {t('providers.testDialog.cancel')}
@@ -2026,7 +2028,7 @@ function EndpointDrawer({
         onClick={onClose}
       />
 
-      <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l shadow-xl z-50 overflow-y-auto">
+      <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l shadow-xl z-50">
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-between p-6 border-b">
             <h2 className="text-lg font-semibold">
@@ -2037,7 +2039,7 @@ function EndpointDrawer({
             </Button>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-6">
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
             <div className="space-y-2">
               <Label>{t('modelManagement.endpointId')} <span className="text-destructive">*</span></Label>
               <Input

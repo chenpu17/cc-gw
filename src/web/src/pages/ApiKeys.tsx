@@ -586,7 +586,7 @@ export default function ApiKeysPage() {
             <DialogTitle>{t('apiKeys.createNew')}</DialogTitle>
             <DialogDescription>{t('apiKeys.createDescription')}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="min-h-0 space-y-4 overflow-y-auto">
             <div className="space-y-2">
               <Label htmlFor="keyName">{t('apiKeys.keyNamePlaceholder')} *</Label>
               <Input
@@ -684,12 +684,14 @@ export default function ApiKeysPage() {
               {editEndpointsKey?.name}
             </DialogDescription>
           </DialogHeader>
-          <EndpointSelector
-            available={availableEndpoints}
-            selected={editEndpointsSelection}
-            onChange={setEditEndpointsSelection}
-            hint={t('apiKeys.selectEndpoints')}
-          />
+          <div className="min-h-0 overflow-y-auto">
+            <EndpointSelector
+              available={availableEndpoints}
+              selected={editEndpointsSelection}
+              onChange={setEditEndpointsSelection}
+              hint={t('apiKeys.selectEndpoints')}
+            />
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditEndpointsKey(null)}>
               {t('common.actions.cancel')}
