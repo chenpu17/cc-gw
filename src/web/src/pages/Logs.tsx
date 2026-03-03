@@ -8,6 +8,7 @@ import { apiClient, type ApiError, toApiError } from '@/services/api'
 import type { LogDetail, LogListResponse, LogRecord } from '@/types/logs'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import type { CustomEndpointsResponse } from '@/types/endpoints'
+import type { GatewayConfig } from '@/types/providers'
 import { TableRowSkeleton, Skeleton } from '@/components/Skeleton'
 import { PageHeader } from '@/components/PageHeader'
 import { cn } from '@/lib/utils'
@@ -147,6 +148,10 @@ export default function LogsPage() {
     ['custom-endpoints'],
     { url: '/api/custom-endpoints', method: 'GET' }
   )
+  const exportConfigQuery = useApiQuery<GatewayConfig, ApiError>(
+    ['config', 'export-timeout'],
+    { url: '/api/config', method: 'GET' }
+  )
 
   useEffect(() => {
     if (logsQuery.isError && logsQuery.error) {
@@ -171,6 +176,14 @@ export default function LogsPage() {
   const total = logsQuery.data?.total ?? 0
   const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0
   const items = logsQuery.data?.items ?? []
+  const exportTimeoutMs = useMemo(() => {
+    const timeoutSeconds = exportConfigQuery.data?.logExportTimeoutSeconds
+    if (typeof timeoutSeconds === 'number' && Number.isFinite(timeoutSeconds)) {
+      const boundedSeconds = Math.min(Math.max(Math.round(timeoutSeconds), 5), 600)
+      return boundedSeconds * 1000
+    }
+    return 60_000
+  }, [exportConfigQuery.data?.logExportTimeoutSeconds])
 
   useEffect(() => {
     if (totalPages > 0 && page > totalPages) {
@@ -284,7 +297,8 @@ export default function LogsPage() {
       const exportLimit = total > 0 ? Math.min(total, 5000) : 1000
       const payload: Record<string, unknown> = { ...queryParams, limit: exportLimit, offset: 0 }
       const response = await apiClient.post('/api/logs/export', payload, {
-        responseType: 'blob'
+        responseType: 'blob',
+        timeout: exportTimeoutMs
       })
       const blob = new Blob([response.data], { type: 'application/zip' })
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
@@ -311,7 +325,7 @@ export default function LogsPage() {
     } finally {
       setExporting(false)
     }
-  }, [exporting, pushToast, queryParams, t, total])
+  }, [exportTimeoutMs, exporting, pushToast, queryParams, t, total])
 
   const handleOpenDetail = useCallback((id: number) => {
     setSelectedLogId(id)

@@ -37,6 +37,7 @@ interface FormState {
   port: string
   host: string
   logRetentionDays: string
+  logExportTimeoutSeconds: string
   storeRequestPayloads: boolean
   storeResponsePayloads: boolean
   logLevel: LogLevel
@@ -58,6 +59,7 @@ interface FormState {
 interface FormErrors {
   port?: string
   logRetentionDays?: string
+  logExportTimeoutSeconds?: string
   bodyLimitMb?: string
   httpPort?: string
   httpsPort?: string
@@ -132,6 +134,7 @@ export default function SettingsPage() {
     port: '',
     host: '',
     logRetentionDays: '',
+    logExportTimeoutSeconds: '60',
     storeRequestPayloads: true,
     storeResponsePayloads: true,
     logLevel: 'info',
@@ -194,6 +197,7 @@ export default function SettingsPage() {
         port: String(cfg.port ?? cfg.http?.port ?? ''),
         host: cfg.host ?? cfg.http?.host ?? '127.0.0.1',
         logRetentionDays: String(cfg.logRetentionDays ?? 30),
+        logExportTimeoutSeconds: String(cfg.logExportTimeoutSeconds ?? 60),
         storeRequestPayloads: deriveStoreFlag(cfg.storeRequestPayloads),
         storeResponsePayloads: deriveStoreFlag(cfg.storeResponsePayloads),
         logLevel: (cfg.logLevel as LogLevel) ?? 'info',
@@ -251,7 +255,9 @@ export default function SettingsPage() {
     }
   }, [authQuery.isError, authQuery.error, pushToast, t])
 
-  const handleInputChange = (field: 'port' | 'host' | 'logRetentionDays' | 'bodyLimitMb') => (value: string) => {
+  const handleInputChange = (
+    field: 'port' | 'host' | 'logRetentionDays' | 'logExportTimeoutSeconds' | 'bodyLimitMb'
+  ) => (value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -287,6 +293,10 @@ export default function SettingsPage() {
     const retentionValue = Number(form.logRetentionDays)
     if (!Number.isFinite(retentionValue) || retentionValue < 1 || retentionValue > 365) {
       nextErrors.logRetentionDays = t('settings.validation.retention')
+    }
+    const logExportTimeoutValue = Number(form.logExportTimeoutSeconds)
+    if (!Number.isFinite(logExportTimeoutValue) || logExportTimeoutValue < 5 || logExportTimeoutValue > 600) {
+      nextErrors.logExportTimeoutSeconds = t('settings.validation.logExportTimeout')
     }
     const bodyLimitValue = Number(form.bodyLimitMb)
     if (!Number.isFinite(bodyLimitValue) || bodyLimitValue < 1 || bodyLimitValue > 2048) {
@@ -336,6 +346,7 @@ export default function SettingsPage() {
     try {
       const portValue = Number(form.port)
       const retentionValue = Number(form.logRetentionDays)
+      const logExportTimeoutValue = Number(form.logExportTimeoutSeconds)
       const bodyLimitValue = Number(form.bodyLimitMb)
 
       const nextConfig: GatewayConfig = {
@@ -356,6 +367,7 @@ export default function SettingsPage() {
         port: portValue,
         host: form.host.trim() || undefined,
         logRetentionDays: retentionValue,
+        logExportTimeoutSeconds: Math.min(Math.max(Math.round(logExportTimeoutValue), 5), 600),
         storeRequestPayloads: form.storeRequestPayloads,
         storeResponsePayloads: form.storeResponsePayloads,
         logLevel: form.logLevel,
@@ -412,6 +424,7 @@ export default function SettingsPage() {
       port: String(config.port ?? ''),
       host: config.host ?? '',
       logRetentionDays: String(config.logRetentionDays ?? 30),
+      logExportTimeoutSeconds: String(config.logExportTimeoutSeconds ?? 60),
       storeRequestPayloads:
         typeof config.storeRequestPayloads === 'boolean'
           ? config.storeRequestPayloads
@@ -683,6 +696,22 @@ export default function SettingsPage() {
                   />
                   {errors.logRetentionDays && (
                     <p className="text-xs text-destructive">{errors.logRetentionDays}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('settings.fields.logExportTimeout')}</Label>
+                  <Input
+                    type="number"
+                    min={5}
+                    max={600}
+                    value={form.logExportTimeoutSeconds}
+                    onChange={(e) => handleInputChange('logExportTimeoutSeconds')(e.target.value)}
+                    aria-invalid={Boolean(errors.logExportTimeoutSeconds)}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('settings.fields.logExportTimeoutHint')}</p>
+                  {errors.logExportTimeoutSeconds && (
+                    <p className="text-xs text-destructive">{errors.logExportTimeoutSeconds}</p>
                   )}
                 </div>
 

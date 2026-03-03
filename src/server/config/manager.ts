@@ -277,6 +277,11 @@ function parseConfig(raw: string): GatewayConfig {
   if (typeof data.logRetentionDays !== 'number') {
     data.logRetentionDays = 30
   }
+  if (typeof data.logExportTimeoutSeconds !== 'number' || !Number.isFinite(data.logExportTimeoutSeconds)) {
+    data.logExportTimeoutSeconds = 60
+  } else {
+    data.logExportTimeoutSeconds = Math.min(Math.max(Math.round(data.logExportTimeoutSeconds), 5), 600)
+  }
   const legacyStorePayloads = typeof data.storePayloads === 'boolean' ? data.storePayloads : undefined
   const hasRequestFlag = typeof data.storeRequestPayloads === 'boolean'
   const hasResponseFlag = typeof data.storeResponsePayloads === 'boolean'

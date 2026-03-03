@@ -695,6 +695,8 @@ const resources = {
           host: '监听地址（可选）',
           hostPlaceholder: '默认 127.0.0.1',
           retention: '日志保留天数',
+          logExportTimeout: '日志导出超时 (秒)',
+          logExportTimeoutHint: '默认 60 秒；导出量较大时可调高，范围 5-600 秒。',
           bodyLimit: '请求体大小上限 (MB)',
           bodyLimitHint: '默认 10 MB；如 Claude Code 的 /compact 遇到 413，可适当调大。',
           defaults: '默认模型配置',
@@ -777,6 +779,7 @@ const resources = {
         validation: {
           port: '请输入 1-65535 之间的端口号',
           retention: '日志保留天数需为 1-365 之间的数字',
+          logExportTimeout: '日志导出超时需在 5-600 秒之间',
           bodyLimit: '请求体大小需在 1-2048 MB 之间',
           routePair: '请填写完整的来源模型与目标模型配置。',
           routeDuplicate: '模型 {{model}} 已存在映射，请勿重复配置。'
@@ -1795,6 +1798,8 @@ const resources = {
           host: 'Listen host (optional)',
           hostPlaceholder: 'Defaults to 127.0.0.1',
           retention: 'Log retention days',
+          logExportTimeout: 'Log export timeout (seconds)',
+          logExportTimeoutHint: 'Default is 60 seconds. Increase for larger exports. Range: 5-600 seconds.',
           bodyLimit: 'Request body limit (MB)',
           bodyLimitHint: 'Default is 10 MB. Increase this value if Claude Code /compact returns 413 errors.',
           defaults: 'Default models',
@@ -1877,6 +1882,7 @@ const resources = {
         validation: {
           port: 'Enter a port between 1 and 65535',
           retention: 'Retention days must be between 1 and 365',
+          logExportTimeout: 'Log export timeout must be between 5 and 600 seconds',
           bodyLimit: 'Request body limit must be between 1 and 2048 MB',
           routePair: 'Fill both the source and target models.',
           routeDuplicate: 'A route for {{model}} already exists.'

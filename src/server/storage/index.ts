@@ -230,6 +230,8 @@ async function ensureSchema(db: BetterSqliteDatabase): Promise<void> {
   await maybeAddColumn(db, 'request_logs', 'api_key_id', 'INTEGER')
   await maybeAddColumn(db, 'request_logs', 'api_key_name', 'TEXT')
   await maybeAddColumn(db, 'request_logs', 'api_key_value', 'TEXT')
+  await maybeAddColumn(db, 'request_payloads', 'prompt', 'BLOB')
+  await maybeAddColumn(db, 'request_payloads', 'response', 'BLOB')
 
   const hasKeyHash = await columnExists(db, 'api_keys', 'key_hash')
   if (!hasKeyHash) {

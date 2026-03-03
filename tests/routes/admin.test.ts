@@ -42,13 +42,16 @@ vi.mock('../../src/server/config/manager.ts', () => {
 
 vi.mock('../../src/server/logging/queries.ts', () => ({
   queryLogs: vi.fn(),
+  exportLogs: vi.fn(),
   getLogDetail: vi.fn(),
   getLogPayload: vi.fn(),
   cleanupLogsBefore: vi.fn(),
   clearAllLogs: vi.fn(),
   getMetricsOverview: vi.fn(),
   getDailyMetrics: vi.fn(),
-  getModelUsageMetrics: vi.fn()
+  getModelUsageMetrics: vi.fn(),
+  getApiKeyOverviewMetrics: vi.fn(),
+  getApiKeyUsageMetrics: vi.fn()
 }))
 
 vi.mock('../../src/server/storage/index.ts', () => ({
@@ -66,10 +69,11 @@ vi.mock('../../src/server/storage/index.ts', () => ({
 const { default: Fastify } = await import('fastify')
 const { registerAdminRoutes } = await import('../../src/server/routes/admin.ts')
 const { getConfig } = await import('../../src/server/config/manager.ts')
-const { queryLogs, cleanupLogsBefore, clearAllLogs } = await import('../../src/server/logging/queries.ts')
+const { queryLogs, exportLogs, cleanupLogsBefore, clearAllLogs } = await import('../../src/server/logging/queries.ts')
 
 const mockedGetConfig = vi.mocked(getConfig)
 const mockedQueryLogs = vi.mocked(queryLogs)
+const mockedExportLogs = vi.mocked(exportLogs)
 const mockedCleanupLogs = vi.mocked(cleanupLogsBefore)
 const mockedClearAll = vi.mocked(clearAllLogs)
 
@@ -119,6 +123,7 @@ describe('admin routes', () => {
     vi.clearAllMocks()
     mockedGetConfig.mockReturnValue(baseConfig)
     mockedQueryLogs.mockResolvedValue({ total: 0, items: [] })
+    mockedExportLogs.mockResolvedValue([])
     mockedCleanupLogs.mockResolvedValue(0)
     mockedClearAll.mockResolvedValue({ logs: 0, metrics: 0 })
   })
@@ -168,6 +173,35 @@ describe('admin routes', () => {
 
       expect(response.statusCode).toBe(404)
       expect(response.json()).toEqual({ error: 'Provider not found' })
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('exports logs as zip payload', async () => {
+    mockedExportLogs.mockResolvedValueOnce([])
+
+    const app = await createApp()
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/logs/export',
+        payload: { limit: 20, offset: 0 }
+      })
+
+      expect(mockedExportLogs).toHaveBeenCalledWith({
+        provider: undefined,
+        model: undefined,
+        status: undefined,
+        from: undefined,
+        to: undefined,
+        apiKeyIds: undefined,
+        endpoint: undefined,
+        limit: 20
+      })
+      expect(response.statusCode).toBe(200)
+      expect(response.headers['content-type']).toContain('application/zip')
+      expect(response.headers['content-disposition']).toContain('cc-gw-logs-')
     } finally {
       await app.close()
     }

@@ -885,38 +885,46 @@ export async function registerAdminRoutes(app: FastifyInstance<any, any, any, an
   })
 
   app.post('/api/logs/export', async (request, reply) => {
-    const body = (request.body ?? {}) as Record<string, unknown>
-    const { limit, filters } = buildLogOptions(body, { defaultLimit: 1000, maxLimit: 5000, includeOffset: false })
-    const records = await exportLogs({ ...filters, limit })
-    const filtersForExport = Object.fromEntries(
-      Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== '')
-    )
+    try {
+      const body = (request.body ?? {}) as Record<string, unknown>
+      const { limit, filters } = buildLogOptions(body, { defaultLimit: 1000, maxLimit: 5000, includeOffset: false })
+      const records = await exportLogs({ ...filters, limit })
+      const filtersForExport = Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== '')
+      )
 
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      count: records.length,
-      limit,
-      filters: filtersForExport,
-      records: (records || []).map((record) => ({
-        ...mapLogRecord(record, { includeKeyValue: true }),
-        payload: record.payload
-      }))
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        count: records.length,
+        limit,
+        filters: filtersForExport,
+        records: (records || []).map((record) => ({
+          ...mapLogRecord(record, { includeKeyValue: true }),
+          payload: record.payload
+        }))
+      }
+
+      const filename = `cc-gw-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`
+      const zip = new JSZip()
+      zip.file('logs.json', JSON.stringify(payload, null, 2))
+
+      const buffer = await zip.generateAsync({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 9 }
+      })
+
+      reply.header('Content-Type', 'application/zip')
+      reply.header('Content-Disposition', `attachment; filename="${filename}"`)
+
+      return reply.send(buffer)
+    } catch (error) {
+      request.log.error({ error }, '[logs] export failed')
+      reply.code(500)
+      return {
+        error: error instanceof Error ? `导出日志失败：${error.message}` : '导出日志失败'
+      }
     }
-
-    const filename = `cc-gw-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`
-    const zip = new JSZip()
-    zip.file('logs.json', JSON.stringify(payload, null, 2))
-
-    const buffer = await zip.generateAsync({
-      type: 'nodebuffer',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 9 }
-    })
-
-    reply.header('Content-Type', 'application/zip')
-    reply.header('Content-Disposition', `attachment; filename="${filename}"`)
-
-    return reply.send(buffer)
   })
 
   app.get('/api/logs/:id', async (request, reply) => {

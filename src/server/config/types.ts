@@ -93,6 +93,7 @@ export interface GatewayConfig {
   defaults: DefaultsConfig
   enableRoutingFallback?: boolean
   logRetentionDays?: number
+  logExportTimeoutSeconds?: number
   modelRoutes?: ModelRouteMap
   endpointRouting?: Partial<Record<GatewayEndpoint, EndpointRoutingConfig>>
   customEndpoints?: CustomEndpointConfig[]
